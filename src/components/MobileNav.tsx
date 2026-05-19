@@ -1,19 +1,19 @@
 import { cn } from "@/lib/utils"
 
+interface NavItem {
+  id: string
   label: string
+  icon: string
 }
-interface Mobil
-  onModuleChan
 
+interface MobileNavProps {
+  activeModule: string
+  onModuleChange: (moduleId: string) => void
+}
 
-  { id: 'market', label: '
-  { id: 'deals', label
-]
-e
-
-        <ul className="flex i
-            <li key={item.id} className="flex-1">
-                onClick={() => onModuleChange(item.id
+const navItems: NavItem[] = [
+  { id: 'collection', label: 'Collection', icon: '◈' },
+  { id: 'portfolio', label: 'Portfolio', icon: '◆' },
   { id: 'market', label: 'Market', icon: '◉' },
   { id: 'ai-advisor', label: 'AI', icon: '◍' },
   { id: 'deals', label: 'Deals', icon: '◫' },
@@ -30,27 +30,19 @@ export function MobileNav({ activeModule, onModuleChange }: MobileNavProps) {
               <button
                 onClick={() => onModuleChange(item.id)}
                 className={cn(
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+                  "flex flex-col items-center justify-center w-full h-full gap-0.5 text-xs transition-colors",
+                  activeModule === item.id
+                    ? "text-primary"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <span className="text-lg">{item.icon}</span>
+                <span className="font-medium">{item.label}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </nav>
+    </div>
+  )
+}
