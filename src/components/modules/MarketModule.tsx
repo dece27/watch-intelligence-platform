@@ -1,26 +1,69 @@
+import { useEffect, useMemo, useState } from "react"
 import { Watch } from "@/lib/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { TrendUp, TrendDown } from "@phosphor-icons/react"
+import { watchChartsClient } from "@/lib/watchcharts-client"
 
 interface MarketModuleProps {
   watches: Watch[]
 }
 
 export function MarketModule({ watches }: MarketModuleProps) {
-  const watchesWithMarketData = watches.map(watch => {
-    const marketValue = watch.currentValue || watch.purchasePrice * 1.15
-    const change = marketValue - watch.purchasePrice
-    const changePercent = ((change / watch.purchasePrice) * 100).toFixed(1)
-    
-    return {
-      ...watch,
-      marketValue,
-      change,
-      changePercent: parseFloat(changePercent),
-      sentiment: parseFloat(changePercent) > 10 ? 'strong' : parseFloat(changePercent) > 0 ? 'positive' : 'neutral'
+  const [marketValues, setMarketValues] = useState<Record<string, number>>({})
+
+  useEffect(() => {
+    let canceled = false
+
+    const loadMarketValues = async () => {
+      if (watches.length === 0) {
+        setMarketValues({})
+        return
+      }
+
+      const entries = await Promise.all(
+        watches.map(async (watch) => {
+          try {
+            const apiMarketValue = await watchChartsClient.getMarketValue({
+              brand: watch.brand,
+              model: watch.model,
+              referenceNumber: watch.referenceNumber,
+            })
+
+            return [watch.id, apiMarketValue ?? watch.currentValue ?? watch.purchasePrice] as const
+          } catch {
+            return [watch.id, watch.currentValue ?? watch.purchasePrice] as const
+          }
+        })
+      )
+
+      if (!canceled) {
+        setMarketValues(Object.fromEntries(entries))
+      }
     }
-  })
+
+    void loadMarketValues()
+
+    return () => {
+      canceled = true
+    }
+  }, [watches])
+
+  const watchesWithMarketData = useMemo(() => {
+    return watches.map((watch) => {
+      const marketValue = marketValues[watch.id] ?? watch.currentValue ?? watch.purchasePrice
+      const change = marketValue - watch.purchasePrice
+      const changePercent = ((change / watch.purchasePrice) * 100).toFixed(1)
+
+      return {
+        ...watch,
+        marketValue,
+        change,
+        changePercent: parseFloat(changePercent),
+        sentiment: parseFloat(changePercent) > 10 ? "strong" : parseFloat(changePercent) > 0 ? "positive" : "neutral",
+      }
+    })
+  }, [marketValues, watches])
 
   const topPerformers = [...watchesWithMarketData]
     .sort((a, b) => b.changePercent - a.changePercent)

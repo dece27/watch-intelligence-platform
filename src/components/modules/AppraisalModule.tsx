@@ -1,9 +1,10 @@
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Watch } from "@/lib/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { FilePdf, Printer } from "@phosphor-icons/react"
+import { Printer } from "@phosphor-icons/react"
+import { watchChartsClient } from "@/lib/watchcharts-client"
 
 interface AppraisalModuleProps {
   watches: Watch[]
@@ -11,8 +12,42 @@ interface AppraisalModuleProps {
 
 export function AppraisalModule({ watches }: AppraisalModuleProps) {
   const [selectedWatchId, setSelectedWatchId] = useState<string>(watches[0]?.id || '')
+  const [marketValue, setMarketValue] = useState<number | null>(null)
 
   const selectedWatch = watches.find(w => w.id === selectedWatchId)
+
+  useEffect(() => {
+    let canceled = false
+
+    const loadMarketValue = async () => {
+      if (!selectedWatch) {
+        setMarketValue(null)
+        return
+      }
+
+      try {
+        const apiMarketValue = await watchChartsClient.getMarketValue({
+          brand: selectedWatch.brand,
+          model: selectedWatch.model,
+          referenceNumber: selectedWatch.referenceNumber,
+        })
+
+        if (!canceled) {
+          setMarketValue(apiMarketValue)
+        }
+      } catch {
+        if (!canceled) {
+          setMarketValue(null)
+        }
+      }
+    }
+
+    void loadMarketValue()
+
+    return () => {
+      canceled = true
+    }
+  }, [selectedWatch])
 
   const handlePrint = () => {
     window.print()
@@ -34,7 +69,9 @@ export function AppraisalModule({ watches }: AppraisalModuleProps) {
     )
   }
 
-  const appraisalValue = selectedWatch.currentValue || selectedWatch.purchasePrice * 1.15
+  const appraisalValue = useMemo(() => {
+    return marketValue ?? selectedWatch.currentValue ?? selectedWatch.purchasePrice
+  }, [marketValue, selectedWatch.currentValue, selectedWatch.purchasePrice])
   const appraisalDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
 
   return (
