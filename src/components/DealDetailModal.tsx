@@ -1,13 +1,11 @@
 import { useState, useEffect } from "react"
 import { Deal } from "@/lib/types"
-import { Deal } from "@/lib/types"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
 import { Heart, Plus, Copy, Check } from "@phosphor-icons/react"
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer } from "recharts"
-import { toast } from "sonner"
 
 interface DealDetailModalProps {
 interface AIAnalysi
