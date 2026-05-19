@@ -1,35 +1,35 @@
 import { useState, useEffect } from "react"
-import { Dialog, DialogContent } from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Heart, Plus, Copy, Check } from "@phosphor-icons/react"
 import { toast } from "sonner"
+import { Heart, Plus, Copy, Check } from "@phosphor-icons/react"
+
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer } from "recharts"
-import { useKV } from "@github/spark/hooks"
-
-interface Deal {
-  id: string
-  brand: string
-  model: string
-  referenceNumber?: string
-  price: number
   fairValue?: number
-  condition: string
-  location: string
-  daysListed?: number
-}
 
-interface AIAnalysis {
-  verdict: 'EXCELLENT DEAL' | 'GOOD DEAL' | 'FAIR DEAL' | 'OVERPRICED'
-  reasoning: string
-  risk: string
 }
-
-interface DealDetailModalProps {
-  deal: Deal
+interface AI
+  reasoning: st
+}
+interface DealDetailModalP
   open: boolean
-  onOpenChange: (open: boolean) => void
+  onFilterBrand?: (b
+
+  const [savedDeal
+  const [copied, setC
+ 
+
+      analyzeWithAI()
+  }, [open, deal])
+  const analyzeWith
+    try {
+
+
+Fair Value: $${deal.fairValue?.t
+
+- VERDICT: one 
+- RISK: one sentence on the main risk f
   onFilterBrand?: (brand: string) => void
 }
 
@@ -40,22 +40,22 @@ export function DealDetailModal({ deal, open, onOpenChange, onFilterBrand }: Dea
   const [isLoadingAI, setIsLoadingAI] = useState(false)
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null)
 
-  useEffect(() => {
-    if (open && !aiAnalysis) {
-      analyzeWithAI()
-    }
-  }, [open, deal])
+      setAiAnalysis
+        reasoning: 'Unable to 
+      })
+    s
 
-  const analyzeWithAI = async () => {
-    setIsLoadingAI(true)
-    try {
-      const prompt = spark.llmPrompt`Analyze this watch deal as an expert dealer:
 
-Watch: ${deal.brand} ${deal.model}
-Reference: ${deal.referenceNumber || 'N/A'}
-Asking Price: $${deal.price.toLocaleString()}
-Fair Value: $${deal.fairValue?.toLocaleString() || 'Unknown'}
-Condition: ${deal.condition}
+        return 'bg-success/20 text-su
+        return 'bg-prima
+        r
+        return 'bg-destructive/20 text-destructive border-destructive/30'
+
+  const fairValue = deal.fairValue
+  const savingsPercent = ((savings / fairVa
+  const daysListed = deal.daysListed || Math.
+  const urgencyText = 
+      ? `Fresh listing - sel
 
 Provide:
 - VERDICT: one of EXCELLENT DEAL, GOOD DEAL, FAIR DEAL, or OVERPRICED
@@ -102,64 +102,68 @@ Provide:
       case 'OVERPRICED':
         return 'bg-destructive/20 text-destructive border-destructive/30'
     }
+  } setTimeout(() => setCopied(false), 2000)
   }
-
+              
+               
+   
+-h-[90vh] overflow-y-auto bg-background/95 backdrop-blur-xl border-white/[0.08]">
   const fairValue = deal.fairValue || deal.price
   const savings = deal.price < fairValue ? fairValue - deal.price : 0
   const savingsPercent = ((savings / fairValue) * 100).toFixed(0)
   
   const daysListed = deal.daysListed || Math.floor(Math.random() * 45) + 1
   const avgDaysToSell = 28
-  const urgencyText = 
+  const urgencyText = eal.referenceNumber || 'N/A'}</span>
     daysListed < 7 
       ? `Fresh listing - seller expectations are likely firm.`
       : daysListed > 30
       ? `Listed over a month - seller may be motivated to negotiate.`
       : `Good timing - seller may be open to reasonable offers.`
-  
+  div>
   const priceHistory = Array.from({ length: Math.min(daysListed, 30) }, (_, i) => ({
-    day: i + 1,
+    day: i + 1,ls-3 gap-4">
     price: deal.price + (Math.random() * 500 - 250)
-  }))
-
+  }))und mb-1">Asking Price</div>
+l font-semibold">${deal.price.toLocaleString()}</div>
   const offerAmount = Math.round(fairValue * 0.92)
   const vsMarket = ((offerAmount - fairValue) / fairValue * 100).toFixed(1)
   const offerReasoning = `Based on ${daysListed} days listed and current market for ${deal.brand} ${deal.referenceNumber || deal.model} averaging $${fairValue.toLocaleString()}, I'd like to offer $${offerAmount.toLocaleString()}. Happy to proceed quickly.`
-
+assName="text-2xl font-semibold">${fairValue.toLocaleString()}</div>
   const isSaved = savedDeals?.includes(deal.id)
   const isInWatchlist = watchlist?.includes(deal.id)
-
-  const handleSaveDeal = () => {
+xs uppercase tracking-wider text-muted-foreground mb-1">Potential Savings</div>
+  const handleSaveDeal = () => {ont-semibold text-success">${savings.toLocaleString()} ({savingsPercent}%)</div>
     setSavedDeals((current = []) => 
       current.includes(deal.id) 
         ? current.filter(id => id !== deal.id)
         : [...current, deal.id]
-    )
+    )[#C9A84C] mb-3">AI Dealer Analysis</h3>
     toast.success(isSaved ? 'Deal removed from saved' : 'Deal saved!')
   }
 
-  const handleAddToWatchlist = () => {
+  const handleAddToWatchlist = () => { animate-pulse" />
     setWatchlist((current = []) =>
-      current.includes(deal.id)
+      current.includes(deal.id) rounded animate-pulse" />
         ? current.filter(id => id !== deal.id)
         : [...current, deal.id]
     )
-    toast.success(isInWatchlist ? 'Removed from watchlist' : 'Added to watchlist!')
+    toast.success(isInWatchlist ? 'Removed from watchlist' : 'Added to watchlist!')-4 py-1`}>
   }
 
   const handleFindSimilar = () => {
-    if (onFilterBrand) {
-      onFilterBrand(deal.brand)
-      onOpenChange(false)
-      toast.success(`Filtering deals by ${deal.brand}`)
+                  <div>
+                    <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Reasoning</div>
+                    <p className="text-sm leading-relaxed">{aiAnalysis.reasoning}</p>
+                  </div>
     }
-  }
+                  <div>
 
-  const handleCopyOffer = () => {
-    navigator.clipboard.writeText(offerReasoning)
-    setCopied(true)
-    toast.success('Offer message copied to clipboard!')
-    setTimeout(() => setCopied(false), 2000)
+                    <p className="text-sm leading-relaxed text-muted-foreground">{aiAnalysis.risk}</p>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">Analysis unavailable</p>
   }
 
   return (
@@ -172,70 +176,9 @@ Provide:
             </h2>
             <div className="flex items-center gap-3 text-sm text-muted-foreground">
               <span>{deal.referenceNumber || 'N/A'}</span>
-              <span>•</span>
+                    Similar {deal.brand} {deal.model} references sell in avg {avgDaysToSell} days
               <span>{deal.condition}</span>
               <span>•</span>
-              <span>{deal.location}</span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-4">
-            <Card className="bg-white/[0.02] border-white/[0.08] p-4">
-              <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Asking Price</div>
-              <div className="text-2xl font-semibold">${deal.price.toLocaleString()}</div>
-            </Card>
-            <Card className="bg-white/[0.02] border-white/[0.08] p-4">
-              <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Est. Fair Value</div>
-              <div className="text-2xl font-semibold">${fairValue.toLocaleString()}</div>
-            </Card>
-            <Card className="bg-white/[0.02] border-white/[0.08] p-4">
-              <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Potential Savings</div>
-              <div className="text-2xl font-semibold text-success">${savings.toLocaleString()} ({savingsPercent}%)</div>
-            </Card>
-          </div>
-
-          <div>
-            <h3 className="text-[9px] uppercase tracking-wider text-[#C9A84C] mb-3">AI Dealer Analysis</h3>
-            <Card className="bg-white/[0.02] border-white/[0.08] p-6">
-              {isLoadingAI ? (
-                <div className="space-y-3">
-                  <div className="h-8 bg-white/[0.05] rounded animate-pulse" />
-                  <div className="h-20 bg-white/[0.05] rounded animate-pulse" />
-                  <div className="h-12 bg-white/[0.05] rounded animate-pulse" />
-                </div>
-              ) : aiAnalysis ? (
-                <div className="space-y-4">
-                  <Badge className={`${getVerdictStyle(aiAnalysis.verdict)} text-base px-4 py-1`}>
-                    {aiAnalysis.verdict}
-                  </Badge>
-                  
-                  <div>
-                    <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Reasoning</div>
-                    <p className="text-sm leading-relaxed">{aiAnalysis.reasoning}</p>
-                  </div>
-
-                  <div>
-                    <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Risk</div>
-                    <p className="text-sm leading-relaxed text-muted-foreground">{aiAnalysis.risk}</p>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">Analysis unavailable</p>
-              )}
-            </Card>
-          </div>
-
-          <div>
-            <h3 className="text-[9px] uppercase tracking-wider text-[#C9A84C] mb-3">Deal Velocity</h3>
-            <Card className="bg-white/[0.02] border-white/[0.08] p-6 space-y-4">
-              <div className="flex items-center gap-2">
-                <span className="text-2xl">⚡</span>
-                <div>
-                  <div className="font-medium">Listed {daysListed} days ago</div>
-                  <div className="text-sm text-muted-foreground">
-                    Similar {deal.brand} {deal.model} references sell in avg {avgDaysToSell} days
-                  </div>
-                </div>
               </div>
 
               <div className="flex items-start gap-2 text-sm p-3 bg-white/[0.03] rounded">
