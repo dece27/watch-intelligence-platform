@@ -184,38 +184,29 @@ export function MarketModule({ watches }: MarketModuleProps) {
       </div>
 
       <Card className="bg-card border-border">
-        <CardContent className="pt-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex-1 text-center">
-              <div className={`text-lg font-semibold ${marketSentiment.type === 'bull' ? 'text-[#5E8C6A]' : 'text-muted-foreground opacity-50'}`}>
-                BULL 🐂
-              </div>
-            </div>
-            <div className="flex-1 text-center">
-              <div className={`text-lg font-semibold ${marketSentiment.type === 'neutral' ? 'text-[#C9A84C]' : 'text-muted-foreground opacity-50'}`}>
-                NEUTRAL —
-              </div>
-            </div>
-            <div className="flex-1 text-center">
-              <div className={`text-lg font-semibold ${marketSentiment.type === 'bear' ? 'text-[#A0785A]' : 'text-muted-foreground opacity-50'}`}>
-                BEAR 🐻
-              </div>
-            </div>
-          </div>
-          <div className="flex justify-center mb-3">
-            <div className="flex items-center gap-2">
+        <CardContent className="py-4">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3 flex-1">
+              <div className="text-sm font-medium text-muted-foreground whitespace-nowrap">Market Sentiment:</div>
               <div 
-                className="w-2 h-2 rounded-full animate-pulse" 
-                style={{ backgroundColor: marketSentiment.color }}
-              />
-              <span style={{ color: marketSentiment.color }} className="font-semibold">
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full font-semibold text-sm"
+                style={{ 
+                  backgroundColor: `${marketSentiment.color}20`,
+                  color: marketSentiment.color,
+                  border: `1.5px solid ${marketSentiment.color}40`
+                }}
+              >
+                <div 
+                  className="w-1.5 h-1.5 rounded-full animate-pulse" 
+                  style={{ backgroundColor: marketSentiment.color }}
+                />
                 {marketSentiment.label}
-              </span>
+              </div>
             </div>
-          </div>
-          <div className="text-center text-sm text-muted-foreground">
-            <p>{positiveBrandsCount} of {BRAND_INDICES.length} tracked brands are trending positive over the past 30 days.</p>
-            <p className="text-xs mt-1">Data based on WatchCharts comparable indices. Updated monthly.</p>
+            <div className="text-right">
+              <div className="text-xs text-muted-foreground">30d Trend</div>
+              <div className="text-sm font-medium">{positiveBrandsCount}/{BRAND_INDICES.length} brands positive</div>
+            </div>
           </div>
         </CardContent>
       </Card>
