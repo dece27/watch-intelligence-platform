@@ -177,10 +177,10 @@ export function MarketModule({ watches }: MarketModuleProps) {
   ] : []
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       <div>
-        <h1 className="text-3xl font-semibold">Market Intelligence</h1>
-        <p className="text-muted-foreground mt-1">Real-time market indices and price trends</p>
+        <h1 className="text-2xl md:text-3xl font-semibold">Market Intelligence</h1>
+        <p className="text-muted-foreground text-sm md:text-base mt-1">Real-time market indices and price trends</p>
       </div>
 
       <Card className="bg-card border-border">

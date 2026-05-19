@@ -134,24 +134,27 @@ export function CollectionModule({ watches, onUpdate }: CollectionModuleProps) {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-4">
+    <div className="space-y-4 md:space-y-6">
+      <div className="flex items-start md:items-center justify-between flex-col md:flex-row gap-4">
         <div>
-          <h1 className="text-3xl font-semibold">Collection Vault</h1>
-          <p className="text-muted-foreground mt-1">{watches.length} {watches.length === 1 ? 'watch' : 'watches'} in your portfolio</p>
+          <h1 className="text-2xl md:text-3xl font-semibold">Collection Vault</h1>
+          <p className="text-muted-foreground text-sm md:text-base mt-1">{watches.length} {watches.length === 1 ? 'watch' : 'watches'} in your portfolio</p>
         </div>
-        <div className="flex gap-2">
-          <Button onClick={() => setIsImportOpen(true)} variant="outline">
+        <div className="flex gap-2 w-full md:w-auto flex-wrap">
+          <Button onClick={() => setIsImportOpen(true)} variant="outline" className="flex-1 md:flex-none" size="sm">
             <FileArrowUp className="mr-2" />
-            Import CSV
+            <span className="hidden sm:inline">Import CSV</span>
+            <span className="sm:hidden">Import</span>
           </Button>
-          <Button onClick={() => setIsShareOpen(true)} variant="outline">
+          <Button onClick={() => setIsShareOpen(true)} variant="outline" className="flex-1 md:flex-none" size="sm">
             <ShareNetwork className="mr-2" />
-            Share Collection
+            <span className="hidden sm:inline">Share Collection</span>
+            <span className="sm:hidden">Share</span>
           </Button>
-          <Button onClick={handleAdd} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+          <Button onClick={handleAdd} className="bg-primary hover:bg-primary/90 text-primary-foreground flex-1 md:flex-none" size="sm">
             <Plus className="mr-2" />
-            Add Watch
+            <span className="hidden sm:inline">Add Watch</span>
+            <span className="sm:hidden">Add</span>
           </Button>
         </div>
       </div>
@@ -176,11 +179,11 @@ export function CollectionModule({ watches, onUpdate }: CollectionModuleProps) {
         </div>
         
         <Tabs value={brandFilter} onValueChange={setBrandFilter} className="w-full md:w-auto">
-          <TabsList>
+          <TabsList className="w-full md:w-auto grid grid-cols-5 md:inline-flex">
             <TabsTrigger value="all">All</TabsTrigger>
             <TabsTrigger value="Rolex">Rolex</TabsTrigger>
-            <TabsTrigger value="Patek Philippe">Patek</TabsTrigger>
-            <TabsTrigger value="Audemars Piguet">AP</TabsTrigger>
+            <TabsTrigger value="Patek Philippe" className="text-xs md:text-sm">Patek</TabsTrigger>
+            <TabsTrigger value="Audemars Piguet" className="text-xs md:text-sm">AP</TabsTrigger>
             <TabsTrigger value="Other">Other</TabsTrigger>
           </TabsList>
         </Tabs>

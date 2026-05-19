@@ -155,8 +155,13 @@ Interactions should feel mechanical yet fluid, like the precision movement of a 
   - Content max-width: 1400px
   
 - **Mobile**: 
-  - Sidebar collapses to bottom navigation bar
-  - Grid layouts switch to single column
+  - Sidebar collapses to bottom navigation bar with icon + label layout, fixed position at bottom
+  - Grid layouts switch to single column on mobile (< 768px breakpoint)
   - Cards maintain full width with vertical stacking
-  - Header becomes sticky with reduced height
-  - Modals occupy full screen with safe margins
+  - Header becomes sticky with reduced height (h-14 vs h-16), displays app logo and simplified value display
+  - Main content has bottom padding (pb-20) to prevent content being hidden behind bottom nav
+  - Bottom navigation uses 64px height with 6 evenly distributed navigation items
+  - Touch targets are minimum 44x44px for all interactive elements
+  - Modals use responsive max-width and max-height for mobile screens
+  - Button groups stack vertically or wrap on mobile
+  - Typography scales down appropriately (text-lg vs text-2xl for values)

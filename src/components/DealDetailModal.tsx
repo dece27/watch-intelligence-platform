@@ -171,10 +171,10 @@ Provide:
       <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto bg-background/95 backdrop-blur-xl border-white/[0.08]">
         <div className="space-y-6">
           <div>
-            <h2 className="text-2xl font-semibold mb-1">
+            <h2 className="text-xl md:text-2xl font-semibold mb-1">
               {deal.brand} {deal.model}
             </h2>
-            <div className="flex items-center gap-3 text-sm text-muted-foreground">
+            <div className="flex items-center gap-2 md:gap-3 text-xs md:text-sm text-muted-foreground flex-wrap">
               <span>{deal.referenceNumber || 'N/A'}</span>
               <span>•</span>
               <span>{deal.condition}</span>
@@ -183,26 +183,26 @@ Provide:
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
             <Card className="bg-white/[0.02] border-white/[0.08] p-4">
               <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Asking Price</div>
-              <div className="text-2xl font-semibold">${deal.price.toLocaleString()}</div>
+              <div className="text-xl md:text-2xl font-semibold">${deal.price.toLocaleString()}</div>
             </Card>
 
             <Card className="bg-white/[0.02] border-white/[0.08] p-4">
               <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Fair Value</div>
-              <div className="text-2xl font-semibold">${fairValue.toLocaleString()}</div>
+              <div className="text-xl md:text-2xl font-semibold">${fairValue.toLocaleString()}</div>
             </Card>
 
             <Card className="bg-white/[0.02] border-white/[0.08] p-4">
               <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Potential Savings</div>
-              <div className="text-2xl font-semibold text-success">${savings.toLocaleString()} ({savingsPercent}%)</div>
+              <div className="text-xl md:text-2xl font-semibold text-success">${savings.toLocaleString()} ({savingsPercent}%)</div>
             </Card>
           </div>
 
           <div>
             <h3 className="text-[9px] uppercase tracking-wider text-[#C9A84C] mb-3">AI Dealer Analysis</h3>
-            <Card className="bg-white/[0.02] border-white/[0.08] p-6">
+            <Card className="bg-white/[0.02] border-white/[0.08] p-4 md:p-6">
               {isLoadingAI ? (
                 <div className="space-y-3">
                   <div className="h-6 bg-white/[0.05] rounded animate-pulse" />
@@ -211,7 +211,7 @@ Provide:
                 </div>
               ) : aiAnalysis ? (
                 <div className="space-y-4">
-                  <div className={`inline-flex px-4 py-1.5 rounded border text-sm font-medium ${getVerdictStyle(aiAnalysis.verdict)}`}>
+                  <div className={`inline-flex px-3 md:px-4 py-1.5 rounded border text-xs md:text-sm font-medium ${getVerdictStyle(aiAnalysis.verdict)}`}>
                     {aiAnalysis.verdict}
                   </div>
 
@@ -233,8 +233,8 @@ Provide:
 
           <div>
             <h3 className="text-[9px] uppercase tracking-wider text-[#C9A84C] mb-3">Market Intelligence</h3>
-            <Card className="bg-white/[0.02] border-white/[0.08] p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+            <Card className="bg-white/[0.02] border-white/[0.08] p-4 md:p-6 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Days Listed</div>
                   <div className="text-lg font-semibold">{daysListed} days</div>
@@ -278,14 +278,14 @@ Provide:
 
           <div>
             <h3 className="text-[9px] uppercase tracking-wider text-[#C9A84C] mb-3">Suggested Offer</h3>
-            <Card className="bg-white/[0.02] border-white/[0.08] p-6 space-y-4">
-              <div className="flex items-center justify-between">
+            <Card className="bg-white/[0.02] border-white/[0.08] p-4 md:p-6 space-y-4">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                 <div>
                   <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Offer Amount</div>
-                  <div className="text-3xl font-semibold">${offerAmount.toLocaleString()}</div>
+                  <div className="text-2xl md:text-3xl font-semibold">${offerAmount.toLocaleString()}</div>
                   <div className="text-sm text-muted-foreground mt-1">{vsMarket}% vs market average</div>
                 </div>
-                <Button onClick={handleCopyOffer} size="lg" className="gap-2">
+                <Button onClick={handleCopyOffer} size="lg" className="gap-2 w-full md:w-auto">
                   {copied ? <Check size={18} /> : <Copy size={18} />}
                   {copied ? 'Copied!' : 'Copy Offer Message'}
                 </Button>
@@ -297,7 +297,7 @@ Provide:
             </Card>
           </div>
 
-          <div className="flex items-center gap-3 pt-4 border-t border-white/[0.08]">
+          <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3 pt-4 border-t border-white/[0.08]">
             <Button onClick={handleSaveDeal} variant="outline" className="gap-2">
               <Heart size={18} weight={isSaved ? 'fill' : 'regular'} />
               {isSaved ? 'Saved' : 'Save Deal'}
