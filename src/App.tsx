@@ -95,12 +95,13 @@ function App() {
     if (!currentUser?.id) return
     
     const watchesKey = `watches_${currentUser.id}`
-    const currentWatches = watches || []
-    const updatedWatches = updater(currentWatches)
-    
-    console.log(`Saving ${updatedWatches.length} watches to key: ${watchesKey}`)
     
     try {
+      const currentWatches = await window.spark.kv.get<Watch[]>(watchesKey) || []
+      const updatedWatches = updater(currentWatches)
+      
+      console.log(`Saving ${updatedWatches.length} watches to key: ${watchesKey}`)
+      
       await window.spark.kv.set(watchesKey, updatedWatches)
       setWatches(updatedWatches)
       console.log('Watches saved successfully')
