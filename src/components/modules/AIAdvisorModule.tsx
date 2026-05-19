@@ -45,7 +45,7 @@ export function AIAdvisorModule({ watches }: AIAdvisorModuleProps) {
   const [dealOfDay, setDealOfDay] = useState<Deal | null>(null)
   const [dealAssessment, setDealAssessment] = useState<string>('')
   const [isLoadingDeal, setIsLoadingDeal] = useState(false)
-  const [mockListings] = useKV<Deal[]>("mockListings", [])
+  const [mockListings, setMockListings] = useKV<Deal[]>("mockListings", [])
 
   useEffect(() => {
     if (watches.length > 0 && signals.length === 0) {

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { useKV } from "@github/spark/hooks"
 import { Deal } from "@/lib/types"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Card } from "@/components/ui/card"
