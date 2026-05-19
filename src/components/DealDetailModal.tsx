@@ -2,15 +2,18 @@ import { useState, useEffect } from "react"
 import { Deal } from "@/lib/types"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Card } from "@/components/ui/card"
-import { LineChart, Line, XAxis, YAxis, Respons
-  onOpenChange: (open: boolean) => void
-}
-interface AIAnalysis {
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Slider } from "@/components/ui/slider"
+import { Heart, Plus, Copy, Check } from "@phosphor-icons/react"
+import { LineChart, Line, XAxis, YAxis, ResponsiveContainer } from "recharts"
+import { useKV } from "@github/spark/hooks"
+import { toast } from "sonner"
 
-}
-function getVerdict
-    case 'BUY N
-    case 'GOOD VALUE':
+interface DealDetailModalProps {
+  deal: Deal | null
+  open: boolean
+  onOpenChange: (open: boolean) => void
   onFilterBrand?: (brand: string) => void
 }
 
@@ -20,20 +23,20 @@ interface AIAnalysis {
   risk: string
 }
 
-    if (deal && open) {
-      setAiAnalysis(
-    }
-
-    if (!deal) return
-    setIsLoadingAI(true)
-      const fairValue
-                        deal.hasBox ? 'with box only' : 
-                
-      const prompt = spark.llmPrompt`Analyze this watch deal as an expe
-Provide:
-- REASONING: 2-3 specific sentences on the price, condition, and market 
-
-V
+function getVerdictStyle(verdict: string) {
+  switch (verdict) {
+    case 'BUY NOW':
+      return 'bg-success/20 text-success border-success/30'
+    case 'GOOD VALUE':
+      return 'bg-primary/20 text-primary border-primary/30'
+    case 'FAIR DEAL':
+      return 'bg-secondary/20 text-secondary border-secondary/30'
+    case 'PASS':
+      return 'bg-destructive/20 text-destructive border-destructive/30'
+    default:
+      return 'bg-muted/20 text-muted-foreground border-muted/30'
+  }
+}
 
 export function DealDetailModal({ deal, open, onOpenChange, onFilterBrand }: DealDetailModalProps) {
   const [savedDeals, setSavedDeals] = useKV<string[]>("savedDeals", [])
@@ -48,7 +51,7 @@ export function DealDetailModal({ deal, open, onOpenChange, onFilterBrand }: Dea
       setOfferAmount(deal.price * 0.92)
       setAiAnalysis(null)
       loadAIAnalysis()
-  if 
+    }
   }, [deal, open])
 
   const loadAIAnalysis = async () => {
@@ -60,31 +63,31 @@ export function DealDetailModal({ deal, open, onOpenChange, onFilterBrand }: Dea
       const boxPapers = deal.hasBox && deal.hasPapers ? 'with box and papers' : 
                         deal.hasBox ? 'with box only' : 
                         deal.hasPapers ? 'with papers only' : 
-  const offerReasoning = `Based on ${daysL
+                        'watch only'
       
-      const prompt = spark.llmPrompt`Analyze this watch deal as an expert dealer. Watch: ${deal.brand} ${deal.model} ${deal.referenceNumber || ''}, ${deal.year || 'recent'}, condition: ${deal.condition}, ${boxPapers}. Asking price: $${deal.price}. Fair market value: $${fairValue}. Seller rating: ${deal.sellerRating || 4.5}/5. Listed ${deal.daysListed || 3} days ago.
+      const prompt = (window.spark.llmPrompt as any)`Analyze this watch deal as an expert dealer. Watch: ${deal.brand} ${deal.model} ${deal.referenceNumber || ''}, ${deal.year || 'recent'}, condition: ${deal.condition}, ${boxPapers}. Asking price: $${deal.price}. Fair market value: $${fairValue}. Seller rating: ${deal.sellerRating || 4.5}/5. Listed ${deal.daysListed || 3} days ago.
 
-        
+Provide:
 - VERDICT: one of BUY NOW / GOOD VALUE / FAIR DEAL / PASS
 - REASONING: 2-3 specific sentences on the price, condition, and market context using 2025 data where relevant (Rolex stable-recovering, Patek +6% YTD, Grand Seiko +12.8% YTD)
 - RISK: one sentence on the main risk factor
 
 Respond in this format:
-
+VERDICT: [verdict]
 REASONING: [sentences]
-      onOpenChang
+RISK: [sentence]`
 
-      const response = await spark.llm(prompt, "gpt-4o-mini")
-    se
+      const response = await window.spark.llm(prompt, "gpt-4o-mini")
+      
       const verdictMatch = response.match(/VERDICT:\s*(.+)/i)
       const reasoningMatch = response.match(/REASONING:\s*(.+?)(?=RISK:|$)/is)
       const riskMatch = response.match(/RISK:\s*(.+)/is)
       
-              <h2 cla
+      setAiAnalysis({
         verdict: (verdictMatch?.[1]?.trim() as AIAnalysis['verdict']) || 'FAIR DEAL',
         reasoning: reasoningMatch?.[1]?.trim() || 'Analysis unavailable',
         risk: riskMatch?.[1]?.trim() || 'Standard market risks apply'
-        
+      })
     } catch (error) {
       console.error('AI Analysis failed:', error)
       setAiAnalysis({
@@ -92,7 +95,7 @@ REASONING: [sentences]
         reasoning: 'Unable to load AI analysis at this time.',
         risk: 'Standard market risks apply.'
       })
-               
+    } finally {
       setIsLoadingAI(false)
     }
   }
@@ -113,7 +116,7 @@ REASONING: [sentences]
                        daysListed <= avgDaysToSell * 1.5 ? '🟡' : '🔴'
   const urgencyText = daysListed < avgDaysToSell ? 
     `Fresh listing — similar pieces sell fast at this price` :
-                  </div>
+    daysListed <= avgDaysToSell * 1.5 ?
     `At typical market duration — seller may consider offers` :
     `Extended listing — seller likely motivated. Good negotiation window.`
 
@@ -129,94 +132,76 @@ REASONING: [sentences]
   const isSaved = savedDeals?.includes(deal.id)
   const isInWatchlist = watchlist?.includes(deal.id)
 
-                <div className="
-    setSavedDeals((current) => 
+  const handleSaveDeal = () => {
+    setSavedDeals((current = []) => 
       current.includes(deal.id) 
-                    />
-                    <Line 
-     
-   
+        ? current.filter(id => id !== deal.id)
+        : [...current, deal.id]
+    )
+    toast.success(isSaved ? 'Deal removed from saved' : 'Deal saved!')
+  }
 
-                </ResponsiveContainer>
-                  <span>Listed
-                </div>
+  const handleAddToWatchlist = () => {
+    setWatchlist((current = []) =>
+      current.includes(deal.id)
+        ? current.filter(id => id !== deal.id)
+        : [...current, deal.id]
+    )
+    toast.success(isInWatchlist ? 'Removed from watchlist' : 'Added to watchlist!')
+  }
+
+  const handleFindSimilar = () => {
+    if (onFilterBrand) {
+      onFilterBrand(deal.brand)
+      onOpenChange(false)
+      toast.success(`Filtering deals by ${deal.brand}`)
+    }
+  }
+
+  const handleCopyOffer = () => {
+    navigator.clipboard.writeText(offerReasoning)
+    setCopied(true)
+    toast.success('Offer message copied to clipboard!')
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto bg-background/95 backdrop-blur-xl border-white/[0.08]">
+        <div className="space-y-6">
+          <div>
+            <h2 className="text-2xl font-semibold mb-1">
+              {deal.brand} {deal.model}
+            </h2>
+            <div className="flex items-center gap-3 text-sm text-muted-foreground">
+              <span>{deal.referenceNumber || 'N/A'}</span>
+              <span>•</span>
+              <span>{deal.condition}</span>
+              <span>•</span>
+              <span>{deal.location}</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <Card className="bg-white/[0.02] border-white/[0.08] p-4">
+              <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Asking Price</div>
+              <div className="text-2xl font-semibold">${deal.price.toLocaleString()}</div>
             </Card>
-
-     
-   
-
-
-                <div cla
-                  value={[offer
-                  min={de
-     
-   
-
-                </div>
-
-                <di
-                  <span className="font-medi
-   
-
-          
-              </div>
-              <div className="p-3 bg-white/[0.03] rounded text-sm">
-                <p className="leading-relaxed text-muted-foregr
-
-                onClick={handleCopyOffer}
-                className="w-full"
-                {copied ? <Check size={16} className="mr-2" /> : <Copy size={1
-              </Button>
-              <p class
-              </p>
-          </div>
-          </div>
-            <Card
-                <div classN
-                  <span
-                <div className="flex justify-be
-           
-                <div classN
-                  <
-              
-
-                <div className="flex justify-betwee
-          <div>
-                <div className="flex justify-between">
-                  <span className="font-medium">Stainless Steel</span>
-                <div className="flex justify-between">
-                  <span className="font-medium">{deal.hasBox ? 'Yes' : 'No'}</span>
-                <div className="flex justify-between">
-                  <span className="
-                <div cla
-              </div>
-              
-              <div className="space-y-2 text-sm">
-              </div>
-          </div>
-          <div>
-                </div>
-                variant="outline"
-                className="flex items-center gap-2"
-                <Heart size={16} weight={isSaved ? 'fill' : 'regular'} />
-                </div>
-                variant="outline"
-                className="flex items-center gap-2"
-                <Plus size={16} />
-              </Button
-              </div>
+            <Card className="bg-white/[0.02] border-white/[0.08] p-4">
+              <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Est. Fair Value</div>
+              <div className="text-2xl font-semibold">${fairValue.toLocaleString()}</div>
+            </Card>
+            <Card className="bg-white/[0.02] border-white/[0.08] p-4">
+              <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Potential Savings</div>
+              <div className="text-2xl font-semibold text-success">${savings.toLocaleString()} ({savingsPercent}%)</div>
             </Card>
           </div>
 
-        </div>
-    </Dialog>
-}
-
+          <div>
+            <h3 className="text-[9px] uppercase tracking-wider text-[#C9A84C] mb-3">AI Dealer Analysis</h3>
+            <Card className="bg-white/[0.02] border-white/[0.08] p-6">
+              {isLoadingAI ? (
                 <div className="space-y-3">
-
-
-
-
                   <div className="h-8 bg-white/[0.05] rounded animate-pulse" />
                   <div className="h-20 bg-white/[0.05] rounded animate-pulse" />
                   <div className="h-12 bg-white/[0.05] rounded animate-pulse" />
