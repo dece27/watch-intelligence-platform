@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react"
-import { Deal } from "@/lib/types"
-import { Dialog, DialogContent } from "@/components/ui/dialog"
-import { Card } from "@/components/ui/card"
+import { Dialog, DialogContent } f
+import { Badge } from "@/components/ui/badge"
+import { Heart, Plus, Copy, Check } from "@
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
 import { Heart, Plus, Copy, Check } from "@phosphor-icons/react"
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer } from "recharts"
-
+  open: boolean
 interface DealDetailModalProps {
 interface AIAnalysi
   open: boolean
@@ -14,9 +14,6 @@ interface AIAnalysi
   onFilterBrand?: (brand: string) => void
  
 
-  }
-
-  const [aiAnalysis
   const [saved
  
 
