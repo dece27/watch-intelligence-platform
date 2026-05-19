@@ -18,7 +18,8 @@ import { MobileNav } from "@/components/MobileNav"
 
 function App() {
   const [currentUser, setCurrentUser] = useKV<User | null>("currentUser", null)
-  const [watches, setWatches] = useKV<Watch[]>(currentUser ? `watches_${currentUser.id}` : "watches_temp", [])
+  const watchesKey = currentUser ? `watches_${currentUser.id}` : "watches_guest"
+  const [watches, setWatches] = useKV<Watch[]>(watchesKey, [])
   const [activeModule, setActiveModule] = useState('collection')
   const [isOwner, setIsOwner] = useState(false)
   const [showWelcome, setShowWelcome] = useState(true)
@@ -45,7 +46,6 @@ function App() {
 
   const handleLogout = async () => {
     if (currentUser) {
-      await window.spark.kv.set(`watches_${currentUser.id}`, watches)
       await window.spark.kv.set(`vaultMetadata_${currentUser.id}`, {
         userId: currentUser.id,
         vaultName: currentUser.vaultName,
@@ -58,18 +58,6 @@ function App() {
     setCurrentUser(null)
     setActiveModule('collection')
   }
-
-  useEffect(() => {
-    if (currentUser) {
-      const loadUserWatches = async () => {
-        const userWatches = await window.spark.kv.get<Watch[]>(`watches_${currentUser.id}`)
-        if (userWatches) {
-          setWatches(userWatches)
-        }
-      }
-      loadUserWatches()
-    }
-  }, [currentUser?.id])
 
   const handleAddFirstWatch = () => {
     setActiveModule('collection')

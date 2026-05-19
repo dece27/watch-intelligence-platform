@@ -16,7 +16,7 @@ import { ImportCSVModal } from "@/components/ImportCSVModal"
 
 interface CollectionModuleProps {
   watches: Watch[]
-  onUpdate: (watches: Watch[]) => void
+  onUpdate: (watches: Watch[] | ((oldValue?: Watch[]) => Watch[])) => void
   triggerAdd?: boolean
   onTriggerComplete?: () => void
 }
@@ -91,7 +91,7 @@ export function CollectionModule({ watches, onUpdate, triggerAdd, onTriggerCompl
 
   const handleDelete = (id: string) => {
     if (window.confirm('Are you sure you want to remove this watch from your collection?')) {
-      onUpdate(watches.filter(w => w.id !== id))
+      onUpdate((currentWatches = []) => currentWatches.filter(w => w.id !== id))
       toast.success("Watch removed from collection")
       setIsDetailOpen(false)
     }
@@ -127,10 +127,10 @@ export function CollectionModule({ watches, onUpdate, triggerAdd, onTriggerCompl
     }
 
     if (editingWatch) {
-      onUpdate(watches.map(w => w.id === watch.id ? watch : w))
+      onUpdate((currentWatches = []) => currentWatches.map(w => w.id === watch.id ? watch : w))
       toast.success("Watch updated successfully")
     } else {
-      onUpdate([...watches, watch])
+      onUpdate((currentWatches = []) => [...currentWatches, watch])
       toast.success("Watch added to collection")
     }
 
@@ -139,7 +139,7 @@ export function CollectionModule({ watches, onUpdate, triggerAdd, onTriggerCompl
   }
 
   const handleImportWatches = (importedWatches: Watch[]) => {
-    onUpdate([...watches, ...importedWatches])
+    onUpdate((currentWatches = []) => [...currentWatches, ...importedWatches])
   }
 
   return (
