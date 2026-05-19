@@ -18,8 +18,7 @@ import { MobileNav } from "@/components/MobileNav"
 
 function App() {
   const [currentUser, setCurrentUser] = useKV<User | null>("currentUser", null)
-  const watchesKey = currentUser ? `watches_${currentUser.id}` : "watches_guest"
-  const [watches, setWatches] = useKV<Watch[]>(watchesKey, [])
+  const [watches, setWatches] = useState<Watch[]>([])
   const [activeModule, setActiveModule] = useState('collection')
   const [isOwner, setIsOwner] = useState(false)
   const [showWelcome, setShowWelcome] = useState(true)
@@ -39,6 +38,27 @@ function App() {
     }
     checkOwnership()
   }, [])
+
+  useEffect(() => {
+    const loadWatches = async () => {
+      if (currentUser) {
+        const watchesKey = `watches_${currentUser.id}`
+        const storedWatches = await window.spark.kv.get<Watch[]>(watchesKey)
+        setWatches(storedWatches || [])
+      }
+    }
+    loadWatches()
+  }, [currentUser])
+
+  useEffect(() => {
+    const saveWatches = async () => {
+      if (currentUser) {
+        const watchesKey = `watches_${currentUser.id}`
+        await window.spark.kv.set(watchesKey, watches)
+      }
+    }
+    saveWatches()
+  }, [watches, currentUser])
 
   const handleLogin = (user: User) => {
     setCurrentUser(user)
@@ -65,10 +85,14 @@ function App() {
     setTriggerAddWatch(true)
   }
 
+  const handleUpdateWatches = (updater: (currentWatches: Watch[]) => Watch[]) => {
+    setWatches(updater)
+  }
+
   const renderModule = () => {
     switch (activeModule) {
       case 'collection':
-        return <CollectionModule watches={watchList} onUpdate={setWatches} triggerAdd={triggerAddWatch} onTriggerComplete={() => setTriggerAddWatch(false)} />
+        return <CollectionModule watches={watchList} onUpdate={handleUpdateWatches} triggerAdd={triggerAddWatch} onTriggerComplete={() => setTriggerAddWatch(false)} />
       case 'portfolio':
         return <PortfolioModule watches={watchList} />
       case 'market':
@@ -80,9 +104,9 @@ function App() {
       case 'appraisal':
         return <AppraisalModule watches={watchList} />
       case 'feedback':
-        return isOwner ? <FeedbackDashboard /> : <CollectionModule watches={watchList} onUpdate={setWatches} />
+        return isOwner ? <FeedbackDashboard /> : <CollectionModule watches={watchList} onUpdate={handleUpdateWatches} />
       default:
-        return <CollectionModule watches={watchList} onUpdate={setWatches} />
+        return <CollectionModule watches={watchList} onUpdate={handleUpdateWatches} />
     }
   }
 
