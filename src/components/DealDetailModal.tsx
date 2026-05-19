@@ -1,19 +1,18 @@
 import { useState, useEffect } from "react"
-import { useKV } from "@github/spa
-import { Badge } from "@/components/ui/badg
+import { useKV } from "@github/spark/hooks"
+import { Deal } from "@/lib/types"
+import { Dialog, DialogContent } from "@/components/ui/dialog"
+import { Card } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
-import { X, Heart, Plus, Copy, Check } from "
-import { LineChart, Line, XAxis, YAxis, Respons
+import { X, Heart, Plus, Copy, Check } from "@phosphor-icons/react"
+import { LineChart, Line, XAxis, YAxis, ResponsiveContainer } from "recharts"
+
 interface DealDetailModalProps {
+  deal: Deal | null
   open: boolean
-  onFilterBrand?: (brand: string) => void
-
-  verdict: 'BUY NOW' | 'GOOD VALUE' | 'FAIR DEAL' | 'PASS'
-
-
-  const [savedDeals
-  const [aiAnal
-  const [offerAmount, setOfferAmount] =
+  onOpenChange: (open: boolean) => void
   onFilterBrand?: (brand: string) => void
 }
 
@@ -21,6 +20,21 @@ interface AIAnalysis {
   verdict: 'BUY NOW' | 'GOOD VALUE' | 'FAIR DEAL' | 'PASS'
   reasoning: string
   risk: string
+}
+
+function getVerdictStyle(verdict: AIAnalysis['verdict']) {
+  switch (verdict) {
+    case 'BUY NOW':
+      return 'bg-success/20 text-success border-success/30'
+    case 'GOOD VALUE':
+      return 'bg-primary/20 text-primary border-primary/30'
+    case 'FAIR DEAL':
+      return 'bg-muted text-muted-foreground border-muted-foreground/30'
+    case 'PASS':
+      return 'bg-destructive/20 text-destructive border-destructive/30'
+    default:
+      return 'bg-muted text-muted-foreground border-muted-foreground/30'
+  }
 }
 
 export function DealDetailModal({ deal, open, onOpenChange, onFilterBrand }: DealDetailModalProps) {
@@ -36,7 +50,7 @@ export function DealDetailModal({ deal, open, onOpenChange, onFilterBrand }: Dea
       setOfferAmount(deal.price * 0.92)
       setAiAnalysis(null)
       loadAIAnalysis()
-- RIS
+    }
   }, [deal, open])
 
   const loadAIAnalysis = async () => {
@@ -48,19 +62,19 @@ export function DealDetailModal({ deal, open, onOpenChange, onFilterBrand }: Dea
       const boxPapers = deal.hasBox && deal.hasPapers ? 'with box and papers' : 
                         deal.hasBox ? 'with box only' : 
                         deal.hasPapers ? 'with papers only' : 
-    } catch (error) {
+                        'no box or papers'
       
       const prompt = spark.llmPrompt`Analyze this watch deal as an expert dealer. Watch: ${deal.brand} ${deal.model} ${deal.referenceNumber || ''}, ${deal.year || 'recent'}, condition: ${deal.condition}, ${boxPapers}. Asking price: $${deal.price}. Fair market value: $${fairValue}. Seller rating: ${deal.sellerRating || 4.5}/5. Listed ${deal.daysListed || 3} days ago.
 
-      })
+Provide:
 - VERDICT: one of BUY NOW / GOOD VALUE / FAIR DEAL / PASS
 - REASONING: 2-3 specific sentences on the price, condition, and market context using 2025 data where relevant (Rolex stable-recovering, Patek +6% YTD, Grand Seiko +12.8% YTD)
 - RISK: one sentence on the main risk factor
 
 Respond in this format:
-  const savings = fairValue - deal.price
+VERDICT: [verdict]
 REASONING: [sentences]
-  const dealScore
+RISK: [sentence]`
 
       const response = await spark.llm(prompt, "gpt-4o-mini")
       
@@ -68,11 +82,11 @@ REASONING: [sentences]
       const reasoningMatch = response.match(/REASONING:\s*(.+?)(?=RISK:|$)/is)
       const riskMatch = response.match(/RISK:\s*(.+)/is)
       
-    `At typical marke
+      setAiAnalysis({
         verdict: (verdictMatch?.[1]?.trim() as AIAnalysis['verdict']) || 'FAIR DEAL',
         reasoning: reasoningMatch?.[1]?.trim() || 'Analysis unavailable',
         risk: riskMatch?.[1]?.trim() || 'Standard market risks apply'
-  }))
+      })
     } catch (error) {
       console.error('AI Analysis failed:', error)
       setAiAnalysis({
@@ -80,7 +94,7 @@ REASONING: [sentences]
         reasoning: 'Unable to load AI analysis at this time.',
         risk: 'Standard market risks apply.'
       })
-      return de
+    } finally {
       setIsLoadingAI(false)
     }
   }
@@ -90,7 +104,6 @@ REASONING: [sentences]
   const fairValue = deal.fairValue || deal.marketValue || deal.price * 1.15
   const savings = fairValue - deal.price
   const savingsPercent = ((savings / fairValue) * 100).toFixed(1)
-  }
   const dealScore = deal.dealScore || deal.matchScore || 85
   
   const daysListed = deal.daysListed || Math.floor(Math.random() * 14) + 1
@@ -102,7 +115,7 @@ REASONING: [sentences]
                        daysListed <= avgDaysToSell * 1.5 ? '🟡' : '🔴'
   const urgencyText = daysListed < avgDaysToSell ? 
     `Fresh listing — similar pieces sell fast at this price` :
-    if (dealScore >= 70) return { text: 
+    daysListed <= avgDaysToSell * 1.5 ?
     `At typical market duration — seller may consider offers` :
     `Extended listing — seller likely motivated. Good negotiation window.`
 
@@ -118,142 +131,94 @@ REASONING: [sentences]
   const isSaved = savedDeals?.includes(deal.id)
   const isInWatchlist = watchlist?.includes(deal.id)
 
-              <div className="fl
+  const handleSaveDeal = () => {
     setSavedDeals((current) => 
       current.includes(deal.id) 
+        ? current.filter(id => id !== deal.id)
+        : [...current, deal.id]
+    )
+  }
+
+  const handleAddToWatchlist = () => {
+    setWatchlist((current) => 
+      current.includes(deal.id)
+        ? current.filter(id => id !== deal.id)
+        : [...current, deal.id]
+    )
+  }
+
+  const handleFindSimilar = () => {
+    if (onFilterBrand) {
+      onFilterBrand(deal.brand)
+      onOpenChange(false)
+    }
+  }
+
+  const handleCopyOffer = () => {
+    navigator.clipboard.writeText(offerReasoning)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-background border-white/[0.08]">
+        <div className="flex items-start justify-between mb-6">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-2">
+              <h2 className="text-2xl font-semibold">{deal.brand} {deal.model}</h2>
+              <Badge className="bg-primary/20 text-primary border-primary/30">
+                {dealScore}% Match
+              </Badge>
+            </div>
+            <p className="text-muted-foreground">{deal.referenceNumber || 'Reference N/A'}</p>
           </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => onOpenChange(false)}
+          >
+            <X size={20} />
+          </Button>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-6">
           <div>
-     
-                <span className="text-[#C9A84C]">◍</span>
-   
-
-                  <div className="h-8 
-                  <div classNa
-              ) : aiAnalysis ? 
-                  <Badge className={`${getVerd
-                  </Badge>
-     
-                    <p className="text-sm leading-relaxed">{aiAnalysis.reasoning}</
-   
-
-                  </div>
-              ) : (
-              )}
-          </div>
-   
-
-                <span className="
-                  <div className="font-medium">Li
-                   
-                </div>
+            <h3 className="text-[9px] uppercase tracking-wider text-[#C9A84C] mb-3">Valuation</h3>
+            <Card className="bg-white/[0.02] border-white/[0.08] p-6 space-y-4">
+              <div className="flex items-baseline gap-2">
+                <span className="text-4xl font-bold">${deal.price.toLocaleString()}</span>
+                <Badge variant="outline" className="bg-success/20 text-success border-success/30">
+                  -{deal.discount}%
+                </Badge>
+              </div>
               
-   
-
-              <div>
-                <ResponsiveContainer width="100%" height={100}>
-                    <XAxis 
-                      hide 
-                    <YAxis hide domain={['dataMin - 100', 'dataMax + 100']} />
-   
-
-                      dot={false}
-                  </Li
-                <div className="flex justify-between text-[10px] 
-                  <span>Today</span>
-              </div>
-          </div>
-     
-   
-
-              </div>
-
-          
-                  onValueChange={([val]) => setOffer
-                  max
-                  className="mb-2"
-                <div className="flex justify-between tex
-       
-              </div>
               <div className="space-y-2 text-sm">
-                  <span className="t
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Fair Market Value</span>
+                  <span className="font-medium">${fairValue.toLocaleString()}</span>
                 </div>
-                  <span className="text-muted-foregr
-                    {Number(vsMarke
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Potential Savings</span>
+                  <span className="font-medium text-success">${savings.toLocaleString()} ({savingsPercent}%)</span>
                 </div>
-
-                <div className="text-xs uppercase tra
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Deal Score</span>
+                  <span className="font-medium">{dealScore}/100</span>
+                </div>
               </div>
-              <Butt
-                variant="outline"
-              >
-                {copied ? 'Copi
-
-                💡 Rule of thumb: 
             </Card>
-
-            <h3 cl
-              <div className="
-                  <span className="text-muted-foreground">Bra
-                </div>
-                  <span 
-                </div>
-                  <span className="text-muted-foreground">Reference</span>
-                </di
-                  
-                </div>
-                  <span className="text-muted-foreground">Condition</spa
-                </div>
-                  <span
-                </div>
-                
-              
-
-                </div>
-               
-                </div>
-                  <span className="text-muted-foreground">Seller Ratin
-                </div>
-            </Card>
-
-            <h3 className="text-[9px] uppercase tracking-wider text-[#C9A84C] mb-3">Actions</h
-              <Button
-                onClick={handleSaveDeal}
-              >
-                {isSaved ? 'Saved' : 'Save Deal'}
-              <Button
-                onClick={handleAddToWatchlist
-              >
-                {isInWatchlist ? 'In Watchlist' : 'Add to Watchlist'}
-              <Button
-                onClic
-              >
-              
           </div>
-      </DialogContent
-  )
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+          <div>
+            <h3 className="text-[9px] uppercase tracking-wider text-[#C9A84C] mb-3">AI Analysis</h3>
+            <Card className="bg-white/[0.02] border-white/[0.08] p-6">
+              {isLoadingAI ? (
                 <div className="space-y-3">
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="text-[#C9A84C]">◍</span>
+                    <span className="text-sm text-muted-foreground">Analyzing deal...</span>
+                  </div>
                   <div className="h-8 bg-white/[0.05] rounded animate-pulse" />
                   <div className="h-20 bg-white/[0.05] rounded animate-pulse" />
                   <div className="h-12 bg-white/[0.05] rounded animate-pulse" />
