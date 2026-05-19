@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { TrendUp, TrendDown } from "@phosphor-icons/react"
+import { WhatIfSellCalculator } from "@/components/WhatIfSellCalculator"
 
 interface PortfolioModuleProps {
   watches: Watch[]
@@ -342,6 +343,12 @@ export function PortfolioModule({ watches }: PortfolioModuleProps) {
           </CardContent>
         </Card>
       </div>
+
+      <WhatIfSellCalculator 
+        watches={watches}
+        getMockMarketValue={getMockMarketValue}
+        calculateHealthScore={calculateHealthScore}
+      />
 
       <Card className="bg-card border-border">
         <CardHeader>
