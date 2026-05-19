@@ -2,7 +2,6 @@ import { useState, useEffect } from "react"
 import { Deal } from "@/lib/types"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Card } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { LineChart, Line, XAxis, YAxis, Respons
   onOpenChange: (open: boolean) => void
 }
