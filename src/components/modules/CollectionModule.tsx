@@ -284,11 +284,15 @@ export function CollectionModule({ watches, onUpdate, triggerAdd, onTriggerCompl
       )}
 
       <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editingWatch ? 'Edit Watch' : 'Add Watch to Collection'}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
+        <DialogContent className="max-w-2xl max-h-[90vh] p-0">
+          <div className="px-6 py-6 border-b border-border">
+            <DialogHeader>
+              <DialogTitle>{editingWatch ? 'Edit Watch' : 'Add Watch to Collection'}</DialogTitle>
+            </DialogHeader>
+          </div>
+          
+          <div className="max-h-[calc(90vh-180px)] overflow-y-auto px-6 py-4">
+            <form onSubmit={handleSubmit} className="space-y-4" id="watch-form">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="brand">Brand *</Label>
@@ -601,27 +605,31 @@ export function CollectionModule({ watches, onUpdate, triggerAdd, onTriggerCompl
                 rows={3}
               />
             </div>
-
-            <div className="flex gap-3 justify-end pt-4">
-              <Button type="button" variant="outline" onClick={() => setIsAddOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                {editingWatch ? 'Update Watch' : 'Add Watch'}
-              </Button>
-            </div>
-          </form>
+            </form>
+          </div>
+          
+          <div className="flex gap-3 justify-end px-6 py-4 border-t border-border">
+            <Button type="button" variant="outline" onClick={() => setIsAddOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" form="watch-form" className="bg-primary hover:bg-primary/90 text-primary-foreground">
+              {editingWatch ? 'Update Watch' : 'Add Watch'}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 
       <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[90vh] p-0">
           {detailWatch && (
             <>
-              <DialogHeader>
-                <DialogTitle>{detailWatch.brand} {detailWatch.model}</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-6">
+              <div className="px-6 py-6 border-b border-border">
+                <DialogHeader>
+                  <DialogTitle>{detailWatch.brand} {detailWatch.model}</DialogTitle>
+                </DialogHeader>
+              </div>
+              
+              <div className="max-h-[calc(90vh-180px)] overflow-y-auto px-6 py-4 space-y-6">
                 {detailWatch.imageUrl && (
                   <div className="w-full h-80 bg-muted/20 rounded-lg overflow-hidden">
                     <img 
@@ -724,28 +732,28 @@ export function CollectionModule({ watches, onUpdate, triggerAdd, onTriggerCompl
                     <p className="text-sm">{detailWatch.notes}</p>
                   </div>
                 )}
+              </div>
 
-                <div className="flex gap-3 pt-4 border-t border-border">
-                  <Button 
-                    variant="outline" 
-                    className="flex-1"
-                    onClick={() => {
-                      setIsDetailOpen(false)
-                      handleEdit(detailWatch)
-                    }}
-                  >
-                    <Pencil className="mr-2" size={16} />
-                    Edit
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    className="flex-1 text-destructive border-destructive/50 hover:bg-destructive/10"
-                    onClick={() => handleDelete(detailWatch.id)}
-                  >
-                    <Trash className="mr-2" size={16} />
-                    Delete
-                  </Button>
-                </div>
+              <div className="flex gap-3 px-6 py-4 border-t border-border">
+                <Button 
+                  variant="outline" 
+                  className="flex-1"
+                  onClick={() => {
+                    setIsDetailOpen(false)
+                    handleEdit(detailWatch)
+                  }}
+                >
+                  <Pencil className="mr-2" size={16} />
+                  Edit
+                </Button>
+                <Button 
+                  variant="outline" 
+                  className="flex-1 text-destructive border-destructive/50 hover:bg-destructive/10"
+                  onClick={() => handleDelete(detailWatch.id)}
+                >
+                  <Trash className="mr-2" size={16} />
+                  Delete
+                </Button>
               </div>
             </>
           )}

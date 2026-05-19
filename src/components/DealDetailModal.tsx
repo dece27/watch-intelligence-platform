@@ -168,8 +168,8 @@ Provide:
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto bg-background/95 backdrop-blur-xl border-white/[0.08]">
-        <div className="space-y-6">
+      <DialogContent className="max-w-5xl max-h-[90vh] p-0 bg-background/95 backdrop-blur-xl border-white/[0.08]">
+        <div className="max-h-[85vh] overflow-y-auto px-6 py-6 space-y-6">
           <div>
             <h2 className="text-xl md:text-2xl font-semibold mb-1">
               {deal.brand} {deal.model}

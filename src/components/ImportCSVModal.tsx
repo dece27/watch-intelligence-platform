@@ -179,12 +179,14 @@ export function ImportCSVModal({ open, onOpenChange, onImport }: ImportCSVModalP
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Import Watches from CSV</DialogTitle>
-        </DialogHeader>
+      <DialogContent className="max-w-4xl max-h-[90vh] p-0">
+        <div className="px-6 py-6 border-b border-border">
+          <DialogHeader>
+            <DialogTitle>Import Watches from CSV</DialogTitle>
+          </DialogHeader>
+        </div>
         
-        <div className="space-y-4 pt-2">
+        <div className="max-h-[calc(90vh-80px)] overflow-y-auto px-6 py-4 space-y-4">
           <div className="bg-muted/10 border border-border rounded-lg p-4 space-y-3">
             <div className="flex items-start gap-3">
               <FileArrowDown className="text-primary shrink-0 mt-0.5" size={20} />
