@@ -43,10 +43,16 @@ function App() {
   useEffect(() => {
     const loadWatches = async () => {
       if (currentUser?.id) {
-        const watchesKey = `watches_${currentUser.id}`
-        const loadedWatches = await window.spark.kv.get<Watch[]>(watchesKey)
-        setWatches(loadedWatches || [])
-        setWatchesLoaded(true)
+        try {
+          const watchesKey = `watches_${currentUser.id}`
+          const loadedWatches = await window.spark.kv.get<Watch[]>(watchesKey)
+          setWatches(loadedWatches || [])
+          setWatchesLoaded(true)
+        } catch (error) {
+          console.error('Error loading watches:', error)
+          setWatches([])
+          setWatchesLoaded(true)
+        }
       } else {
         setWatches([])
         setWatchesLoaded(false)
@@ -81,13 +87,14 @@ function App() {
   }
 
   const handleUpdateWatches = async (updater: (currentWatches: Watch[]) => Watch[]) => {
-    const updatedWatches = updater(watches || [])
-    setWatches(updatedWatches)
+    if (!currentUser?.id) return
     
-    if (currentUser?.id) {
-      const watchesKey = `watches_${currentUser.id}`
-      await window.spark.kv.set(watchesKey, updatedWatches)
-    }
+    const watchesKey = `watches_${currentUser.id}`
+    const currentWatches = watches || []
+    const updatedWatches = updater(currentWatches)
+    
+    await window.spark.kv.set(watchesKey, updatedWatches)
+    setWatches(updatedWatches)
   }
 
   const renderModule = () => {
