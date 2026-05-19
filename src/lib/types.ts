@@ -3,6 +3,7 @@ export interface Watch {
   brand: string
   model: string
   referenceNumber?: string
+  serialNumber?: string
   year?: number
   purchasePrice: number
   purchaseDate: string
@@ -14,25 +15,58 @@ export interface Watch {
   caseMaterial?: string
   caseDiameter?: string
   notes?: string
+  hasBox?: boolean
+  hasPapers?: boolean
 }
 
 export interface Deal {
   id: string
   brand: string
   model: string
+  referenceNumber?: string
   price: number
-  marketValue: number
+  fairValue: number
   discount: number
   condition: string
   seller: string
   location: string
   imageUrl?: string
   matchScore: number
+  dealScore: number
+  daysListed: number
+  sellerRating: number
+  hasBox: boolean
+  hasPapers: boolean
 }
 
 export interface MarketSignal {
-  type: 'opportunity' | 'warning' | 'insight'
+  type: 'buy' | 'hold' | 'sell'
   title: string
-  description: string
-  watchId?: string
+  reasoning: string
+  confidence: 'high' | 'medium' | 'low'
+  watchId: string
+}
+
+export interface PriceAlert {
+  id: string
+  watchRef: string
+  brand: string
+  model: string
+  condition: 'above' | 'below'
+  targetPrice: number
+  createdAt: string
+}
+
+export interface BrandIndex {
+  brand: string
+  currentIndex: number
+  change30d: number
+  change90d: number
+  change180d: number
+  trend: number[]
+}
+
+export interface ChatMessage {
+  role: 'user' | 'assistant'
+  content: string
 }
