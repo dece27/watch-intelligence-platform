@@ -24,7 +24,7 @@ function App() {
   const [triggerAddWatch, setTriggerAddWatch] = useState(false)
   const isMobile = useIsMobile()
 
-  const watchesKey = currentUser ? `watches_${currentUser.id}` : 'watches_default'
+  const watchesKey = currentUser?.id ? `watches_${currentUser.id}` : 'watches_default'
   const [watches, setWatches] = useKV<Watch[]>(watchesKey, [])
 
   const watchList = watches || []

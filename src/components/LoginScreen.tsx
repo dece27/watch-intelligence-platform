@@ -16,7 +16,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
   const [vaultName, setVaultName] = useState("")
   const [isLoading, setIsLoading] = useState(false)
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
     if (!name.trim() || !email.trim() || !vaultName.trim()) {
@@ -25,13 +25,31 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
 
     setIsLoading(true)
 
+    const emailKey = `user_email_${email.trim().toLowerCase()}`
+    const existingUserId = await window.spark.kv.get<string>(emailKey)
+
+    let userId: string
+    let createdAt: string
+
+    if (existingUserId) {
+      userId = existingUserId
+      const existingUser = await window.spark.kv.get<User>(`user_${existingUserId}`)
+      createdAt = existingUser?.createdAt || new Date().toISOString()
+    } else {
+      userId = `user_${Date.now()}`
+      createdAt = new Date().toISOString()
+      await window.spark.kv.set(emailKey, userId)
+    }
+
     const user: User = {
-      id: `user_${Date.now()}`,
+      id: userId,
       name: name.trim(),
       email: email.trim(),
       vaultName: vaultName.trim(),
-      createdAt: new Date().toISOString()
+      createdAt
     }
+
+    await window.spark.kv.set(`user_${userId}`, user)
 
     setTimeout(() => {
       onLogin(user)
