@@ -9,8 +9,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Switch } from "@/components/ui/switch"
-import { Plus, Pencil, Trash, MagnifyingGlass, X } from "@phosphor-icons/react"
+import { Plus, Pencil, Trash, MagnifyingGlass, X, ShareNetwork, FileArrowUp } from "@phosphor-icons/react"
 import { toast } from "sonner"
+import { ShareCollectionModal } from "@/components/ShareCollectionModal"
+import { ImportCSVModal } from "@/components/ImportCSVModal"
 
 interface CollectionModuleProps {
   watches: Watch[]
@@ -35,6 +37,8 @@ const WATCH_BRANDS = [
 export function CollectionModule({ watches, onUpdate }: CollectionModuleProps) {
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [isDetailOpen, setIsDetailOpen] = useState(false)
+  const [isShareOpen, setIsShareOpen] = useState(false)
+  const [isImportOpen, setIsImportOpen] = useState(false)
   const [editingWatch, setEditingWatch] = useState<Watch | null>(null)
   const [detailWatch, setDetailWatch] = useState<Watch | null>(null)
   const [formData, setFormData] = useState<Partial<Watch>>({})
@@ -125,6 +129,10 @@ export function CollectionModule({ watches, onUpdate }: CollectionModuleProps) {
     setFormData({})
   }
 
+  const handleImportWatches = (importedWatches: Watch[]) => {
+    onUpdate([...watches, ...importedWatches])
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
@@ -132,10 +140,20 @@ export function CollectionModule({ watches, onUpdate }: CollectionModuleProps) {
           <h1 className="text-3xl font-semibold">Collection Vault</h1>
           <p className="text-muted-foreground mt-1">{watches.length} {watches.length === 1 ? 'watch' : 'watches'} in your portfolio</p>
         </div>
-        <Button onClick={handleAdd} className="bg-primary hover:bg-primary/90 text-primary-foreground">
-          <Plus className="mr-2" />
-          Add Watch
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={() => setIsImportOpen(true)} variant="outline">
+            <FileArrowUp className="mr-2" />
+            Import CSV
+          </Button>
+          <Button onClick={() => setIsShareOpen(true)} variant="outline">
+            <ShareNetwork className="mr-2" />
+            Share Collection
+          </Button>
+          <Button onClick={handleAdd} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+            <Plus className="mr-2" />
+            Add Watch
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-col md:flex-row gap-4">
@@ -620,6 +638,17 @@ export function CollectionModule({ watches, onUpdate }: CollectionModuleProps) {
           )}
         </DialogContent>
       </Dialog>
+
+      <ShareCollectionModal 
+        open={isShareOpen} 
+        onOpenChange={setIsShareOpen} 
+      />
+
+      <ImportCSVModal
+        open={isImportOpen}
+        onOpenChange={setIsImportOpen}
+        onImport={handleImportWatches}
+      />
     </div>
   )
 }
