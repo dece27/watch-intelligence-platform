@@ -734,6 +734,9 @@ export function CollectionModule({ watches, onUpdate, triggerAdd, onTriggerCompl
                 )}
               </div>
 
+              <div className="flex gap-3 px-6 py-4 border-t border-border">
+                <Button 
+                  variant="outline"
                   className="flex-1"
                   onClick={() => {
                     setIsDetailOpen(false)
@@ -744,18 +747,14 @@ export function CollectionModule({ watches, onUpdate, triggerAdd, onTriggerCompl
                   Edit
                 </Button>
                 <Button 
-                  Edit
-                </Button>tructive/50 hover:bg-destructive/10"
+                  variant="outline"
+                  className="flex-1 text-destructive border-destructive/50 hover:bg-destructive/10"
                   onClick={() => handleDelete(detailWatch.id)}
                 >
                   <Trash className="mr-2" size={16} />
                   Delete
                 </Button>
               </div>
-            </>
-          )}
-              </div>
-      </Dialog>
             </>
           )}
         </DialogContent>
