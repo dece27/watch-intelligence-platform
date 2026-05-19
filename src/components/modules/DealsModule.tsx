@@ -256,12 +256,14 @@ export function DealsModule({ userBrands }: DealsModuleProps) {
         ))}
       </div>
 
-      <DealDetailModal
-        deal={selectedDeal}
-        open={isModalOpen}
-        onOpenChange={setIsModalOpen}
-        onFilterBrand={handleFilterBrand}
-      />
+      {selectedDeal && (
+        <DealDetailModal
+          deal={selectedDeal}
+          open={isModalOpen}
+          onOpenChange={setIsModalOpen}
+          onFilterBrand={handleFilterBrand}
+        />
+      )}
     </div>
   )
 }
