@@ -772,5 +772,8 @@ export function CollectionModule({ watches, onUpdate, triggerAdd, onTriggerCompl
         onOpenChange={setIsShareOpen}
       />
     </div>
+    </div>
+  )
+}
   )
 }
