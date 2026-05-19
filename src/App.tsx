@@ -22,10 +22,9 @@ function App() {
   const [isOwner, setIsOwner] = useState(false)
   const [showWelcome, setShowWelcome] = useState(true)
   const [triggerAddWatch, setTriggerAddWatch] = useState(false)
+  const [watches, setWatches] = useState<Watch[]>([])
+  const [watchesLoaded, setWatchesLoaded] = useState(false)
   const isMobile = useIsMobile()
-
-  const watchesKey = currentUser?.id ? `watches_${currentUser.id}` : 'watches_default'
-  const [watches, setWatches] = useKV<Watch[]>(watchesKey, [])
 
   const watchList = watches || []
   const totalValue = watchList.reduce((sum, w) => sum + (w.currentValue || w.purchasePrice), 0)
@@ -40,6 +39,21 @@ function App() {
     }
     checkOwnership()
   }, [])
+
+  useEffect(() => {
+    const loadWatches = async () => {
+      if (currentUser?.id) {
+        const watchesKey = `watches_${currentUser.id}`
+        const loadedWatches = await window.spark.kv.get<Watch[]>(watchesKey)
+        setWatches(loadedWatches || [])
+        setWatchesLoaded(true)
+      } else {
+        setWatches([])
+        setWatchesLoaded(false)
+      }
+    }
+    loadWatches()
+  }, [currentUser])
 
   const handleLogin = (user: User) => {
     setCurrentUser(user)
@@ -66,8 +80,14 @@ function App() {
     setTriggerAddWatch(true)
   }
 
-  const handleUpdateWatches = (updater: (currentWatches: Watch[]) => Watch[]) => {
-    setWatches((oldValue) => updater(oldValue || []))
+  const handleUpdateWatches = async (updater: (currentWatches: Watch[]) => Watch[]) => {
+    const updatedWatches = updater(watches || [])
+    setWatches(updatedWatches)
+    
+    if (currentUser?.id) {
+      const watchesKey = `watches_${currentUser.id}`
+      await window.spark.kv.set(watchesKey, updatedWatches)
+    }
   }
 
   const renderModule = () => {
