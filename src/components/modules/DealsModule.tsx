@@ -160,7 +160,7 @@ export function DealsModule({ userBrands }: DealsModuleProps) {
                 </div>
                 <div className="text-right">
                   <div className="text-sm text-muted-foreground">Market</div>
-                  <div className="text-lg font-medium line-through text-muted-foreground">${deal.marketValue.toLocaleString()}</div>
+                  <div className="text-lg font-medium line-through text-muted-foreground">${(deal.marketValue || deal.price).toLocaleString()}</div>
                 </div>
               </div>
 

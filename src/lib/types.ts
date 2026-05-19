@@ -25,18 +25,20 @@ export interface Deal {
   model: string
   referenceNumber?: string
   price: number
-  fairValue: number
+  marketValue?: number
+  fairValue?: number
   discount: number
   condition: string
   seller: string
   location: string
   imageUrl?: string
   matchScore: number
-  dealScore: number
-  daysListed: number
-  sellerRating: number
-  hasBox: boolean
-  hasPapers: boolean
+  dealScore?: number
+  daysListed?: number
+  sellerRating?: number
+  hasBox?: boolean
+  hasPapers?: boolean
+  year?: number
 }
 
 export interface MarketSignal {
