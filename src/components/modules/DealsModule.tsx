@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Heart, MapPin } from "@phosphor-icons/react"
+import { DealDetailModal } from "@/components/DealDetailModal"
 
 interface DealsModuleProps {
   userBrands: string[]
@@ -15,65 +16,105 @@ const sampleDeals: Deal[] = [
     id: '1',
     brand: 'Omega',
     model: 'Speedmaster Professional',
+    referenceNumber: '310.30.42.50.01.001',
     price: 4800,
     marketValue: 5500,
+    fairValue: 5400,
     discount: 13,
     condition: 'Excellent',
     seller: 'Crown & Caliber',
     location: 'Atlanta, GA',
     matchScore: 92,
+    dealScore: 94,
+    daysListed: 3,
+    sellerRating: 4.8,
+    hasBox: true,
+    hasPapers: true,
+    year: 2022,
     imageUrl: 'https://images.unsplash.com/photo-1614164185128-e4ec99c436d7?w=400'
   },
   {
     id: '2',
     brand: 'Rolex',
     model: 'Submariner Date',
+    referenceNumber: '126610LN',
     price: 12500,
     marketValue: 14000,
+    fairValue: 13800,
     discount: 11,
     condition: 'Very Good',
     seller: 'WatchBox',
     location: 'Philadelphia, PA',
     matchScore: 88,
+    dealScore: 91,
+    daysListed: 7,
+    sellerRating: 4.9,
+    hasBox: true,
+    hasPapers: false,
+    year: 2021,
     imageUrl: 'https://images.unsplash.com/photo-1587836374775-5b78d194324c?w=400'
   },
   {
     id: '3',
     brand: 'Tudor',
     model: 'Black Bay 58',
+    referenceNumber: '79030N',
     price: 3200,
     marketValue: 3600,
+    fairValue: 3550,
     discount: 11,
     condition: 'Mint',
     seller: 'Bob\'s Watches',
     location: 'Newport Beach, CA',
     matchScore: 85,
+    dealScore: 87,
+    daysListed: 12,
+    sellerRating: 4.7,
+    hasBox: true,
+    hasPapers: true,
+    year: 2023,
     imageUrl: 'https://images.unsplash.com/photo-1522312346375-d1a52e2b99b3?w=400'
   },
   {
     id: '4',
     brand: 'Patek Philippe',
     model: 'Calatrava',
+    referenceNumber: '5196G',
     price: 18900,
     marketValue: 22000,
+    fairValue: 21500,
     discount: 14,
     condition: 'Excellent',
     seller: 'Chrono24 Seller',
     location: 'New York, NY',
     matchScore: 90,
+    dealScore: 93,
+    daysListed: 5,
+    sellerRating: 4.6,
+    hasBox: false,
+    hasPapers: true,
+    year: 2020,
     imageUrl: 'https://images.unsplash.com/photo-1594534475808-b18fc33b045e?w=400'
   },
   {
     id: '5',
     brand: 'IWC',
     model: 'Pilot\'s Watch Mark XVIII',
+    referenceNumber: 'IW327001',
     price: 3750,
     marketValue: 4200,
+    fairValue: 4150,
     discount: 11,
     condition: 'Very Good',
     seller: 'Hodinkee Shop',
     location: 'New York, NY',
     matchScore: 82,
+    dealScore: 85,
+    daysListed: 19,
+    sellerRating: 5.0,
+    hasBox: true,
+    hasPapers: true,
+    year: 2019,
     imageUrl: 'https://images.unsplash.com/photo-1548171915-e79a380a2a4b?w=400'
   }
 ]
@@ -81,17 +122,29 @@ const sampleDeals: Deal[] = [
 export function DealsModule({ userBrands }: DealsModuleProps) {
   const [filter, setFilter] = useState<string>('all')
   const [favorites, setFavorites] = useState<string[]>([])
+  const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null)
+  const [isModalOpen, setIsModalOpen] = useState(false)
 
   const filteredDeals = filter === 'all' 
     ? sampleDeals 
     : sampleDeals.filter(deal => deal.brand === filter)
 
-  const toggleFavorite = (id: string) => {
+  const toggleFavorite = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation()
     setFavorites(prev => 
       prev.includes(id) 
         ? prev.filter(fid => fid !== id)
         : [...prev, id]
     )
+  }
+
+  const handleViewDetails = (deal: Deal) => {
+    setSelectedDeal(deal)
+    setIsModalOpen(true)
+  }
+
+  const handleFilterBrand = (brand: string) => {
+    setFilter(brand)
   }
 
   return (
@@ -118,7 +171,11 @@ export function DealsModule({ userBrands }: DealsModuleProps) {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredDeals.map((deal) => (
-          <Card key={deal.id} className="bg-white/[0.025] border-white/[0.07] hover:bg-white/[0.035] transition-all duration-200">
+          <Card 
+            key={deal.id} 
+            className="bg-white/[0.025] border-white/[0.07] hover:bg-white/[0.035] transition-all duration-200 cursor-pointer"
+            onClick={() => handleViewDetails(deal)}
+          >
             <CardHeader className="pb-3">
               <div className="relative">
                 {deal.imageUrl && (
@@ -137,7 +194,7 @@ export function DealsModule({ userBrands }: DealsModuleProps) {
                   size="sm"
                   variant="ghost"
                   className="absolute top-2 right-2 bg-black/50 hover:bg-black/70"
-                  onClick={() => toggleFavorite(deal.id)}
+                  onClick={(e) => toggleFavorite(deal.id, e)}
                 >
                   <Heart 
                     size={20} 
@@ -185,13 +242,26 @@ export function DealsModule({ userBrands }: DealsModuleProps) {
                 via {deal.seller}
               </div>
 
-              <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground mt-3">
+              <Button 
+                className="w-full bg-primary hover:bg-primary/90 text-primary-foreground mt-3"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleViewDetails(deal)
+                }}
+              >
                 View Details
               </Button>
             </CardContent>
           </Card>
         ))}
       </div>
+
+      <DealDetailModal
+        deal={selectedDeal}
+        open={isModalOpen}
+        onOpenChange={setIsModalOpen}
+        onFilterBrand={handleFilterBrand}
+      />
     </div>
   )
 }
