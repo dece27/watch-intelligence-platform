@@ -766,6 +766,11 @@ export function CollectionModule({ watches, onUpdate, triggerAdd, onTriggerCompl
         onOpenChange={setIsImportOpen}
         onImport={handleImportWatches}
       />
+
+      <ShareCollectionModal
+        open={isShareOpen}
+        onOpenChange={setIsShareOpen}
+      />
     </div>
   )
 }
