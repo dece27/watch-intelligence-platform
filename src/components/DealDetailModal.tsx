@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react"
 import { Deal } from "@/lib/types"
-import { Deal } from "@/lib/types"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
