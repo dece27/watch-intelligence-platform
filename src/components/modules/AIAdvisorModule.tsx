@@ -510,21 +510,21 @@ Respond in valid JSON format:
                 <Card className="bg-muted/10 border-border">
                   <CardContent className="pt-6">
                     <h4 className="font-semibold text-sm text-muted-foreground mb-2">CONCENTRATION RISK</h4>
-                    <p className="text-sm">{rebalanceAnalysis.concentrationRisk}</p>
+                    <p className="text-sm">{typeof rebalanceAnalysis.concentrationRisk === 'string' ? rebalanceAnalysis.concentrationRisk : JSON.stringify(rebalanceAnalysis.concentrationRisk)}</p>
                   </CardContent>
                 </Card>
 
                 <Card className="bg-muted/10 border-2 border-[#A0785A]">
                   <CardContent className="pt-6">
                     <h4 className="font-semibold text-sm text-[#A0785A] mb-2">SELL RECOMMENDATION</h4>
-                    <p className="text-sm">{rebalanceAnalysis.sell}</p>
+                    <p className="text-sm">{typeof rebalanceAnalysis.sell === 'string' ? rebalanceAnalysis.sell : JSON.stringify(rebalanceAnalysis.sell)}</p>
                   </CardContent>
                 </Card>
 
                 <Card className="bg-muted/10 border-2 border-[#5E8C6A]">
                   <CardContent className="pt-6">
                     <h4 className="font-semibold text-sm text-[#5E8C6A] mb-2">BUY RECOMMENDATION</h4>
-                    <p className="text-sm">{rebalanceAnalysis.buy}</p>
+                    <p className="text-sm">{typeof rebalanceAnalysis.buy === 'string' ? rebalanceAnalysis.buy : JSON.stringify(rebalanceAnalysis.buy)}</p>
                   </CardContent>
                 </Card>
 
