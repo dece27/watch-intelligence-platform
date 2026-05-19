@@ -468,26 +468,78 @@ export function CollectionModule({ watches, onUpdate, triggerAdd, onTriggerCompl
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="imageUrl">Photo URL</Label>
-              <Input
-                id="imageUrl"
-                value={formData.imageUrl || ''}
-                onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
-                placeholder="https://example.com/watch-image.jpg"
-              />
-              {formData.imageUrl && (
-                <div className="mt-2">
-                  <img 
-                    src={formData.imageUrl} 
-                    alt="Preview" 
-                    className="h-32 rounded border border-border object-cover"
-                    onError={(e) => {
-                      const target = e.currentTarget as HTMLImageElement
-                      target.style.display = 'none'
-                    }}
-                  />
+              <Label>Watch Photo</Label>
+              <div className="space-y-3">
+                <div className="flex gap-2">
+                  <div className="flex-1 space-y-2">
+                    <Input
+                      id="imageUrl"
+                      value={formData.imageUrl?.startsWith('data:') ? '' : (formData.imageUrl || '')}
+                      onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
+                      placeholder="Or paste photo URL..."
+                    />
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="file"
+                      id="imageUpload"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0]
+                        if (!file) return
+                        
+                        if (file.size > 5 * 1024 * 1024) {
+                          toast.error("Image must be less than 5MB")
+                          return
+                        }
+                        
+                        const reader = new FileReader()
+                        reader.onload = (event) => {
+                          const dataUrl = event.target?.result as string
+                          setFormData({ ...formData, imageUrl: dataUrl })
+                        }
+                        reader.onerror = () => {
+                          toast.error("Failed to read image file")
+                        }
+                        reader.readAsDataURL(file)
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => document.getElementById('imageUpload')?.click()}
+                      className="whitespace-nowrap"
+                    >
+                      <FileArrowUp className="mr-2" size={16} />
+                      Upload
+                    </Button>
+                  </div>
                 </div>
-              )}
+                {formData.imageUrl && (
+                  <div className="relative inline-block">
+                    <img 
+                      src={formData.imageUrl} 
+                      alt="Preview" 
+                      className="h-32 rounded border border-border object-cover"
+                      onError={(e) => {
+                        const target = e.currentTarget as HTMLImageElement
+                        target.style.display = 'none'
+                        toast.error("Failed to load image")
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setFormData({ ...formData, imageUrl: undefined })}
+                      className="absolute -top-2 -right-2 h-6 w-6 p-0 rounded-full"
+                    >
+                      <X size={14} />
+                    </Button>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="space-y-2">
