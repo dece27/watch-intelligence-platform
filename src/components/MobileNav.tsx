@@ -1,19 +1,19 @@
 import { cn } from "@/lib/utils"
 
-interface NavItem {
-  id: string
   label: string
-  icon: string
 }
+interface Mobil
+  onModuleChan
 
-interface MobileNavProps {
-  activeModule: string
-  onModuleChange: (moduleId: string) => void
-}
 
-const navItems: NavItem[] = [
-  { id: 'collection', label: 'Collection', icon: '◈' },
-  { id: 'portfolio', label: 'Portfolio', icon: '◎' },
+  { id: 'market', label: '
+  { id: 'deals', label
+]
+e
+
+        <ul className="flex i
+            <li key={item.id} className="flex-1">
+                onClick={() => onModuleChange(item.id
   { id: 'market', label: 'Market', icon: '◉' },
   { id: 'ai-advisor', label: 'AI', icon: '◍' },
   { id: 'deals', label: 'Deals', icon: '◫' },
@@ -30,27 +30,27 @@ export function MobileNav({ activeModule, onModuleChange }: MobileNavProps) {
               <button
                 onClick={() => onModuleChange(item.id)}
                 className={cn(
-                  "w-full h-full flex flex-col items-center justify-center gap-1 transition-colors duration-150",
-                  "active:scale-95 transition-transform"
-                )}
-              >
-                <span className={cn(
-                  "text-xl",
-                  activeModule === item.id ? "text-primary" : "text-muted-foreground"
-                )}>
-                  {item.icon}
-                </span>
-                <span className={cn(
-                  "text-[10px] font-medium",
-                  activeModule === item.id ? "text-primary" : "text-muted-foreground"
-                )}>
-                  {item.label}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </nav>
-    </div>
-  )
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
