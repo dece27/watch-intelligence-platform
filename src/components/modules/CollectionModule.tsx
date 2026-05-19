@@ -97,7 +97,7 @@ export function CollectionModule({ watches, onUpdate, triggerAdd, onTriggerCompl
     }
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
     if (!formData.brand || !formData.model || !formData.purchasePrice || !formData.purchaseDate) {
@@ -126,16 +126,21 @@ export function CollectionModule({ watches, onUpdate, triggerAdd, onTriggerCompl
       hasPapers: formData.hasPapers || false
     }
 
-    if (editingWatch) {
-      onUpdate((currentWatches) => currentWatches.map(w => w.id === watch.id ? watch : w))
-      toast.success("Watch updated successfully")
-    } else {
-      onUpdate((currentWatches) => [...currentWatches, watch])
-      toast.success("Watch added to collection")
-    }
+    try {
+      if (editingWatch) {
+        await onUpdate((currentWatches) => currentWatches.map(w => w.id === watch.id ? watch : w))
+        toast.success("Watch updated successfully")
+      } else {
+        await onUpdate((currentWatches) => [...currentWatches, watch])
+        toast.success("Watch added to collection")
+      }
 
-    setIsAddOpen(false)
-    setFormData({})
+      setIsAddOpen(false)
+      setFormData({})
+    } catch (error) {
+      console.error("Error saving watch:", error)
+      toast.error("Failed to save watch. Please try again.")
+    }
   }
 
   const handleImportWatches = (importedWatches: Watch[]) => {
@@ -489,15 +494,59 @@ export function CollectionModule({ watches, onUpdate, triggerAdd, onTriggerCompl
                         const file = e.target.files?.[0]
                         if (!file) return
                         
-                        if (file.size > 5 * 1024 * 1024) {
-                          toast.error("Image must be less than 5MB")
+                        if (file.size > 10 * 1024 * 1024) {
+                          toast.error("Image must be less than 10MB")
                           return
                         }
                         
                         const reader = new FileReader()
                         reader.onload = (event) => {
                           const dataUrl = event.target?.result as string
-                          setFormData({ ...formData, imageUrl: dataUrl })
+                          
+                          const img = new Image()
+                          img.onload = () => {
+                            const canvas = document.createElement('canvas')
+                            let width = img.width
+                            let height = img.height
+                            
+                            const MAX_SIZE = 800
+                            if (width > height && width > MAX_SIZE) {
+                              height = (height * MAX_SIZE) / width
+                              width = MAX_SIZE
+                            } else if (height > MAX_SIZE) {
+                              width = (width * MAX_SIZE) / height
+                              height = MAX_SIZE
+                            }
+                            
+                            canvas.width = width
+                            canvas.height = height
+                            
+                            const ctx = canvas.getContext('2d')
+                            if (!ctx) {
+                              toast.error("Failed to process image")
+                              return
+                            }
+                            
+                            ctx.drawImage(img, 0, 0, width, height)
+                            
+                            const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.75)
+                            
+                            const sizeInKB = Math.round((compressedDataUrl.length * 3) / 4 / 1024)
+                            
+                            if (sizeInKB > 500) {
+                              toast.error(`Image too large (${sizeInKB}KB). Please use a smaller photo.`)
+                              return
+                            }
+                            
+                            setFormData({ ...formData, imageUrl: compressedDataUrl })
+                            toast.success(`Image uploaded (${sizeInKB}KB)`)
+                          }
+                          
+                          img.onerror = () => {
+                            toast.error("Failed to process image")
+                          }
+                          
+                          img.src = dataUrl
                         }
                         reader.onerror = () => {
                           toast.error("Failed to read image file")

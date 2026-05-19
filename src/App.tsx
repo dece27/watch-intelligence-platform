@@ -45,7 +45,12 @@ function App() {
       if (currentUser?.id) {
         try {
           const watchesKey = `watches_${currentUser.id}`
+          console.log(`Loading watches from key: ${watchesKey}`)
           const loadedWatches = await window.spark.kv.get<Watch[]>(watchesKey)
+          console.log(`Loaded ${loadedWatches?.length || 0} watches`)
+          if (loadedWatches && loadedWatches.length > 0) {
+            console.log('First watch has imageUrl:', !!loadedWatches[0].imageUrl, loadedWatches[0].imageUrl?.substring(0, 50))
+          }
           setWatches(loadedWatches || [])
           setWatchesLoaded(true)
         } catch (error) {
@@ -93,8 +98,16 @@ function App() {
     const currentWatches = watches || []
     const updatedWatches = updater(currentWatches)
     
-    await window.spark.kv.set(watchesKey, updatedWatches)
-    setWatches(updatedWatches)
+    console.log(`Saving ${updatedWatches.length} watches to key: ${watchesKey}`)
+    
+    try {
+      await window.spark.kv.set(watchesKey, updatedWatches)
+      setWatches(updatedWatches)
+      console.log('Watches saved successfully')
+    } catch (error) {
+      console.error('Error saving watches:', error)
+      throw error
+    }
   }
 
   const renderModule = () => {
