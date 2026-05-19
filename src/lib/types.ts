@@ -72,3 +72,21 @@ export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
 }
+
+export interface User {
+  id: string
+  name: string
+  email: string
+  vaultName: string
+  createdAt: string
+  avatarUrl?: string
+}
+
+export interface VaultMetadata {
+  userId: string
+  vaultName: string
+  createdAt: string
+  lastAccessed: string
+  watchCount: number
+  totalValue: number
+}

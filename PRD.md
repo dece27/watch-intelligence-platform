@@ -54,10 +54,17 @@ This platform integrates 6 distinct modules with shared state, real-time analyti
 - **Progression**: Select watch → Review details → Generate report → Export/Print
 - **Success criteria**: Professional formatting, comprehensive details, printable output
 
-### 7. Onboarding Experience
+### 7. Authentication & User Vaults
+- **Functionality**: User login system with individual vault creation and management
+- **Purpose**: Enable multiple collectors to use the platform with isolated data and personalized experiences
+- **Trigger**: App loads without authenticated user
+- **Progression**: See login screen → Enter name/email → Create vault → Access personalized dashboard
+- **Success criteria**: Each user has isolated data storage, vault names are customizable, user info persists across sessions
+
+### 8. Onboarding Experience
 - **Functionality**: Welcome modal for new users with zero watches
 - **Purpose**: Guides users to their first action and sets expectations
-- **Trigger**: App loads with empty collection
+- **Trigger**: App loads with empty collection (after authentication)
 - **Progression**: See welcome message → Click "Add Watch" → Begin collection
 - **Success criteria**: Modal appears only when collection is empty, dismisses on watch addition
 
