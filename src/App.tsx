@@ -21,6 +21,8 @@ function App() {
   const [watches, setWatches] = useKV<Watch[]>(currentUser ? `watches_${currentUser.id}` : "watches_temp", [])
   const [activeModule, setActiveModule] = useState('collection')
   const [isOwner, setIsOwner] = useState(false)
+  const [showWelcome, setShowWelcome] = useState(true)
+  const [triggerAddWatch, setTriggerAddWatch] = useState(false)
   const isMobile = useIsMobile()
 
   const watchList = watches || []
@@ -71,12 +73,14 @@ function App() {
 
   const handleAddFirstWatch = () => {
     setActiveModule('collection')
+    setShowWelcome(false)
+    setTriggerAddWatch(true)
   }
 
   const renderModule = () => {
     switch (activeModule) {
       case 'collection':
-        return <CollectionModule watches={watchList} onUpdate={setWatches} />
+        return <CollectionModule watches={watchList} onUpdate={setWatches} triggerAdd={triggerAddWatch} onTriggerComplete={() => setTriggerAddWatch(false)} />
       case 'portfolio':
         return <PortfolioModule watches={watchList} />
       case 'market':
@@ -114,7 +118,11 @@ function App() {
 
       {isMobile && <MobileNav activeModule={activeModule} onModuleChange={setActiveModule} />}
 
-      <WelcomeModal open={watchList.length === 0} onAddWatch={handleAddFirstWatch} />
+      <WelcomeModal 
+        open={watchList.length === 0 && showWelcome} 
+        onAddWatch={handleAddFirstWatch} 
+        onOpenChange={setShowWelcome}
+      />
       
       <Toaster />
     </div>

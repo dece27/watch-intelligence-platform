@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Watch } from "@/lib/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -17,6 +17,8 @@ import { ImportCSVModal } from "@/components/ImportCSVModal"
 interface CollectionModuleProps {
   watches: Watch[]
   onUpdate: (watches: Watch[]) => void
+  triggerAdd?: boolean
+  onTriggerComplete?: () => void
 }
 
 const WATCH_BRANDS = [
@@ -34,7 +36,7 @@ const WATCH_BRANDS = [
   'Other'
 ]
 
-export function CollectionModule({ watches, onUpdate }: CollectionModuleProps) {
+export function CollectionModule({ watches, onUpdate, triggerAdd, onTriggerComplete }: CollectionModuleProps) {
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [isDetailOpen, setIsDetailOpen] = useState(false)
   const [isShareOpen, setIsShareOpen] = useState(false)
@@ -44,6 +46,13 @@ export function CollectionModule({ watches, onUpdate }: CollectionModuleProps) {
   const [formData, setFormData] = useState<Partial<Watch>>({})
   const [searchQuery, setSearchQuery] = useState('')
   const [brandFilter, setBrandFilter] = useState<string>('all')
+
+  useEffect(() => {
+    if (triggerAdd) {
+      handleAdd()
+      onTriggerComplete?.()
+    }
+  }, [triggerAdd])
 
   const filteredWatches = watches.filter(watch => {
     const matchesSearch = searchQuery === '' || 

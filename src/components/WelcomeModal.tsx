@@ -4,11 +4,12 @@ import { Button } from "@/components/ui/button"
 interface WelcomeModalProps {
   open: boolean
   onAddWatch: () => void
+  onOpenChange?: (open: boolean) => void
 }
 
-export function WelcomeModal({ open, onAddWatch }: WelcomeModalProps) {
+export function WelcomeModal({ open, onAddWatch, onOpenChange }: WelcomeModalProps) {
   return (
-    <Dialog open={open}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <div className="flex items-center gap-2 mb-2">
