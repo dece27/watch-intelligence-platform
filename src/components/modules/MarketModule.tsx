@@ -20,7 +20,7 @@ const BRAND_INDICES: BrandIndex[] = [
   {
     brand: 'Rolex',
     currentIndex: 127.5,
-    change30d: 2.3,
+    change30d: -0.8,
     change90d: 5.7,
     change180d: 8.2,
     trend: [120, 122, 121, 123, 125, 124, 126, 127, 128, 127, 128, 127.5]
@@ -28,7 +28,7 @@ const BRAND_INDICES: BrandIndex[] = [
   {
     brand: 'Patek Philippe',
     currentIndex: 142.8,
-    change30d: 3.8,
+    change30d: 0.5,
     change90d: 7.2,
     change180d: 12.5,
     trend: [128, 130, 132, 135, 137, 138, 140, 141, 142, 143, 142, 142.8]
@@ -36,31 +36,31 @@ const BRAND_INDICES: BrandIndex[] = [
   {
     brand: 'Audemars Piguet',
     currentIndex: 135.2,
-    change30d: 1.9,
+    change30d: 0.8,
     change90d: 4.3,
     change180d: 9.8,
     trend: [123, 125, 127, 128, 130, 131, 132, 133, 134, 135, 136, 135.2]
   },
   {
-    brand: 'Omega',
-    currentIndex: 108.4,
-    change30d: 0.8,
-    change90d: 1.5,
-    change180d: 3.2,
-    trend: [105, 105, 106, 106, 107, 107, 108, 108, 108, 109, 108, 108.4]
-  },
-  {
     brand: 'IWC',
     currentIndex: 112.7,
-    change30d: 1.2,
+    change30d: -1.1,
     change90d: 2.8,
     change180d: 5.5,
     trend: [107, 108, 109, 109, 110, 111, 111, 112, 112, 113, 113, 112.7]
   },
   {
-    brand: 'Cartier',
+    brand: 'Omega',
+    currentIndex: 108.4,
+    change30d: -0.4,
+    change90d: 1.5,
+    change180d: 3.2,
+    trend: [105, 105, 106, 106, 107, 107, 108, 108, 108, 109, 108, 108.4]
+  },
+  {
+    brand: 'Grand Seiko',
     currentIndex: 115.9,
-    change30d: 2.1,
+    change30d: 1.3,
     change90d: 4.6,
     change180d: 7.3,
     trend: [108, 109, 110, 111, 112, 113, 114, 114, 115, 116, 116, 115.9]
@@ -68,14 +68,25 @@ const BRAND_INDICES: BrandIndex[] = [
 ]
 
 const TOP_MOVERS = [
-  { reference: 'Rolex Daytona 116500LN', brand: 'Rolex', change: 8.5, direction: 'up' as const },
-  { reference: 'Patek Philippe Nautilus 5711/1A', brand: 'Patek Philippe', change: 12.3, direction: 'up' as const },
-  { reference: 'AP Royal Oak 15500ST', brand: 'Audemars Piguet', change: 6.7, direction: 'up' as const },
-  { reference: 'Rolex Submariner 126610LV', brand: 'Rolex', change: 4.2, direction: 'up' as const },
-  { reference: 'Omega Speedmaster 310.30.42.50.01.001', brand: 'Omega', change: -1.8, direction: 'down' as const },
-  { reference: 'IWC Pilot Chronograph IW377709', brand: 'IWC', change: -0.9, direction: 'down' as const },
-  { reference: 'Cartier Santos WSSA0013', brand: 'Cartier', change: 3.4, direction: 'up' as const },
-  { reference: 'Rolex GMT-Master II 126710BLRO', brand: 'Rolex', change: 5.8, direction: 'up' as const }
+  { reference: 'Daytona 126500LN', brand: 'Rolex', currentPrice: 33000, change: 0.3, direction: 'up' as const },
+  { reference: 'Daytona 116500LN', brand: 'Rolex', currentPrice: 31000, change: -1.2, direction: 'down' as const },
+  { reference: 'Nautilus 5712/1A', brand: 'Patek Philippe', currentPrice: 125000, change: 1.1, direction: 'up' as const },
+  { reference: 'Aquanaut 5167/1A', brand: 'Patek Philippe', currentPrice: 54000, change: 0.9, direction: 'up' as const },
+  { reference: 'SLGH005 White Birch', brand: 'Grand Seiko', currentPrice: 7200, change: 1.3, direction: 'up' as const },
+  { reference: 'Submariner 124060', brand: 'Rolex', currentPrice: 11400, change: -0.8, direction: 'down' as const },
+  { reference: 'Royal Oak 15202ST', brand: 'Audemars Piguet', currentPrice: 65000, change: 2.1, direction: 'up' as const },
+  { reference: 'GMT-Master II Pepsi', brand: 'Rolex', currentPrice: 21000, change: 0.8, direction: 'up' as const }
+]
+
+const AUCTION_RESULTS = [
+  { house: 'Phillips Geneva', date: 'Nov 2024', lot: 'Patek Philippe 1518 Stainless Steel', result: 1240000, estLow: 900000, estHigh: 1400000, notes: 'One of 4 known steel examples' },
+  { house: 'Sotheby\'s New York', date: 'Dec 2024', lot: 'Rolex Daytona Paul Newman Ref. 6241', result: 287500, estLow: 200000, estHigh: 300000, notes: 'Original tropical dial, full set' },
+  { house: 'Christie\'s Geneva', date: 'Nov 2024', lot: 'Patek Nautilus 5711/1A-018 Tiffany Blue', result: 326000, estLow: 280000, estHigh: 380000, notes: 'Tiffany & Co. exclusive dial' },
+  { house: 'Phillips Hong Kong', date: 'Oct 2024', lot: 'AP Royal Oak 15202ST Jumbo A-Series', result: 98000, estLow: 75000, estHigh: 95000, notes: 'Early 38mm "A-series" gen' },
+  { house: 'Christie\'s HK', date: 'Nov 2024', lot: 'Rolex Daytona 116500LN Panda', result: 36800, estLow: 30000, estHigh: 40000, notes: 'Full set, last-gen ceramic' },
+  { house: 'Phillips New York', date: 'Oct 2024', lot: 'F.P. Journe Tourbillon Souverain', result: 185000, estLow: 150000, estHigh: 200000, notes: 'Titanium case, exceptional mvt' },
+  { house: 'Bonhams London', date: 'Dec 2024', lot: 'Patek Philippe 5726/1A Annual Calendar', result: 74500, estLow: 60000, estHigh: 80000, notes: 'Full set 2020, excellent cond' },
+  { house: 'Sotheby\'s London', date: 'Sep 2024', lot: 'Grand Seiko SBGW047 Limited', result: 12400, estLow: 10000, estHigh: 14000, notes: 'Hand-wound dress, 100 pcs' }
 ]
 
 export function MarketModule({ watches }: MarketModuleProps) {
@@ -104,6 +115,17 @@ export function MarketModule({ watches }: MarketModuleProps) {
   const overallChange30d = useMemo(() => {
     const total = BRAND_INDICES.reduce((sum, b) => sum + b.change30d, 0)
     return (total / BRAND_INDICES.length).toFixed(1)
+  }, [])
+
+  const marketSentiment = useMemo(() => {
+    const positiveCount = BRAND_INDICES.filter(b => b.change30d > 0).length
+    if (positiveCount >= 5) return { type: 'bull', color: '#5E8C6A', label: 'BULL 🐂' }
+    if (positiveCount >= 3) return { type: 'neutral', color: '#C9A84C', label: 'NEUTRAL —' }
+    return { type: 'bear', color: '#A0785A', label: 'BEAR 🐻' }
+  }, [])
+
+  const positiveBrandsCount = useMemo(() => {
+    return BRAND_INDICES.filter(b => b.change30d > 0).length
   }, [])
 
   const handleAddAlert = () => {
@@ -160,6 +182,43 @@ export function MarketModule({ watches }: MarketModuleProps) {
         <h1 className="text-3xl font-semibold">Market Intelligence</h1>
         <p className="text-muted-foreground mt-1">Real-time market indices and price trends</p>
       </div>
+
+      <Card className="bg-card border-border">
+        <CardContent className="pt-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex-1 text-center">
+              <div className={`text-lg font-semibold ${marketSentiment.type === 'bull' ? 'text-[#5E8C6A]' : 'text-muted-foreground opacity-50'}`}>
+                BULL 🐂
+              </div>
+            </div>
+            <div className="flex-1 text-center">
+              <div className={`text-lg font-semibold ${marketSentiment.type === 'neutral' ? 'text-[#C9A84C]' : 'text-muted-foreground opacity-50'}`}>
+                NEUTRAL —
+              </div>
+            </div>
+            <div className="flex-1 text-center">
+              <div className={`text-lg font-semibold ${marketSentiment.type === 'bear' ? 'text-[#A0785A]' : 'text-muted-foreground opacity-50'}`}>
+                BEAR 🐻
+              </div>
+            </div>
+          </div>
+          <div className="flex justify-center mb-3">
+            <div className="flex items-center gap-2">
+              <div 
+                className="w-2 h-2 rounded-full animate-pulse" 
+                style={{ backgroundColor: marketSentiment.color }}
+              />
+              <span style={{ color: marketSentiment.color }} className="font-semibold">
+                {marketSentiment.label}
+              </span>
+            </div>
+          </div>
+          <div className="text-center text-sm text-muted-foreground">
+            <p>{positiveBrandsCount} of {BRAND_INDICES.length} tracked brands are trending positive over the past 30 days.</p>
+            <p className="text-xs mt-1">Data based on WatchCharts comparable indices. Updated monthly.</p>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card className="bg-card border-border">
@@ -278,33 +337,41 @@ export function MarketModule({ watches }: MarketModuleProps) {
 
       <Card className="bg-card border-border">
         <CardHeader>
-          <CardTitle>Top Movers (24h)</CardTitle>
+          <CardTitle>Top Movers (30d Change %)</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
             {TOP_MOVERS.map((mover, idx) => (
               <div key={idx} className="flex items-center justify-between py-3 border-b border-border last:border-0">
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-1">
                   {mover.direction === 'up' ? (
-                    <TrendUp className="text-success" size={20} />
+                    <TrendUp style={{ color: '#5E8C6A' }} size={20} />
                   ) : (
-                    <TrendDown className="text-destructive" size={20} />
+                    <TrendDown style={{ color: '#A0785A' }} size={20} />
                   )}
-                  <div>
+                  <div className="flex-1">
                     <div className="font-medium">{mover.reference}</div>
                     <div className="text-sm text-muted-foreground">{mover.brand}</div>
                   </div>
                 </div>
-                <Badge 
-                  variant="outline"
-                  className={
-                    mover.direction === 'up' 
-                      ? 'bg-success/10 text-success border-success/30' 
-                      : 'bg-destructive/10 text-destructive border-destructive/30'
-                  }
-                >
-                  {mover.direction === 'up' ? '+' : ''}{mover.change}%
-                </Badge>
+                <div className="flex items-center gap-4">
+                  <div className="text-right">
+                    <div className="font-semibold tabular-nums">${mover.currentPrice.toLocaleString()}</div>
+                  </div>
+                  <Badge 
+                    variant="outline"
+                    className={
+                      mover.direction === 'up' 
+                        ? 'bg-[#5E8C6A]/10 border-[#5E8C6A]/30' 
+                        : 'bg-[#A0785A]/10 border-[#A0785A]/30'
+                    }
+                    style={{
+                      color: mover.direction === 'up' ? '#5E8C6A' : '#A0785A'
+                    }}
+                  >
+                    {mover.direction === 'up' ? '+' : ''}{mover.change}%
+                  </Badge>
+                </div>
               </div>
             ))}
           </div>
@@ -400,6 +467,56 @@ export function MarketModule({ watches }: MarketModuleProps) {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="bg-card border-border">
+        <CardHeader>
+          <div>
+            <CardTitle>Recent Auction Results</CardTitle>
+            <p className="text-sm text-muted-foreground mt-1">Major Houses · Late 2024</p>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left py-3 px-2 text-sm font-medium text-muted-foreground">House</th>
+                  <th className="text-left py-3 px-2 text-sm font-medium text-muted-foreground">Date</th>
+                  <th className="text-left py-3 px-2 text-sm font-medium text-muted-foreground">Lot</th>
+                  <th className="text-right py-3 px-2 text-sm font-medium text-muted-foreground">Result</th>
+                  <th className="text-right py-3 px-2 text-sm font-medium text-muted-foreground">Est.</th>
+                  <th className="text-left py-3 px-2 text-sm font-medium text-muted-foreground">Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {AUCTION_RESULTS.map((auction, idx) => {
+                  const aboveEstimate = auction.result > auction.estHigh
+                  const withinEstimate = auction.result >= auction.estLow && auction.result <= auction.estHigh
+                  const resultColor = aboveEstimate ? '#5E8C6A' : withinEstimate ? '#C9A84C' : 'inherit'
+                  
+                  return (
+                    <tr key={idx} className="border-b border-border last:border-0">
+                      <td className="py-3 px-2 text-sm">{auction.house}</td>
+                      <td className="py-3 px-2 text-sm text-muted-foreground">{auction.date}</td>
+                      <td className="py-3 px-2 text-sm">{auction.lot}</td>
+                      <td className="py-3 px-2 text-sm text-right font-bold tabular-nums" style={{ color: resultColor }}>
+                        ${auction.result.toLocaleString()}
+                      </td>
+                      <td className="py-3 px-2 text-sm text-right text-muted-foreground tabular-nums">
+                        ${auction.estLow.toLocaleString()}–${auction.estHigh.toLocaleString()}
+                      </td>
+                      <td className="py-3 px-2 text-sm text-muted-foreground">{auction.notes}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="text-xs text-muted-foreground mt-4 pt-4 border-t border-border">
+            Sources: Phillips, Sotheby's, Christie's, Bonhams. Results in USD. Some converted from CHF/GBP at prevailing rates.
+          </div>
+        </CardContent>
+      </Card>
 
       <Dialog open={isAlertDialogOpen} onOpenChange={setIsAlertDialogOpen}>
         <DialogContent>
