@@ -14,8 +14,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { UserAIUsage, ADMIN_EMAIL } from "@/lib/adminAnalytics"
-import { DEFAULT_ACCOUNT_EMAIL, ensureDefaultAccount } from "@/lib/defaultAccount"
+import { UserAIUsage } from "@/lib/adminAnalytics"
 import { toast } from "sonner"
 
 interface AdminUserStats {
@@ -85,19 +84,8 @@ export function AdminDashboard() {
     try {
       const userIds = await window.spark.kv.get<string[]>("all_user_ids") || []
 
-      const adminUserIds: string[] = []
       for (const userId of userIds) {
         const user = await window.spark.kv.get<User>(`user_${userId}`)
-        if (!user) continue
-
-        const normalizedUserEmail = normalizeEmail(user.email)
-        const isProtectedDefaultAccount = normalizedUserEmail === normalizeEmail(DEFAULT_ACCOUNT_EMAIL)
-        const isAdmin = normalizedUserEmail === ADMIN_EMAIL
-
-        if (isAdmin || isProtectedDefaultAccount) {
-          adminUserIds.push(userId)
-          continue
-        }
 
         // Delete watch photos for this user
         const watches = await window.spark.kv.get<Watch[]>(`watches_${userId}`) || []
@@ -110,38 +98,37 @@ export function AdminDashboard() {
             })
         )
 
-        // Delete all user-specific keys
-        await Promise.all([
-          window.spark.kv.delete(`user_email_${normalizeEmail(user.email)}`),
+        const userDeletionTasks = [
           window.spark.kv.delete(`user_${userId}`),
           window.spark.kv.delete(`auth_${userId}`),
           window.spark.kv.delete(`watches_${userId}`),
           window.spark.kv.delete(`ai_usage_${userId}`),
           window.spark.kv.delete(`vaultMetadata_${userId}`),
-        ])
+        ]
+
+        if (user?.email) {
+          userDeletionTasks.push(window.spark.kv.delete(`user_email_${normalizeEmail(user.email)}`))
+        }
+
+        await Promise.all(userDeletionTasks)
       }
 
-      // Update user index to only retain admin accounts
-      await window.spark.kv.set("all_user_ids", adminUserIds)
-      await ensureDefaultAccount()
+      // Update user index to remove all users
+      await window.spark.kv.set("all_user_ids", [])
+      await window.spark.kv.delete("currentUser")
+      sessionStorage.removeItem("currentUserSession")
 
-      // Delete non-admin feedback
+      // Delete all feedback
       const feedbackIds = await window.spark.kv.get<string[]>("all_feedback_ids") || []
-      const remainingFeedbackIds: string[] = []
       await Promise.all(
         feedbackIds.map(async (feedbackId) => {
-          const item = await window.spark.kv.get<{ userEmail?: string }>(feedbackId)
-          if (item?.userEmail && normalizeEmail(item.userEmail) === ADMIN_EMAIL) {
-            remainingFeedbackIds.push(feedbackId)
-          } else {
-            await window.spark.kv.delete(feedbackId)
-          }
+          await window.spark.kv.delete(feedbackId)
         })
       )
-      await window.spark.kv.set("all_feedback_ids", remainingFeedbackIds)
+      await window.spark.kv.set("all_feedback_ids", [])
 
-      const deletedUserCount = userIds.length - adminUserIds.length
-      toast.success(`Environment reset: ${deletedUserCount} user account${deletedUserCount === 1 ? "" : "s"} removed.`)
+      const deletedUserCount = userIds.length
+      toast.success(`Deleted all user data: ${deletedUserCount} account${deletedUserCount === 1 ? "" : "s"} removed.`)
       await loadStats()
     } catch (error) {
       console.error("Error resetting environment:", error)
@@ -299,8 +286,7 @@ export function AdminDashboard() {
             <AlertDialogTitle>Reset Environment?</AlertDialogTitle>
             <AlertDialogDescription>
               This will permanently delete all user accounts, collections, watch photos, AI usage
-              records, and feedback — except for the admin account ({ADMIN_EMAIL}) and the protected
-              default account ({DEFAULT_ACCOUNT_EMAIL}). This action cannot be undone.
+              records, and feedback. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
