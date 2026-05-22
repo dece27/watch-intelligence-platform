@@ -74,6 +74,11 @@ export function ShareCollectionModal({ open, onOpenChange, userId, vaultName, wa
     }
 
     const slug = sanitizeSlug(customSlug)
+    if (!slug) {
+      toast.error("Please enter a valid custom URL")
+      return
+    }
+
     if (slug.length < 3) {
       toast.error("Custom URL must be at least 3 characters")
       return
@@ -146,7 +151,7 @@ export function ShareCollectionModal({ open, onOpenChange, userId, vaultName, wa
               </span>
               <Input
                 value={customSlug}
-                onChange={(e) => setCustomSlug(e.target.value)}
+                onChange={(e) => setCustomSlug(sanitizeSlug(e.target.value))}
                 placeholder="my-watch-vault"
                 className="border-0 px-0 shadow-none focus-visible:ring-0"
               />

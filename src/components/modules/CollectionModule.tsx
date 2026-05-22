@@ -733,7 +733,7 @@ export function CollectionModule({
                         {hidePurchasePrice ? "Hidden" : `$${detailWatch.purchasePrice.toLocaleString()}`}
                       </p>
                     </div>
-                    {detailWatch.purchaseDate && (
+                    {detailWatch.purchaseDate?.trim() && (
                       <div>
                         <h3 className="text-sm font-medium text-muted-foreground mb-1">Purchase Date</h3>
                         <p>{new Date(detailWatch.purchaseDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
