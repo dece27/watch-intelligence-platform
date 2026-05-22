@@ -143,7 +143,7 @@ const formatAuctionDate = (dateValue: string) => {
   if (Number.isNaN(parsed.getTime())) {
     return dateValue
   }
-  return parsed.toLocaleDateString()
+  return parsed.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
 const getEstimatePerformanceLabel = (hasEstimate: boolean, aboveEstimate: boolean, withinEstimate: boolean) => {
@@ -657,7 +657,7 @@ export function MarketModule({ watches }: MarketModuleProps) {
                   const withinEstimate = hasEstimate && !aboveEstimate && auction.result >= (auction.estLow ?? 0)
                   const resultColor = aboveEstimate ? '#5E8C6A' : withinEstimate ? '#C9A84C' : 'inherit'
                   const performanceLabel = getEstimatePerformanceLabel(hasEstimate, aboveEstimate, withinEstimate)
-                   
+
                   return (
                     <tr key={idx} className="border-b border-border last:border-0">
                       <td className="py-3 px-2 text-sm">{auction.house}</td>
