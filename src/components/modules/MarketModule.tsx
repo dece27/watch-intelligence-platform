@@ -242,15 +242,15 @@ export function MarketModule({ watches }: MarketModuleProps) {
     }
 
     const sanitizedHouse = normalizeSearchText(auction.house)
-    const sanitizedReference = normalizeSearchText(auction.reference)
+    const sanitizedReference = normalizeSearchText(auction.reference ?? '')
     const sanitizedLot = normalizeSearchText(auction.lot)
-    const auctionHouseQuery = `${sanitizedReference} ${sanitizedLot}`.trim()
-    const auctionHouseSearchUrl = getAuctionHouseSearchUrl(auction.house, auctionHouseQuery)
+    const lotReferenceQuery = `${sanitizedReference} ${sanitizedLot}`.trim()
+    const auctionHouseSearchUrl = getAuctionHouseSearchUrl(auction.house, lotReferenceQuery)
     if (auctionHouseSearchUrl) {
       return auctionHouseSearchUrl
     }
 
-    const query = `${sanitizedHouse} ${auctionHouseQuery} auction result`.trim()
+    const query = `${sanitizedHouse} ${lotReferenceQuery} auction result`.trim()
 
     return `https://www.google.com/search?q=${encodeURIComponent(query)}`
   }
