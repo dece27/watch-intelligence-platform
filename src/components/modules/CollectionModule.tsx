@@ -19,6 +19,12 @@ interface CollectionModuleProps {
   onUpdate: (updater: (currentWatches: Watch[]) => Watch[]) => void
   triggerAdd?: boolean
   onTriggerComplete?: () => void
+  currentUserId?: string
+  vaultName?: string
+  readOnly?: boolean
+  hidePurchasePrice?: boolean
+  title?: string
+  subtitle?: string
 }
 
 const WATCH_BRANDS = [
@@ -36,7 +42,18 @@ const WATCH_BRANDS = [
   'Other'
 ]
 
-export function CollectionModule({ watches, onUpdate, triggerAdd, onTriggerComplete }: CollectionModuleProps) {
+export function CollectionModule({
+  watches,
+  onUpdate,
+  triggerAdd,
+  onTriggerComplete,
+  currentUserId,
+  vaultName,
+  readOnly = false,
+  hidePurchasePrice = false,
+  title = "Collection Vault",
+  subtitle,
+}: CollectionModuleProps) {
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [isDetailOpen, setIsDetailOpen] = useState(false)
   const [isShareOpen, setIsShareOpen] = useState(false)
@@ -48,11 +65,11 @@ export function CollectionModule({ watches, onUpdate, triggerAdd, onTriggerCompl
   const [brandFilter, setBrandFilter] = useState<string>('all')
 
   useEffect(() => {
-    if (triggerAdd) {
+    if (triggerAdd && !readOnly) {
       handleAdd()
       onTriggerComplete?.()
     }
-  }, [triggerAdd])
+  }, [triggerAdd, readOnly, onTriggerComplete])
 
   const filteredWatches = watches.filter(watch => {
     const matchesSearch = searchQuery === '' || 
@@ -68,6 +85,7 @@ export function CollectionModule({ watches, onUpdate, triggerAdd, onTriggerCompl
   })
 
   const handleAdd = () => {
+    if (readOnly) return
     setFormData({
       condition: 'excellent',
       category: 'dress',
@@ -79,6 +97,7 @@ export function CollectionModule({ watches, onUpdate, triggerAdd, onTriggerCompl
   }
 
   const handleEdit = (watch: Watch) => {
+    if (readOnly) return
     setFormData(watch)
     setEditingWatch(watch)
     setIsAddOpen(true)
@@ -90,6 +109,7 @@ export function CollectionModule({ watches, onUpdate, triggerAdd, onTriggerCompl
   }
 
   const handleDelete = (id: string) => {
+    if (readOnly) return
     if (window.confirm('Are you sure you want to remove this watch from your collection?')) {
       onUpdate((currentWatches) => currentWatches.filter(w => w.id !== id))
       toast.success("Watch removed from collection")
@@ -98,6 +118,7 @@ export function CollectionModule({ watches, onUpdate, triggerAdd, onTriggerCompl
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
+    if (readOnly) return
     e.preventDefault()
     
     if (!formData.brand || !formData.model || !formData.purchasePrice || !formData.purchaseDate) {
@@ -158,6 +179,7 @@ export function CollectionModule({ watches, onUpdate, triggerAdd, onTriggerCompl
   }
 
   const handleImportWatches = (importedWatches: Watch[]) => {
+    if (readOnly) return
     onUpdate((currentWatches) => [...currentWatches, ...importedWatches])
   }
 
@@ -165,26 +187,30 @@ export function CollectionModule({ watches, onUpdate, triggerAdd, onTriggerCompl
     <div className="space-y-4 md:space-y-6">
       <div className="flex items-start md:items-center justify-between flex-col md:flex-row gap-4">
         <div>
-          <h1 className="text-2xl md:text-3xl font-semibold">Collection Vault</h1>
-          <p className="text-muted-foreground text-sm md:text-base mt-1">{watches.length} {watches.length === 1 ? 'watch' : 'watches'} in your portfolio</p>
+          <h1 className="text-2xl md:text-3xl font-semibold">{title}</h1>
+          <p className="text-muted-foreground text-sm md:text-base mt-1">
+            {subtitle || `${watches.length} ${watches.length === 1 ? 'watch' : 'watches'} in your portfolio`}
+          </p>
         </div>
-        <div className="flex gap-2 w-full md:w-auto flex-wrap">
-          <Button onClick={() => setIsImportOpen(true)} variant="outline" className="flex-1 md:flex-none" size="sm">
-            <FileArrowUp className="mr-2" />
-            <span className="hidden sm:inline">Import CSV</span>
-            <span className="sm:hidden">Import</span>
-          </Button>
-          <Button onClick={() => setIsShareOpen(true)} variant="outline" className="flex-1 md:flex-none" size="sm">
-            <ShareNetwork className="mr-2" />
-            <span className="hidden sm:inline">Share Collection</span>
-            <span className="sm:hidden">Share</span>
-          </Button>
-          <Button onClick={handleAdd} className="bg-primary hover:bg-primary/90 text-primary-foreground flex-1 md:flex-none" size="sm">
-            <Plus className="mr-2" />
-            <span className="hidden sm:inline">Add Watch</span>
-            <span className="sm:hidden">Add</span>
-          </Button>
-        </div>
+        {!readOnly && (
+          <div className="flex gap-2 w-full md:w-auto flex-wrap">
+            <Button onClick={() => setIsImportOpen(true)} variant="outline" className="flex-1 md:flex-none" size="sm">
+              <FileArrowUp className="mr-2" />
+              <span className="hidden sm:inline">Import CSV</span>
+              <span className="sm:hidden">Import</span>
+            </Button>
+            <Button onClick={() => setIsShareOpen(true)} variant="outline" className="flex-1 md:flex-none" size="sm" disabled={!currentUserId}>
+              <ShareNetwork className="mr-2" />
+              <span className="hidden sm:inline">Share Collection</span>
+              <span className="sm:hidden">Share</span>
+            </Button>
+            <Button onClick={handleAdd} className="bg-primary hover:bg-primary/90 text-primary-foreground flex-1 md:flex-none" size="sm">
+              <Plus className="mr-2" />
+              <span className="hidden sm:inline">Add Watch</span>
+              <span className="sm:hidden">Add</span>
+            </Button>
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col md:flex-row gap-4">
@@ -230,10 +256,12 @@ export function CollectionModule({ watches, onUpdate, triggerAdd, onTriggerCompl
             ) : (
               <div>
                 <p className="mb-4">Your collection is empty</p>
-                <Button onClick={handleAdd} className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                  <Plus className="mr-2" />
-                  Add Your First Watch
-                </Button>
+                {!readOnly && (
+                  <Button onClick={handleAdd} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+                    <Plus className="mr-2" />
+                    Add Your First Watch
+                  </Button>
+                )}
               </div>
             )}
           </CardContent>
@@ -272,8 +300,10 @@ export function CollectionModule({ watches, onUpdate, triggerAdd, onTriggerCompl
               </CardHeader>
               <CardContent className="space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Purchase Price</span>
-                  <span className="font-medium tabular-nums">${watch.purchasePrice.toLocaleString()}</span>
+                  <span className="text-muted-foreground">{hidePurchasePrice ? "Price" : "Purchase Price"}</span>
+                  <span className="font-medium tabular-nums">
+                    {hidePurchasePrice ? "Hidden" : `$${watch.purchasePrice.toLocaleString()}`}
+                  </span>
                 </div>
                 {watch.currentValue && (
                   <div className="flex justify-between text-sm">
@@ -699,12 +729,16 @@ export function CollectionModule({ watches, onUpdate, triggerAdd, onTriggerCompl
                   <div className="space-y-4">
                     <div>
                       <h3 className="text-sm font-medium text-muted-foreground mb-1">Purchase Price</h3>
-                      <p className="text-lg font-semibold tabular-nums">${detailWatch.purchasePrice.toLocaleString()}</p>
+                      <p className="text-lg font-semibold tabular-nums">
+                        {hidePurchasePrice ? "Hidden" : `$${detailWatch.purchasePrice.toLocaleString()}`}
+                      </p>
                     </div>
-                    <div>
-                      <h3 className="text-sm font-medium text-muted-foreground mb-1">Purchase Date</h3>
-                      <p>{new Date(detailWatch.purchaseDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
-                    </div>
+                    {detailWatch.purchaseDate?.trim() && (
+                      <div>
+                        <h3 className="text-sm font-medium text-muted-foreground mb-1">Purchase Date</h3>
+                        <p>{new Date(detailWatch.purchaseDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                      </div>
+                    )}
                     {detailWatch.currentValue && (
                       <div>
                         <h3 className="text-sm font-medium text-muted-foreground mb-1">Current Value</h3>
@@ -748,43 +782,52 @@ export function CollectionModule({ watches, onUpdate, triggerAdd, onTriggerCompl
                 )}
               </div>
 
-              <div className="flex gap-3 px-6 py-4 border-t border-border">
-                <Button 
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => {
-                    setIsDetailOpen(false)
-                    handleEdit(detailWatch)
-                  }}
-                >
-                  <Pencil className="mr-2" size={16} />
-                  Edit
-                </Button>
-                <Button 
-                  variant="outline"
-                  className="flex-1 text-destructive border-destructive/50 hover:bg-destructive/10"
-                  onClick={() => handleDelete(detailWatch.id)}
-                >
-                  <Trash className="mr-2" size={16} />
-                  Delete
-                </Button>
-              </div>
+              {!readOnly && (
+                <div className="flex gap-3 px-6 py-4 border-t border-border">
+                  <Button 
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => {
+                      setIsDetailOpen(false)
+                      handleEdit(detailWatch)
+                    }}
+                  >
+                    <Pencil className="mr-2" size={16} />
+                    Edit
+                  </Button>
+                  <Button 
+                    variant="outline"
+                    className="flex-1 text-destructive border-destructive/50 hover:bg-destructive/10"
+                    onClick={() => handleDelete(detailWatch.id)}
+                  >
+                    <Trash className="mr-2" size={16} />
+                    Delete
+                  </Button>
+                </div>
+              )}
             </>
           )}
         </DialogContent>
       </Dialog>
 
 
-      <ImportCSVModal
-        open={isImportOpen}
-        onOpenChange={setIsImportOpen}
-        onImport={handleImportWatches}
-      />
+      {!readOnly && (
+        <>
+          <ImportCSVModal
+            open={isImportOpen}
+            onOpenChange={setIsImportOpen}
+            onImport={handleImportWatches}
+          />
 
-      <ShareCollectionModal
-        open={isShareOpen}
-        onOpenChange={setIsShareOpen}
-      />
+          <ShareCollectionModal
+            open={isShareOpen}
+            onOpenChange={setIsShareOpen}
+            userId={currentUserId || ""}
+            vaultName={vaultName || title}
+            watches={watches}
+          />
+        </>
+      )}
     </div>
   )
 }
