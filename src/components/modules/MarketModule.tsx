@@ -19,6 +19,14 @@ interface MarketModuleProps {
   preferredCurrency?: string
 }
 
+const getHostname = (url: string): string | undefined => {
+  try {
+    return new URL(url).hostname.toLowerCase()
+  } catch {
+    return undefined
+  }
+}
+
 const BRAND_INDICES: BrandIndex[] = [
   {
     brand: 'Rolex',
@@ -148,15 +156,13 @@ const formatAuctionDate = (dateValue: string) => {
 
 const getAuctionSourceLabel = (auction: AuctionResult) => {
   if (auction.sourceUrl) {
-    try {
-      const hostname = new URL(auction.sourceUrl).hostname.toLowerCase()
-      if (hostname.includes('christies.com')) {
-        return "Christie's"
-      }
-      if (hostname.includes('phillips.com')) {
-        return 'Phillips'
-      }
-    } catch {}
+    const hostname = getHostname(auction.sourceUrl)
+    if (hostname?.includes('christies.com')) {
+      return "Christie's"
+    }
+    if (hostname?.includes('phillips.com')) {
+      return 'Phillips'
+    }
   }
 
   const normalizedHouse = auction.house.trim().toLowerCase()
