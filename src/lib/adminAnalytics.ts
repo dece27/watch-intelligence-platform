@@ -1,6 +1,7 @@
 import { User } from "@/lib/types"
 
-export const ADMIN_EMAIL = "dec.davide@gmail.com"
+const configuredAdminEmail = import.meta.env.VITE_ADMIN_EMAIL?.trim().toLowerCase()
+export const ADMIN_EMAIL = configuredAdminEmail || "dec.davide@gmail.com"
 const ALL_USER_IDS_KEY = "all_user_ids"
 
 export interface UserAIUsage {

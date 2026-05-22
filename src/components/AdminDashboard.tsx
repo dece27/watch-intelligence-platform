@@ -22,25 +22,27 @@ export function AdminDashboard() {
   const loadStats = async () => {
     setIsLoading(true)
     const userIds = await window.spark.kv.get<string[]>("all_user_ids") || []
-    const rows: AdminUserStats[] = []
+    const rowsWithNulls = await Promise.all(userIds.map(async (userId) => {
+      const [user, auth, watches, usage] = await Promise.all([
+        window.spark.kv.get<User>(`user_${userId}`),
+        window.spark.kv.get<AuthRecord>(`auth_${userId}`),
+        window.spark.kv.get<Watch[]>(`watches_${userId}`),
+        window.spark.kv.get<UserAIUsage>(`ai_usage_${userId}`),
+      ])
 
-    for (const userId of userIds) {
-      const user = await window.spark.kv.get<User>(`user_${userId}`)
-      if (!user) continue
+      if (!user) return null
 
-      const auth = await window.spark.kv.get<AuthRecord>(`auth_${userId}`)
-      const watches = await window.spark.kv.get<Watch[]>(`watches_${userId}`)
-      const usage = await window.spark.kv.get<UserAIUsage>(`ai_usage_${userId}`)
-
-      rows.push({
+      return {
         user,
         watchCount: watches?.length || 0,
         loginCount: auth?.loginCount || 0,
         aiTokensUsed: usage?.aiTokensUsed || 0,
         aiRequestsCount: usage?.aiRequestsCount || 0,
         lastLoginAt: auth?.lastLoginAt,
-      })
-    }
+      } satisfies AdminUserStats
+    }))
+
+    const rows = rowsWithNulls.filter((row): row is AdminUserStats => row !== null)
 
     rows.sort((a, b) => new Date(b.user.createdAt).getTime() - new Date(a.user.createdAt).getTime())
     setStats(rows)
