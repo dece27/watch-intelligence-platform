@@ -578,7 +578,7 @@ export function MarketModule({ watches }: MarketModuleProps) {
                         className={`rounded-xl border px-3 py-4 transition-colors ${getTrendMetricCardClass(metric.change)}`}
                       >
                         <div className="flex items-center justify-between gap-2">
-                          <div className="text-[11px] font-medium tracking-[0.24em] text-muted-foreground">
+                          <div className="text-[11px] font-medium tracking-[0.08em] text-muted-foreground">
                             {metric.label}
                           </div>
                           {isPositive ? (
