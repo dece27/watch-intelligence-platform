@@ -9,6 +9,7 @@ const FALLBACK_IMAGE = "https://images.unsplash.com/photo-1522312346375-d1a52e2b
 const DEFAULT_UNRANKED_SCORE = 60
 const SEARCH_CACHE_TTL_MS = 10 * 60 * 1000
 const MAX_RATE_LIMIT_RETRY_DELAY_MS = 1500
+const REQUEST_TIMEOUT_MS = 15000
 const SEARCH_CACHE_PREFIX = "chrono24-search:"
 const PREFERRED_ENDPOINT_STORAGE_KEY = "chrono24-preferred-endpoint"
 const HTTP_NOT_FOUND = 404
@@ -119,6 +120,42 @@ const getEndpointCandidates = () => {
   return [preferred, ...SEARCH_ENDPOINTS.filter((endpoint) => endpoint !== preferred)]
 }
 
+const toSnakeCase = (value: string) => value.replace(/[A-Z]/g, (char) => `_${char.toLowerCase()}`)
+
+const getRequestParams = (endpoint: string, params: Chrono24SearchParams) => {
+  const requestParams = new URLSearchParams()
+  const queryValue = params.query || [params.brand, params.model].filter(Boolean).join(" ").trim() || undefined
+
+  const append = (key: string, value: string | number | undefined) => {
+    if (value !== undefined && value !== null && value !== "") {
+      requestParams.set(key, String(value))
+    }
+  }
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") {
+      append(key, value)
+      append(toSnakeCase(key), value)
+    }
+  })
+
+  append("query", queryValue)
+
+  if (endpoint === "/search") {
+    append("q", queryValue)
+    append("per_page", params.limit)
+  }
+
+  if (endpoint === "/api/search") {
+    append("q", queryValue)
+    append("pageSize", params.limit)
+    append("priceMax", params.maxPrice)
+    append("priceMin", params.minPrice)
+  }
+
+  return requestParams
+}
+
 const parseRetryAfterMs = (retryAfter: string | null) => {
   if (!retryAfter) return null
 
@@ -206,10 +243,14 @@ const mapChrono24Listing = (item: unknown, index: number): Deal | null => {
   const discount = fairValue && fairValue > 0 ? Math.round(((fairValue - price) / fairValue) * 100) : 0
   const imageUrl = pickString(item, ["imageUrl", "image", "thumbnailUrl", "image_url"]) || FALLBACK_IMAGE
   const listedAt = pickString(item, ["listedAt", "listingDate", "createdAt", "publishedAt"])
-  const sourceUrl = pickString(item, ["url", "listingUrl", "sourceUrl"])
+  const sourceUrl = pickString(item, ["url", "listingUrl", "sourceUrl", "href", "link"])
+  const listingIdentifier = pickString(item, ["id", "listingId", "uuid"])
+    || sourceUrl
+    || pickString(item, ["referenceNumber", "reference", "ref", "slug", "title"])
+    || `listing-${index}-${price}`
 
   return {
-    id: pickString(item, ["id", "listingId", "uuid"]) || `chrono24-${index}`,
+    id: `chrono24-${listingIdentifier}`,
     brand: pickString(item, ["brand", "manufacturer"]) || "Unknown",
     model: pickString(item, ["model", "name", "title"]) || "Unknown Model",
     referenceNumber: pickString(item, ["referenceNumber", "reference", "ref"]) || undefined,
@@ -240,10 +281,9 @@ const requestEndpoint = async (
   params: Chrono24SearchParams
 ): Promise<unknown> => {
   const url = new URL(`${CHRONO24_BASE_URL}${endpoint}`)
-  Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== "") {
-      url.searchParams.set(key, String(value))
-    }
+  const requestParams = getRequestParams(endpoint, params)
+  requestParams.forEach((value, key) => {
+    url.searchParams.set(key, value)
   })
 
   const headers: Record<string, string> = {
@@ -258,7 +298,21 @@ const requestEndpoint = async (
   let attemptedRetry = false
 
   while (true) {
-    const response = await fetch(url.toString(), { headers })
+    const controller = new AbortController()
+    const timeoutId = globalThis.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+    let response: Response
+
+    try {
+      response = await fetch(url.toString(), { headers, signal: controller.signal })
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        throw new Error(`Chrono24 request timed out after ${REQUEST_TIMEOUT_MS / 1000}s`)
+      }
+      throw error
+    } finally {
+      globalThis.clearTimeout(timeoutId)
+    }
+
     if (response.ok) {
       return response.json()
     }
