@@ -130,13 +130,13 @@ const getRequestParams = (endpoint: string, params: Chrono24SearchParams) => {
     }
   }
 
-  Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== "") {
-      append(key, value)
-    }
-  })
-
   append("query", queryValue)
+  append("brand", params.brand)
+  append("model", params.model)
+  append("minPrice", params.minPrice)
+  append("maxPrice", params.maxPrice)
+  append("page", params.page)
+  append("limit", params.limit)
   append("max_price", params.maxPrice)
   append("min_price", params.minPrice)
 
@@ -247,7 +247,7 @@ const mapChrono24Listing = (item: unknown, index: number): Deal | null => {
   if (sourceUrl) {
     try {
       const parsed = new URL(sourceUrl)
-      const pathSegment = parsed.pathname.split("/").filter(Boolean).pop() || null
+      const pathSegment = parsed.pathname.split("/").filter(Boolean).pop()
       stableUrlIdentifier = pathSegment || `${parsed.origin}${parsed.pathname}`
     } catch {
       stableUrlIdentifier = sourceUrl.split(/[?#]/)[0] || null
