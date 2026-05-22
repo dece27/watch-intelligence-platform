@@ -10,83 +10,15 @@ import { Switch } from "@/components/ui/switch"
 import { Heart, MapPin, ArrowsClockwise } from "@phosphor-icons/react"
 import { DealDetailModal } from "@/components/DealDetailModal"
 import { callTrackedLlm } from "@/lib/adminAnalytics"
-import { hasChrono24Credentials, searchChrono24Deals } from "@/lib/chrono24-client"
+import { searchChrono24Deals, clearChrono24SearchCache } from "@/lib/chrono24-client"
 import { formatCurrency } from "@/lib/currency"
+import { FALLBACK_DEALS } from "@/lib/fallback-deals"
 
 interface DealsModuleProps {
   watches: Watch[]
   userId: string
   preferredCurrency?: string
 }
-
-const FALLBACK_DEALS: Deal[] = [
-  {
-    id: "fallback-1",
-    brand: "Omega",
-    model: "Speedmaster Professional",
-    referenceNumber: "310.30.42.50.01.001",
-    price: 4800,
-    marketValue: 5500,
-    fairValue: 5400,
-    discount: 13,
-    condition: "Excellent",
-    seller: "Chrono24 Seller",
-    location: "Atlanta, GA",
-    matchScore: 90,
-    dealScore: 90,
-    daysListed: 3,
-    sellerRating: 4.8,
-    hasBox: true,
-    hasPapers: true,
-    year: 2022,
-    imageUrl: "https://images.unsplash.com/photo-1614164185128-e4ec99c436d7?w=400",
-    source: "Chrono24 (fallback)",
-  },
-  {
-    id: "fallback-2",
-    brand: "Rolex",
-    model: "Submariner Date",
-    referenceNumber: "126610LN",
-    price: 12500,
-    marketValue: 14000,
-    fairValue: 13800,
-    discount: 11,
-    condition: "Very Good",
-    seller: "Chrono24 Seller",
-    location: "Philadelphia, PA",
-    matchScore: 86,
-    dealScore: 88,
-    daysListed: 7,
-    sellerRating: 4.9,
-    hasBox: true,
-    hasPapers: false,
-    year: 2021,
-    imageUrl: "https://images.unsplash.com/photo-1587836374775-5b78d194324c?w=400",
-    source: "Chrono24 (fallback)",
-  },
-  {
-    id: "fallback-3",
-    brand: "Tudor",
-    model: "Black Bay 58",
-    referenceNumber: "79030N",
-    price: 3200,
-    marketValue: 3600,
-    fairValue: 3550,
-    discount: 11,
-    condition: "Mint",
-    seller: "Chrono24 Seller",
-    location: "Newport Beach, CA",
-    matchScore: 84,
-    dealScore: 85,
-    daysListed: 12,
-    sellerRating: 4.7,
-    hasBox: true,
-    hasPapers: true,
-    year: 2023,
-    imageUrl: "https://images.unsplash.com/photo-1522312346375-d1a52e2b99b3?w=400",
-    source: "Chrono24 (fallback)",
-  },
-]
 
 const DEFAULT_MAX_PRICE = 25000
 const USER_PREFERENCES_PREFIX = "user_preferences_"
@@ -274,18 +206,17 @@ export function DealsModule({ watches, userId, preferredCurrency = "USD" }: Deal
     }
   }, [preferences, preferencesLoaded, userId])
 
-  const fetchDeals = useCallback(async () => {
+  const fetchDeals = useCallback(async (forced = false) => {
     setIsLoading(true)
     setErrorMessage(null)
 
-    try {
-      if (!hasChrono24Credentials) {
-        const fallbackDeals = FALLBACK_DEALS.map((deal) => scoreHeuristically(deal, watches, preferences))
-        setDeals(fallbackDeals)
-        setIsLiveData(false)
-        return
-      }
+    // Clear the localStorage search cache when the user explicitly triggers a refresh
+    // so stale results are not served from the 10-minute cache.
+    if (forced) {
+      clearChrono24SearchCache()
+    }
 
+    try {
       const portfolioBrands = Array.from(new Set(watches.map((watch) => watch.brand)))
       const brandsToQuery = (preferences.preferredBrands.length > 0 ? preferences.preferredBrands : portfolioBrands)
         .slice(0, MAX_BRANDS_TO_QUERY)
@@ -457,6 +388,11 @@ Return every deal id exactly once.`
     setPreferences(getDefaultPreferences(watches))
   }
 
+  const handleRefresh = () => {
+    // Pass `forced = true` so the search cache is cleared before the fetch.
+    fetchDeals(true)
+  }
+
   const toggleFavorite = (id: string, event: MouseEvent) => {
     event.stopPropagation()
     setFavorites((current) => (current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id]))
@@ -482,7 +418,7 @@ Return every deal id exactly once.`
           <Badge variant="outline" className={isLiveData ? "border-success/40 text-success" : ""}>
             {isLiveData ? "Live Chrono24 Data" : "Fallback Deals"}
           </Badge>
-          <Button variant="outline" size="sm" onClick={fetchDeals} disabled={isLoading}>
+          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isLoading}>
             <ArrowsClockwise className="mr-2" size={16} />
             {isLoading ? "Refreshing..." : "Refresh"}
           </Button>

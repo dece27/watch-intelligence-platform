@@ -310,7 +310,8 @@ const requestEndpoint = async (
 ): Promise<unknown> => {
   if (!CHRONO24_WRAPPER_BASE_URL) {
     throw new Error(
-      "Chrono24 wrapper base URL missing. Set VITE_CHRONO24_WRAPPER_BASE_URL (or legacy VITE_CHRONO24_API_BASE_URL)."
+      "Chrono24 API not configured. Start the chrono24-api server and set " +
+      "VITE_CHRONO24_WRAPPER_BASE_URL to enable live deals."
     )
   }
 
@@ -370,9 +371,48 @@ const requestEndpoint = async (
   }
 }
 
-export const hasChrono24Credentials = Boolean(CHRONO24_WRAPPER_BASE_URL)
+/**
+ * Always attempt to fetch live Chrono24 data. When VITE_CHRONO24_WRAPPER_BASE_URL is not
+ * configured the requests will fail gracefully and the caller falls back to static data.
+ * Setting this to `true` ensures that:
+ *   1. The loading indicator is always shown while the API is attempted.
+ *   2. The Refresh button triggers a real async round-trip, giving visible feedback.
+ *   3. The Deal of the Day section can show a meaningful fallback after a failed attempt.
+ */
+export const hasChrono24Credentials = true
+
+/**
+ * Clear all Chrono24 search results stored in localStorage so the next call to
+ * `searchChrono24Deals` fetches fresh data instead of serving a cached response.
+ * Call this before a user-triggered refresh to bypass the 10-minute cache TTL.
+ */
+export const clearChrono24SearchCache = (): void => {
+  if (!canUseLocalStorage()) return
+  try {
+    const keysToRemove: string[] = []
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const key = window.localStorage.key(i)
+      if (key && key.startsWith(SEARCH_CACHE_PREFIX)) {
+        keysToRemove.push(key)
+      }
+    }
+    keysToRemove.forEach((key) => window.localStorage.removeItem(key))
+  } catch {
+    // Ignore storage errors — the live fetch will proceed regardless.
+  }
+}
 
 export async function searchChrono24Deals(params: Chrono24SearchParams): Promise<Deal[]> {
+  // Fast-fail with a clear message when no API wrapper is configured so the
+  // error shown in the UI is concise rather than the same message repeated
+  // once per endpoint candidate.
+  if (!CHRONO24_WRAPPER_BASE_URL) {
+    throw new Error(
+      "Chrono24 API not configured. Start the chrono24-api server and set " +
+      "VITE_CHRONO24_WRAPPER_BASE_URL to enable live deals."
+    )
+  }
+
   const cachedDeals = readCachedDeals(params)
   if (cachedDeals && cachedDeals.length > 0) {
     return cachedDeals
