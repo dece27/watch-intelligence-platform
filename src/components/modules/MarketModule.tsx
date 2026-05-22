@@ -202,6 +202,20 @@ export function MarketModule({ watches }: MarketModuleProps) {
     toast.success("Price alert removed")
   }
 
+  const getAuctionHouseSearchUrl = (house: string, query: string) => {
+    const normalizedHouse = house.toLowerCase()
+
+    if (normalizedHouse.includes("christie")) {
+      return `https://www.christies.com/en/results/soldlots/?searchphrase=${encodeURIComponent(query)}`
+    }
+
+    if (normalizedHouse.includes("phillips")) {
+      return `https://www.phillips.com/search?q=${encodeURIComponent(query)}`
+    }
+
+    return null
+  }
+
   const getAuctionDetailUrl = (auction: AuctionResult) => {
     const sourceUrl = auction.sourceUrl?.trim()
     if (sourceUrl) {
@@ -228,8 +242,15 @@ export function MarketModule({ watches }: MarketModuleProps) {
     }
 
     const sanitizedHouse = normalizeSearchText(auction.house)
+    const sanitizedReference = normalizeSearchText(auction.reference)
     const sanitizedLot = normalizeSearchText(auction.lot)
-    const query = `${sanitizedHouse} ${sanitizedLot} auction result`.trim()
+    const auctionHouseQuery = `${sanitizedReference} ${sanitizedLot}`.trim()
+    const auctionHouseSearchUrl = getAuctionHouseSearchUrl(auction.house, auctionHouseQuery)
+    if (auctionHouseSearchUrl) {
+      return auctionHouseSearchUrl
+    }
+
+    const query = `${sanitizedHouse} ${auctionHouseQuery} auction result`.trim()
 
     return `https://www.google.com/search?q=${encodeURIComponent(query)}`
   }
