@@ -145,11 +145,23 @@ const formatAuctionDate = (dateValue: string) => {
 }
 
 const getAuctionSourceLabel = (auction: AuctionResult) => {
-  const normalizedHouse = auction.house.toLowerCase()
-  if (normalizedHouse.includes('christie')) {
+  if (auction.sourceUrl) {
+    try {
+      const hostname = new URL(auction.sourceUrl).hostname.toLowerCase()
+      if (hostname.includes('christies.com')) {
+        return "Christie's"
+      }
+      if (hostname.includes('phillips.com')) {
+        return 'Phillips'
+      }
+    } catch {}
+  }
+
+  const normalizedHouse = auction.house.trim().toLowerCase()
+  if (normalizedHouse.startsWith("christie's") || normalizedHouse.startsWith('christies')) {
     return "Christie's"
   }
-  if (normalizedHouse.includes('phillips')) {
+  if (normalizedHouse.startsWith('phillips')) {
     return 'Phillips'
   }
   return 'Auction result'
