@@ -14,7 +14,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { UserAIUsage } from "@/lib/adminAnalytics"
+import { UserAIUsage, isAdminEmail } from "@/lib/adminAnalytics"
 import { toast } from "sonner"
 
 interface AdminUserStats {
@@ -84,20 +84,21 @@ export function AdminDashboard() {
     try {
       const userIds = await window.spark.kv.get<string[]>("all_user_ids") || []
 
+      const preservedUserIds: string[] = []
+
       for (const userId of userIds) {
         const user = await window.spark.kv.get<User>(`user_${userId}`)
 
-        // Delete watch photos for this user
-        const watches = await window.spark.kv.get<Watch[]>(`watches_${userId}`) || []
-        await Promise.all(
-          watches
-            .filter((w) => w.imageUrl?.startsWith(WATCH_PHOTO_REF_PREFIX))
-            .map((w) => {
-              const watchId = w.imageUrl!.slice(WATCH_PHOTO_REF_PREFIX.length)
-              return window.spark.kv.delete(getWatchPhotoKey(userId, watchId))
-            })
-        )
+        // Preserve the admin account so it remains accessible after reset
+        if (user?.email && isAdminEmail(user.email)) {
+          preservedUserIds.push(userId)
+          continue
+        }
 
+        // If the user profile no longer exists we still clean up any remaining
+        // auth / watches / usage keys that may be orphaned for this userId.
+        // Watch-photo deletion and email-key deletion require the user's email
+        // and are only performed when the profile is available.
         const userDeletionTasks = [
           window.spark.kv.delete(`user_${userId}`),
           window.spark.kv.delete(`auth_${userId}`),
@@ -107,14 +108,25 @@ export function AdminDashboard() {
         ]
 
         if (user?.email) {
+          // Delete watch photos for this user
+          const watches = await window.spark.kv.get<Watch[]>(`watches_${userId}`) || []
+          await Promise.all(
+            watches
+              .filter((w) => w.imageUrl?.startsWith(WATCH_PHOTO_REF_PREFIX))
+              .map((w) => {
+                const watchId = w.imageUrl!.slice(WATCH_PHOTO_REF_PREFIX.length)
+                return window.spark.kv.delete(getWatchPhotoKey(userId, watchId))
+              })
+          )
+
           userDeletionTasks.push(window.spark.kv.delete(`user_email_${normalizeEmail(user.email)}`))
         }
 
         await Promise.all(userDeletionTasks)
       }
 
-      // Update user index to remove all users
-      await window.spark.kv.set("all_user_ids", [])
+      // Update user index to only contain the preserved admin account(s)
+      await window.spark.kv.set("all_user_ids", preservedUserIds)
 
       // Delete all feedback
       const feedbackIds = await window.spark.kv.get<string[]>("all_feedback_ids") || []
@@ -125,9 +137,9 @@ export function AdminDashboard() {
       )
       await window.spark.kv.set("all_feedback_ids", [])
 
-      const deletedUserCount = userIds.length
+      const deletedUserCount = userIds.length - preservedUserIds.length
       const deletedFeedbackCount = feedbackIds.length
-      toast.success(`Deleted all user data: ${deletedUserCount} accounts and ${deletedFeedbackCount} feedback entr${deletedFeedbackCount === 1 ? "y" : "ies"} removed.`)
+      toast.success(`Reset complete: ${deletedUserCount} account${deletedUserCount === 1 ? "" : "s"} and ${deletedFeedbackCount} feedback entr${deletedFeedbackCount === 1 ? "y" : "ies"} removed. Admin account preserved.`)
       await loadStats()
     } catch (error) {
       console.error("Error resetting environment:", error)
@@ -284,8 +296,8 @@ export function AdminDashboard() {
           <AlertDialogHeader>
             <AlertDialogTitle>Reset Environment?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete all user accounts, collections, watch photos, AI usage
-              records, and feedback. This action cannot be undone.
+              This will permanently delete all non-admin user accounts, collections, watch photos, AI usage
+              records, and feedback. The admin account will be preserved. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
