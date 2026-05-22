@@ -34,15 +34,22 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
   const [isCheckingAccount, setIsCheckingAccount] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
+  const [isBootstrapped, setIsBootstrapped] = useState(false)
 
   useEffect(() => {
-    ensureDefaultAccount().catch((bootstrapError) => {
-      console.error("Failed to bootstrap default account:", bootstrapError)
-      setError("Account initialization failed. Please refresh and try again.")
-    })
+    ensureDefaultAccount()
+      .then(() => {
+        setIsBootstrapped(true)
+      })
+      .catch((bootstrapError) => {
+        console.error("Failed to bootstrap default account:", bootstrapError)
+        setError("Account initialization failed. Please refresh and try again.")
+      })
   }, [])
 
   useEffect(() => {
+    if (!isBootstrapped) return
+
     let isCancelled = false
     const normalizedEmail = email.trim().toLowerCase()
 
@@ -83,7 +90,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
     return () => {
       isCancelled = true
     }
-  }, [email])
+  }, [email, isBootstrapped])
 
   const getLockoutMessage = (lockUntil?: string): string => {
     if (!lockUntil) return ""
