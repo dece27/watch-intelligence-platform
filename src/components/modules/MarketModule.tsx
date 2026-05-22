@@ -86,7 +86,7 @@ const FALLBACK_AUCTION_RESULTS: AuctionResult[] = [
     lot: 'Richard Mille RM27-01 Rafael Nadal',
     result: 1491942,
     notes: 'Hammer: CHF 1,255,000 (USD equivalent shown)',
-    sourceUrl: 'https://www.christies.com/en/lot/lot-6468372',
+    sourceUrl: 'https://www.christies.com/en/lot/lot-6467519',
     reference: 'RM27-01',
   },
   {
@@ -95,7 +95,7 @@ const FALLBACK_AUCTION_RESULTS: AuctionResult[] = [
     lot: 'Rolex Ref. 6264 Paul Newman "John Player Special"',
     result: 1198309,
     notes: 'Hammer: CHF 1,008,000 (USD equivalent shown)',
-    sourceUrl: 'https://www.christies.com/en/lot/lot-6468370',
+    sourceUrl: 'https://www.christies.com/en/lot/lot-6467526',
     reference: '6264',
   },
   {
@@ -104,7 +104,7 @@ const FALLBACK_AUCTION_RESULTS: AuctionResult[] = [
     lot: 'Cartier Crash Ref. 4131 (Special Order)',
     result: 898732,
     notes: 'Hammer: CHF 736,000 (USD equivalent shown)',
-    sourceUrl: 'https://www.christies.com/en/lot/lot-6468371',
+    sourceUrl: 'https://www.christies.com/en/lot/lot-6467607',
     reference: '4131',
   },
   {
@@ -769,7 +769,7 @@ export function MarketModule({ watches }: MarketModuleProps) {
                   <th className="text-left py-3 px-2 text-sm font-medium text-muted-foreground">Model</th>
                   <th className="text-left py-3 px-2 text-sm font-medium text-muted-foreground">Reference</th>
                   <th className="text-right py-3 px-2 text-sm font-medium text-muted-foreground">Auction Price Sold</th>
-                  <th className="text-left py-3 px-2 text-sm font-medium text-muted-foreground">Related Auction Result</th>
+                  <th className="text-left py-3 px-2 text-sm font-medium text-muted-foreground">Link</th>
                 </tr>
               </thead>
               <tbody>
@@ -795,7 +795,7 @@ export function MarketModule({ watches }: MarketModuleProps) {
                             aria-label={`Open ${getAuctionSourceLabel(auction)} auction result in a new tab`}
                             className="text-primary underline underline-offset-4 hover:text-primary/80"
                           >
-                            {getAuctionSourceLabel(auction)}
+                            Link
                           </a>
                         ) : (
                           <span className="text-muted-foreground">—</span>
