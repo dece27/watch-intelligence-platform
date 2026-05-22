@@ -144,6 +144,17 @@ const formatAuctionDate = (dateValue: string) => {
   return parsed.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
+const getAuctionSourceLabel = (auction: AuctionResult) => {
+  const normalizedHouse = auction.house.toLowerCase()
+  if (normalizedHouse.includes('christie')) {
+    return "Christie's"
+  }
+  if (normalizedHouse.includes('phillips')) {
+    return 'Phillips'
+  }
+  return 'Auction result'
+}
+
 const getAuctionBrandAndModel = (auction: AuctionResult) => {
   const lot = auction.lot.trim()
   const normalizedLot = lot.toLowerCase()
@@ -746,6 +757,7 @@ export function MarketModule({ watches }: MarketModuleProps) {
                   <th className="text-left py-3 px-2 text-sm font-medium text-muted-foreground">Model</th>
                   <th className="text-left py-3 px-2 text-sm font-medium text-muted-foreground">Reference</th>
                   <th className="text-right py-3 px-2 text-sm font-medium text-muted-foreground">Auction Price Sold</th>
+                  <th className="text-left py-3 px-2 text-sm font-medium text-muted-foreground">Related Auction Result</th>
                 </tr>
               </thead>
               <tbody>
@@ -761,6 +773,20 @@ export function MarketModule({ watches }: MarketModuleProps) {
                       <td className="py-3 px-2 text-sm text-muted-foreground">{auction.reference || '—'}</td>
                       <td className="py-3 px-2 text-sm text-right font-bold tabular-nums">
                         ${auction.result.toLocaleString()}
+                      </td>
+                      <td className="py-3 px-2 text-sm">
+                        {auction.sourceUrl ? (
+                          <a
+                            href={auction.sourceUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-primary underline underline-offset-4 hover:text-primary/80"
+                          >
+                            {getAuctionSourceLabel(auction)}
+                          </a>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
                       </td>
                     </tr>
                   )
