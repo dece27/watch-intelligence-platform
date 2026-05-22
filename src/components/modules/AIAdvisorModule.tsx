@@ -51,7 +51,7 @@ const normalizeRecommendation = (value: string, fallback: string) => {
 
   const noActionPattern = /\b(no action|do nothing|nothing should be done|no changes?|none needed|not needed)\b/i
   if (noActionPattern.test(trimmed)) {
-    return trimmed.toLowerCase().includes('nothing should be done') ? trimmed : `${trimmed} Nothing should be done.`
+    return fallback
   }
 
   return trimmed
