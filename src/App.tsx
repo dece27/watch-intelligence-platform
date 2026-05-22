@@ -17,7 +17,8 @@ import { Toaster } from "@/components/ui/sonner"
 import { MobileNav } from "@/components/MobileNav"
 
 function App() {
-  const [currentUser, setCurrentUser] = useKV<User | null>("currentUser", null)
+  const [persistedUser, setPersistedUser] = useKV<User | null>("currentUser", null)
+  const [currentUser, setCurrentUser] = useState<User | null>(persistedUser)
   const [activeModule, setActiveModule] = useState('collection')
   const [isOwner, setIsOwner] = useState(false)
   const [showWelcome, setShowWelcome] = useState(true)
@@ -25,6 +26,22 @@ function App() {
   const [watches, setWatches] = useState<Watch[]>([])
   const [watchesLoaded, setWatchesLoaded] = useState(false)
   const isMobile = useIsMobile()
+
+  useEffect(() => {
+    if (persistedUser) {
+      setCurrentUser(persistedUser)
+      return
+    }
+
+    try {
+      const sessionUser = sessionStorage.getItem("currentUserSession")
+      if (sessionUser) {
+        setCurrentUser(JSON.parse(sessionUser) as User)
+      }
+    } catch {
+      setCurrentUser(null)
+    }
+  }, [persistedUser])
 
   const watchList = watches || []
   const totalValue = watchList.reduce((sum, w) => sum + (w.currentValue || w.purchasePrice), 0)
@@ -45,12 +62,7 @@ function App() {
       if (currentUser?.id) {
         try {
           const watchesKey = `watches_${currentUser.id}`
-          console.log(`Loading watches from key: ${watchesKey}`)
           const loadedWatches = await window.spark.kv.get<Watch[]>(watchesKey)
-          console.log(`Loaded ${loadedWatches?.length || 0} watches`)
-          if (loadedWatches && loadedWatches.length > 0) {
-            console.log('First watch has imageUrl:', !!loadedWatches[0].imageUrl, loadedWatches[0].imageUrl?.substring(0, 50))
-          }
           setWatches(loadedWatches || [])
           setWatchesLoaded(true)
         } catch (error) {
@@ -66,8 +78,16 @@ function App() {
     loadWatches()
   }, [currentUser])
 
-  const handleLogin = (user: User) => {
+  const handleLogin = async (user: User, rememberMe: boolean) => {
     setCurrentUser(user)
+    if (rememberMe) {
+      await setPersistedUser(user)
+      sessionStorage.removeItem("currentUserSession")
+      return
+    }
+
+    await setPersistedUser(null)
+    sessionStorage.setItem("currentUserSession", JSON.stringify(user))
   }
 
   const handleLogout = async () => {
@@ -81,6 +101,8 @@ function App() {
         totalValue: totalValue
       })
     }
+    await setPersistedUser(null)
+    sessionStorage.removeItem("currentUserSession")
     setCurrentUser(null)
     setActiveModule('collection')
   }
@@ -152,8 +174,8 @@ function App() {
 
       {isMobile && <MobileNav activeModule={activeModule} onModuleChange={setActiveModule} />}
 
-      <WelcomeModal 
-        open={watchList.length === 0 && showWelcome} 
+      <WelcomeModal
+        open={watchesLoaded && watchList.length === 0 && showWelcome}
         onAddWatch={handleAddFirstWatch} 
         onOpenChange={setShowWelcome}
       />
