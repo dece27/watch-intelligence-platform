@@ -18,44 +18,12 @@ import { AdminDashboard } from "@/components/AdminDashboard"
 import { Toaster } from "@/components/ui/sonner"
 import { MobileNav } from "@/components/MobileNav"
 import { isAdminEmail } from "@/lib/adminAnalytics"
-
-const WATCH_PHOTO_KEY_PREFIX = "watch_photo_"
-const WATCH_PHOTO_REF_PREFIX = "kv-photo:"
-const MAX_DATA_IMAGE_URL_LENGTH = 800_000
-const MAX_REMOTE_IMAGE_URL_LENGTH = 2_048
-
-function getWatchPhotoKey(userId: string, watchId: string): string {
-  return `${WATCH_PHOTO_KEY_PREFIX}${userId}_${watchId}`
-}
-
-function toWatchPhotoRef(watchId: string): string {
-  return `${WATCH_PHOTO_REF_PREFIX}${watchId}`
-}
-
-function isWatchPhotoRef(imageUrl?: string): boolean {
-  return Boolean(imageUrl?.startsWith(WATCH_PHOTO_REF_PREFIX))
-}
-
-function sanitizeWatchImageUrl(imageUrl?: string): string | undefined {
-  if (!imageUrl) return undefined
-  const trimmed = imageUrl.trim()
-  if (!trimmed) return undefined
-
-  if (trimmed.startsWith("data:image/")) {
-    const isSafeDataImage = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(trimmed)
-    if (!isSafeDataImage || trimmed.length > MAX_DATA_IMAGE_URL_LENGTH) return undefined
-    return trimmed
-  }
-
-  try {
-    const parsed = new URL(trimmed)
-    if (parsed.protocol !== "https:") return undefined
-    if (trimmed.length > MAX_REMOTE_IMAGE_URL_LENGTH) return undefined
-    return parsed.toString()
-  } catch {
-    return undefined
-  }
-}
+import {
+  getWatchPhotoKey,
+  isWatchPhotoRef,
+  sanitizeWatchImageUrl,
+  prepareWatchForStorage,
+} from "@/lib/watchPhotoUtils"
 
 function decodeLegacySharedSlug(value: string): string | null {
   try {
@@ -282,34 +250,16 @@ function App() {
       const currentWatches = await window.spark.kv.get<Watch[]>(watchesKey) || []
       const updatedWatches = updater(currentWatches)
       const preparedWatches = await Promise.all(
-        updatedWatches.map(async (watch) => {
-          const sanitizedImageUrl = sanitizeWatchImageUrl(watch.imageUrl)
-
-          if (!sanitizedImageUrl) {
-            return {
-              watchForStorage: { ...watch, imageUrl: undefined },
-              watchForDisplay: { ...watch, imageUrl: undefined },
-            }
-          }
-
-          if (sanitizedImageUrl.startsWith("data:image/")) {
-            let imageForStorage = sanitizedImageUrl
-            try {
-              await window.spark.kv.set(getWatchPhotoKey(currentUser.id, watch.id), sanitizedImageUrl)
-              imageForStorage = toWatchPhotoRef(watch.id)
-            } catch (error) {
-              console.error(`Error saving watch photo for ${watch.id}:`, error)
-            }
-            return {
-              watchForStorage: { ...watch, imageUrl: imageForStorage },
-              watchForDisplay: { ...watch, imageUrl: sanitizedImageUrl },
-            }
-          }
-
-          return {
-            watchForStorage: { ...watch, imageUrl: sanitizedImageUrl },
-            watchForDisplay: { ...watch, imageUrl: sanitizedImageUrl },
-          }
+        updatedWatches.map((watch) => {
+          // Pass the currently hydrated display URL from in-memory state so that
+          // watches with an existing kv-photo: reference continue showing their photo.
+          const existingDisplayUrl = watches.find((w) => w.id === watch.id)?.imageUrl
+          return prepareWatchForStorage(
+            watch,
+            currentUser.id,
+            (key, value) => window.spark.kv.set(key, value),
+            existingDisplayUrl,
+          )
         })
       )
       const watchesForStorage = preparedWatches.map((watch) => watch.watchForStorage)
