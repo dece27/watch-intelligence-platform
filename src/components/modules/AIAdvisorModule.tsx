@@ -235,6 +235,7 @@ export function AIAdvisorModule({ watches, userId, preferredCurrency = "USD" }: 
 
   useEffect(() => {
     if (watches.length > 0) {
+      setSignals([])
       generateSignals()
       return
     }

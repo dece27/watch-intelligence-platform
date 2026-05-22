@@ -215,7 +215,7 @@ export function DealsModule({ watches, userId, preferredCurrency = "USD" }: Deal
 
     setPreferences((current) => ({
       ...current,
-      maxPrice: Math.max(0, Math.round(convertCurrency(current.maxPrice, previousCurrency, currentCurrency))),
+      maxPrice: Math.max(0, Number(convertCurrency(current.maxPrice, previousCurrency, currentCurrency).toFixed(2))),
     }))
     previousCurrencyRef.current = currentCurrency
   }, [preferredCurrency])

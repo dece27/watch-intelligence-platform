@@ -5,6 +5,7 @@ export type SupportedCurrency = (typeof SUPPORTED_CURRENCIES)[number]
 export const DEFAULT_CURRENCY: SupportedCurrency = "USD"
 
 const USD_EXCHANGE_RATES: Record<SupportedCurrency, number> = {
+  // Static fallback rates against USD (captured 2026-05) for client-side conversion.
   USD: 1,
   EUR: 0.92,
   GBP: 0.79,
