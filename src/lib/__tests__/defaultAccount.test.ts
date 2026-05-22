@@ -1,13 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import type { AuthRecord, User } from "@/lib/types"
 import { verifyPassword } from "@/lib/auth"
-import { PROTECTED_ADMIN_USER_ID_KEY } from "@/lib/adminAnalytics"
+
+const PROTECTED_ADMIN_USER_ID_KEY = "protected_admin_user_id"
 
 const ensureUserIndexedMock = vi.fn(async () => {})
 
-vi.mock("@/lib/adminAnalytics", () => ({
-  ensureUserIndexed: ensureUserIndexedMock,
-}))
+vi.mock("@/lib/adminAnalytics", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/adminAnalytics")>()
+  return {
+    ...actual,
+    ensureUserIndexed: ensureUserIndexedMock,
+  }
+})
 
 type KvStore = Map<string, unknown>
 
