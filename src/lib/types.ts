@@ -82,6 +82,17 @@ export interface User {
   avatarUrl?: string
 }
 
+export interface AuthRecord {
+  userId: string
+  passwordHash: string
+  salt: string
+  iterations: number
+  failedAttempts: number
+  lockUntil?: string
+  lastLoginAt?: string
+  lastFailedAt?: string
+}
+
 export interface VaultMetadata {
   userId: string
   vaultName: string
