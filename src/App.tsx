@@ -84,7 +84,6 @@ function App() {
 
   const watchList = watches || []
   const totalValue = watchList.reduce((sum, w) => sum + (w.currentValue || w.purchasePrice), 0)
-  const uniqueBrands = [...new Set(watchList.map(w => w.brand))]
 
   useEffect(() => {
     const loadWatches = async () => {
@@ -236,7 +235,7 @@ function App() {
       case 'ai-advisor':
         return <AIAdvisorModule watches={watchList} />
       case 'deals':
-        return <DealsModule userBrands={uniqueBrands} />
+        return <DealsModule watches={watchList} userId={currentUser?.id || ""} />
       case 'appraisal':
         return <AppraisalModule watches={watchList} />
       case 'feedback':

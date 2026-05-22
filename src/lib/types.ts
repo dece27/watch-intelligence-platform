@@ -25,12 +25,17 @@ export interface Deal {
   model: string
   referenceNumber?: string
   price: number
+  currency?: string
   marketValue?: number
   fairValue?: number
   discount: number
   condition: string
   seller: string
   location: string
+  source?: string
+  sourceUrl?: string
+  listedAt?: string
+  aiReasoning?: string
   imageUrl?: string
   matchScore: number
   dealScore?: number
@@ -80,6 +85,25 @@ export interface User {
   vaultName: string
   createdAt: string
   avatarUrl?: string
+}
+
+export interface DealsPreferences {
+  preferredBrands: string[]
+  selectedBrand: string
+  condition: string
+  maxPrice: number
+  minDiscount: number
+  minSellerRating: number
+  requireBox: boolean
+  requirePapers: boolean
+  aiOnlyTop: boolean
+  sortBy: 'ai-match' | 'discount' | 'price-asc' | 'price-desc' | 'newest'
+}
+
+export interface UserPreferences {
+  userId: string
+  deals?: DealsPreferences
+  updatedAt: string
 }
 
 export interface AuthRecord {
