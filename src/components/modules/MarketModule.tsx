@@ -137,7 +137,6 @@ const FALLBACK_AUCTION_RESULTS: AuctionResult[] = [
 ]
 
 const AUCTION_SEARCH_TERMS = ['1518', '6264', '4131', 'rm27-01', 'resonance', 'tourbillon souverain']
-const SENTIMENT_MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const SENTIMENT_LINE_COLORS = ['#5E8C6A', '#4A7C90', '#C9A84C', '#A0785A', '#6A5ACD', '#3B9D9D']
 
 export function MarketModule({ watches }: MarketModuleProps) {
@@ -183,12 +182,32 @@ export function MarketModule({ watches }: MarketModuleProps) {
     return BRAND_INDICES.filter(b => b.change30d > 0).length
   }, [])
 
+  const sentimentMonthLabels = useMemo(() => {
+    const formatter = new Intl.DateTimeFormat('en-US', { month: 'short' })
+    const now = new Date()
+
+    return Array.from({ length: 12 }, (_, index) => {
+      const date = new Date(now)
+      date.setMonth(now.getMonth() - (11 - index))
+      return formatter.format(date)
+    })
+  }, [])
+
   const brandSentimentSeries = useMemo(() => {
+    const getLineColor = (index: number) => {
+      if (index < SENTIMENT_LINE_COLORS.length) {
+        return SENTIMENT_LINE_COLORS[index]
+      }
+
+      const hue = Math.round((index * 137.508) % 360)
+      return `hsl(${hue}, 52%, 46%)`
+    }
+
     return BRAND_INDICES.map((brandIndex, index) => ({
       key: `brand-${index}`,
       brand: brandIndex.brand,
       trend: brandIndex.trend,
-      color: SENTIMENT_LINE_COLORS[index % SENTIMENT_LINE_COLORS.length],
+      color: getLineColor(index),
     }))
   }, [])
 
@@ -197,14 +216,14 @@ export function MarketModule({ watches }: MarketModuleProps) {
   )
 
   const overallSentimentChartData = useMemo(() => {
-    return SENTIMENT_MONTH_LABELS.map((month, monthIndex) => {
-      const point: { month: string; [key: string]: number | string } = { month }
+    return sentimentMonthLabels.map((month, monthIndex) => {
+      const point: { month: string; [key: string]: number | string | null } = { month }
       brandSentimentSeries.forEach((series) => {
-        point[series.key] = series.trend[monthIndex]
+        point[series.key] = series.trend[monthIndex] ?? null
       })
       return point
     })
-  }, [brandSentimentSeries])
+  }, [brandSentimentSeries, sentimentMonthLabels])
 
   const toggleSentimentBrandVisibility = (seriesKey: string) => {
     setVisibleSentimentBrands((current) => {
