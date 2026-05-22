@@ -93,7 +93,6 @@ function App() {
       })
     }
 
-    const isAdmin = isAdminEmail(currentUser?.email)
     await setPersistedUser(null)
     sessionStorage.removeItem("currentUserSession")
     setCurrentUser(null)
@@ -125,6 +124,8 @@ function App() {
       throw error
     }
   }
+
+  const isAdmin = isAdminEmail(currentUser?.email)
 
   const renderModule = () => {
     switch (activeModule) {
