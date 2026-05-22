@@ -165,6 +165,11 @@ const getTrendMetricCardClass = (change: number) =>
   change >= 0
     ? 'border-success/20 bg-success/5'
     : 'border-destructive/20 bg-destructive/5'
+const getTrendMetrics = (oneMonthChange: number, sixMonthChange: number, twelveMonthChange: number) => [
+  { label: '1M', change: oneMonthChange, description: 'vs last month' },
+  { label: '6M', change: sixMonthChange, description: 'vs 6 months ago' },
+  { label: '12M', change: twelveMonthChange, description: 'vs 12 months ago' }
+]
 
 export function MarketModule({ watches }: MarketModuleProps) {
   const [priceAlerts, setPriceAlerts] = useKV<PriceAlert[]>("priceAlerts", [])
@@ -545,11 +550,7 @@ export function MarketModule({ watches }: MarketModuleProps) {
           const oneMonthChange = getTrendChange(brandIndex.trend, 1)
           const sixMonthChange = getTrendChange(brandIndex.trend, 6)
           const twelveMonthChange = getTrendChange(brandIndex.trend, brandIndex.trend.length - 1)
-          const trendMetrics = [
-            { label: '1M', change: oneMonthChange, description: 'vs last month' },
-            { label: '6M', change: sixMonthChange, description: 'vs 6 months ago' },
-            { label: '12M', change: twelveMonthChange, description: 'vs 12 months ago' }
-          ]
+          const trendMetrics = getTrendMetrics(oneMonthChange, sixMonthChange, twelveMonthChange)
 
           return (
             <Card key={brandIndex.brand} className={`bg-card border-border ${isOwned ? 'ring-2 ring-primary/30' : ''}`}>
@@ -578,7 +579,7 @@ export function MarketModule({ watches }: MarketModuleProps) {
                         className={`rounded-xl border px-3 py-4 transition-colors ${getTrendMetricCardClass(metric.change)}`}
                       >
                         <div className="flex items-center justify-between gap-2">
-                          <div className="text-xs font-medium tracking-[0.03em] text-muted-foreground">
+                          <div className="text-xs font-medium tracking-normal text-muted-foreground">
                             {metric.label}
                           </div>
                           {isPositive ? (
