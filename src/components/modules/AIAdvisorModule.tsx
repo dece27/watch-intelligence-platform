@@ -35,6 +35,8 @@ const DEAL_OF_DAY_FALLBACK_BRANDS = ["Rolex", "Omega", "Patek Philippe", "Audema
 const IDENTIFIER_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 const IDENTIFIER_MAX_DIMENSION = 800
 const IDENTIFIER_MAX_OUTPUT_KB = 500
+const IDENTIFIER_DATA_URL_PREFIX = 'data:image/'
+const IDENTIFIER_COMPRESSION_QUALITY = 0.75
 
 const extractJsonPayload = (response: string) => {
   const trimmed = response.trim()
@@ -90,6 +92,22 @@ const parseRebalanceAnalysis = (response: string): RebalanceAnalysis => {
   }
 }
 
+const getSafeIdentifierImageSource = (value: string) => {
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+
+  if (trimmed.startsWith(IDENTIFIER_DATA_URL_PREFIX)) {
+    return trimmed
+  }
+
+  try {
+    const parsedUrl = new URL(trimmed)
+    return parsedUrl.protocol === 'https:' ? parsedUrl.href : ''
+  } catch {
+    return ''
+  }
+}
+
 const STARTER_QUESTIONS = [
   "What should I add to diversify my collection?",
   "Which of my watches has the best investment potential?",
@@ -113,6 +131,7 @@ export function AIAdvisorModule({ watches }: AIAdvisorModuleProps) {
   const [isLoadingDeal, setIsLoadingDeal] = useState(false)
   const [mockListings, setMockListings] = useKV<Deal[]>("mockListings", [])
   const [isLiveDealData, setIsLiveDealData] = useState(false)
+  const safeIdentifierImage = getSafeIdentifierImageSource(identifierImage)
 
   useEffect(() => {
     if (watches.length > 0 && signals.length === 0) {
@@ -262,8 +281,9 @@ Provide expert, concise advice (2-3 paragraphs max) about their collection, watc
 
         ctx.drawImage(img, 0, 0, width, height)
 
-        const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.75)
-        const sizeInKB = Math.round((compressedDataUrl.length * 3) / 4 / 1024)
+        const compressedDataUrl = canvas.toDataURL('image/jpeg', IDENTIFIER_COMPRESSION_QUALITY)
+        const base64Payload = compressedDataUrl.split(',')[1] || ''
+        const sizeInKB = Math.round((base64Payload.length * 3) / 4 / 1024)
 
         if (sizeInKB > IDENTIFIER_MAX_OUTPUT_KB) {
           toast.error(`Image too large (${sizeInKB}KB). Please use a smaller photo.`)
@@ -290,7 +310,7 @@ Provide expert, concise advice (2-3 paragraphs max) about their collection, watc
   }
 
   const handleIdentifyWatch = async () => {
-    if (!identifierImage) {
+    if (!safeIdentifierImage) {
       toast.error("Please upload a photo or enter an image URL")
       return
     }
@@ -299,7 +319,7 @@ Provide expert, concise advice (2-3 paragraphs max) about their collection, watc
     try {
       const promptText = `You are a luxury watch expert. Analyze this watch image and identify it.
 
-Image source (URL or base64-encoded photo): ${identifierImage}
+Image source (URL or base64-encoded photo): ${safeIdentifierImage}
 
 Based on the image, identify:
 - Brand
@@ -322,7 +342,7 @@ Respond in valid JSON format:
       
       setIdentifiedWatch({
         ...parsed,
-        imageUrl: identifierImage
+        imageUrl: safeIdentifierImage
       })
     } catch (error) {
       toast.error("Failed to identify watch")
@@ -332,7 +352,7 @@ Respond in valid JSON format:
         reference: "Unknown",
         value: 0,
         features: "Unable to identify from this image. Please try a clearer photo showing the dial and case details.",
-        imageUrl: identifierImage
+        imageUrl: safeIdentifierImage
       })
     } finally {
       setIsIdentifying(false)
@@ -822,7 +842,7 @@ Respond in valid JSON format:
                   <div className="flex gap-2">
                     <Input
                       id="watch-image"
-                      value={identifierImage.startsWith('data:image/') ? '' : identifierImage}
+                      value={identifierImage.startsWith(IDENTIFIER_DATA_URL_PREFIX) ? '' : identifierImage}
                       onChange={(e) => setIdentifierImage(e.target.value)}
                       placeholder="Paste image URL or upload a photo..."
                     />
@@ -844,10 +864,10 @@ Respond in valid JSON format:
                       Upload
                     </Button>
                   </div>
-                  {identifierImage && (
+                  {safeIdentifierImage && (
                     <div className="mt-2">
                       <img 
-                        src={identifierImage} 
+                        src={safeIdentifierImage} 
                         alt="Watch to identify" 
                         className="w-full h-48 object-cover rounded border border-border"
                         onError={(e) => {
@@ -860,7 +880,7 @@ Respond in valid JSON format:
                 </div>
                 <Button 
                   onClick={handleIdentifyWatch}
-                  disabled={!identifierImage || isIdentifying}
+                  disabled={!safeIdentifierImage || isIdentifying}
                   className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
                 >
                   {isIdentifying ? 'Identifying...' : 'Identify Watch'}
