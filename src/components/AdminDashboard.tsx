@@ -15,6 +15,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { UserAIUsage, ADMIN_EMAIL } from "@/lib/adminAnalytics"
+import { DEFAULT_ACCOUNT_EMAIL, ensureDefaultAccount } from "@/lib/defaultAccount"
 import { toast } from "sonner"
 
 interface AdminUserStats {
@@ -89,9 +90,11 @@ export function AdminDashboard() {
         const user = await window.spark.kv.get<User>(`user_${userId}`)
         if (!user) continue
 
-        const isAdmin = normalizeEmail(user.email) === ADMIN_EMAIL
+        const normalizedUserEmail = normalizeEmail(user.email)
+        const isProtectedDefaultAccount = normalizedUserEmail === normalizeEmail(DEFAULT_ACCOUNT_EMAIL)
+        const isAdmin = normalizedUserEmail === ADMIN_EMAIL
 
-        if (isAdmin) {
+        if (isAdmin || isProtectedDefaultAccount) {
           adminUserIds.push(userId)
           continue
         }
@@ -120,6 +123,7 @@ export function AdminDashboard() {
 
       // Update user index to only retain admin accounts
       await window.spark.kv.set("all_user_ids", adminUserIds)
+      await ensureDefaultAccount()
 
       // Delete non-admin feedback
       const feedbackIds = await window.spark.kv.get<string[]>("all_feedback_ids") || []
@@ -295,8 +299,8 @@ export function AdminDashboard() {
             <AlertDialogTitle>Reset Environment?</AlertDialogTitle>
             <AlertDialogDescription>
               This will permanently delete all user accounts, collections, watch photos, AI usage
-              records, and feedback — except for the admin account ({ADMIN_EMAIL}). This action
-              cannot be undone.
+              records, and feedback — except for the admin account ({ADMIN_EMAIL}) and the protected
+              default account ({DEFAULT_ACCOUNT_EMAIL}). This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
