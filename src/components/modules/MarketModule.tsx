@@ -119,6 +119,19 @@ const FALLBACK_AUCTION_RESULTS: AuctionResult[] = [
 ]
 
 const AUCTION_SEARCH_TERMS = ['1518', '6264', '4131', 'rm27-01', 'resonance', 'tourbillon souverain']
+const AUCTION_BRANDS = [
+  'Patek Philippe',
+  'Audemars Piguet',
+  'Richard Mille',
+  'Grand Seiko',
+  'F.P. Journe',
+  'Rolex',
+  'Cartier',
+  'Omega',
+  'IWC',
+].sort((left, right) => right.length - left.length)
+const AUCTION_TITLE_LEADING_SEPARATOR_PATTERN = /^[\u2010-\u2015\-:\s]+/
+const AUCTION_TITLE_REFERENCE_PREFIX_PATTERN = /^Ref\.?\s*/i
 const SENTIMENT_LINE_COLORS = ['#5E8C6A', '#4A7C90', '#C9A84C', '#A0785A', '#6A5ACD', '#3B9D9D']
 const GOLDEN_ANGLE_DEGREES = 137.508
 const SENTIMENT_Y_AXIS_PADDING = 2
@@ -131,20 +144,29 @@ const formatAuctionDate = (dateValue: string) => {
   return parsed.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
-const getEstimatePerformanceLabel = (hasEstimate: boolean, aboveEstimate: boolean, withinEstimate: boolean) => {
-  if (!hasEstimate) {
-    return 'Estimate unavailable'
+const getAuctionBrandAndModel = (auction: AuctionResult) => {
+  const lot = auction.lot.trim()
+  const normalizedLot = lot.toLowerCase()
+  const matchedBrand = AUCTION_BRANDS.find((brand) => normalizedLot.includes(brand.toLowerCase()))
+
+  if (!matchedBrand) {
+    return {
+      brand: '—',
+      model: lot || '—',
+    }
   }
 
-  if (aboveEstimate) {
-    return 'Above estimate'
-  }
+  const brandStartIndex = normalizedLot.indexOf(matchedBrand.toLowerCase())
+  const model = lot
+    .slice(brandStartIndex + matchedBrand.length)
+    .replace(AUCTION_TITLE_LEADING_SEPARATOR_PATTERN, '')
+    .replace(AUCTION_TITLE_REFERENCE_PREFIX_PATTERN, '')
+    .trim()
 
-  if (withinEstimate) {
-    return 'Within estimate'
+  return {
+    brand: matchedBrand,
+    model: model || '—',
   }
-
-  return 'Below estimate'
 }
 
 const getTrendChange = (trend: number[], months: number) => {
@@ -334,59 +356,6 @@ export function MarketModule({ watches }: MarketModuleProps) {
   const handleDeleteAlert = (id: string) => {
     setPriceAlerts(current => (current || []).filter(a => a.id !== id))
     toast.success("Price alert removed")
-  }
-
-  const getAuctionHouseSearchUrl = (auctionHouse: string, query: string): string | null => {
-    const normalizedHouse = auctionHouse.toLowerCase()
-
-    if (normalizedHouse.includes("christie")) {
-      return `https://www.christies.com/en/results/soldlots/?searchphrase=${encodeURIComponent(query)}`
-    }
-
-    if (normalizedHouse.includes("phillips")) {
-      return `https://www.phillips.com/search?q=${encodeURIComponent(query)}`
-    }
-
-    return null
-  }
-
-  const getAuctionDetailUrl = (auction: AuctionResult) => {
-    const sourceUrl = auction.sourceUrl?.trim()
-    if (sourceUrl) {
-      try {
-        const parsed = new URL(sourceUrl)
-        if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
-          return parsed.toString()
-        }
-      } catch {
-        // Fall back to search URL below.
-      }
-    }
-
-    const normalizeSearchText = (value: unknown) => {
-      if (typeof value !== 'string') {
-        return ''
-      }
-
-      return value
-        .replace(/[^a-zA-Z0-9\s'&./-]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, 120)
-    }
-
-    const sanitizedHouse = normalizeSearchText(auction.house)
-    const sanitizedReference = normalizeSearchText(auction.reference ?? '')
-    const sanitizedLot = normalizeSearchText(auction.lot)
-    const lotReferenceQuery = `${sanitizedReference} ${sanitizedLot}`.trim()
-    const auctionHouseSearchUrl = getAuctionHouseSearchUrl(auction.house, lotReferenceQuery)
-    if (auctionHouseSearchUrl) {
-      return auctionHouseSearchUrl
-    }
-
-    const query = `${sanitizedHouse} ${lotReferenceQuery} auction result`.trim()
-
-    return `https://www.google.com/search?q=${encodeURIComponent(query)}`
   }
 
   const priceHistoryData = searchReference ? [
@@ -764,45 +733,25 @@ export function MarketModule({ watches }: MarketModuleProps) {
                 <tr className="border-b border-border">
                   <th className="text-left py-3 px-2 text-sm font-medium text-muted-foreground">House</th>
                   <th className="text-left py-3 px-2 text-sm font-medium text-muted-foreground">Date</th>
+                  <th className="text-left py-3 px-2 text-sm font-medium text-muted-foreground">Brand</th>
+                  <th className="text-left py-3 px-2 text-sm font-medium text-muted-foreground">Model</th>
                   <th className="text-left py-3 px-2 text-sm font-medium text-muted-foreground">Reference</th>
-                  <th className="text-left py-3 px-2 text-sm font-medium text-muted-foreground">Lot</th>
-                  <th className="text-right py-3 px-2 text-sm font-medium text-muted-foreground">Result</th>
-                  <th className="text-right py-3 px-2 text-sm font-medium text-muted-foreground">Est.</th>
-                  <th className="text-left py-3 px-2 text-sm font-medium text-muted-foreground">Performance</th>
-                  <th className="text-right py-3 px-2 text-sm font-medium text-muted-foreground">View</th>
+                  <th className="text-right py-3 px-2 text-sm font-medium text-muted-foreground">Auction Price Sold</th>
                 </tr>
               </thead>
               <tbody>
                 {auctionResults.map((auction, idx) => {
-                  const hasEstimate = typeof auction.estLow === 'number' && typeof auction.estHigh === 'number'
-                  const aboveEstimate = hasEstimate && auction.result > (auction.estHigh ?? 0)
-                  const withinEstimate = hasEstimate && !aboveEstimate && auction.result >= (auction.estLow ?? 0)
-                  const resultColor = aboveEstimate ? '#5E8C6A' : withinEstimate ? '#C9A84C' : 'inherit'
-                  const performanceLabel = getEstimatePerformanceLabel(hasEstimate, aboveEstimate, withinEstimate)
+                  const { brand, model } = getAuctionBrandAndModel(auction)
 
                   return (
                     <tr key={idx} className="border-b border-border last:border-0">
                       <td className="py-3 px-2 text-sm">{auction.house}</td>
                       <td className="py-3 px-2 text-sm text-muted-foreground">{formatAuctionDate(auction.date)}</td>
+                      <td className="py-3 px-2 text-sm">{brand}</td>
+                      <td className="py-3 px-2 text-sm">{model}</td>
                       <td className="py-3 px-2 text-sm text-muted-foreground">{auction.reference || '—'}</td>
-                      <td className="py-3 px-2 text-sm">{auction.lot}</td>
-                      <td className="py-3 px-2 text-sm text-right font-bold tabular-nums" style={{ color: resultColor }}>
+                      <td className="py-3 px-2 text-sm text-right font-bold tabular-nums">
                         ${auction.result.toLocaleString()}
-                      </td>
-                      <td className="py-3 px-2 text-sm text-right text-muted-foreground tabular-nums">
-                        {hasEstimate
-                          ? `$${(auction.estLow ?? 0).toLocaleString()}–$${(auction.estHigh ?? 0).toLocaleString()}`
-                          : '—'}
-                      </td>
-                      <td className="py-3 px-2 text-sm">
-                        <Badge variant="outline">{performanceLabel}</Badge>
-                      </td>
-                      <td className="py-3 px-2 text-sm text-right">
-                        <Button asChild variant="link" size="sm" className="h-auto p-0">
-                          <a href={getAuctionDetailUrl(auction)} target="_blank" rel="noopener noreferrer">
-                            View
-                          </a>
-                        </Button>
                       </td>
                     </tr>
                   )
@@ -812,7 +761,6 @@ export function MarketModule({ watches }: MarketModuleProps) {
           </div>
           <div className="text-xs text-muted-foreground mt-4 pt-4 border-t border-border">
             Sources: {auctionResultsDataSource === 'live' ? 'Live Phillips/Christie’s feeds' : 'Fallback cached data'}.
-            {' '}Each row includes a direct auction/result link when available.
             {auctionResultsUpdatedAt ? ` Last sync: ${new Date(auctionResultsUpdatedAt).toLocaleString()}.` : ''}
           </div>
         </CardContent>
