@@ -7,6 +7,7 @@ import { Heart, Plus, Copy, Check } from "@phosphor-icons/react"
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer } from "recharts"
 import { useKV } from "@github/spark/hooks"
 import { callTrackedLlm } from "@/lib/adminAnalytics"
+import { formatCurrency } from "@/lib/currency"
 
 interface Deal {
   id: string
@@ -32,9 +33,10 @@ interface DealDetailModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onFilterBrand?: (brand: string) => void
+  preferredCurrency?: string
 }
 
-export function DealDetailModal({ deal, open, onOpenChange, onFilterBrand }: DealDetailModalProps) {
+export function DealDetailModal({ deal, open, onOpenChange, onFilterBrand, preferredCurrency = "USD" }: DealDetailModalProps) {
   const [savedDeals, setSavedDeals] = useKV<string[]>("saved-deals", [])
   const [watchlist, setWatchlist] = useKV<string[]>("deal-watchlist", [])
   const [copied, setCopied] = useState(false)
@@ -56,9 +58,9 @@ export function DealDetailModal({ deal, open, onOpenChange, onFilterBrand }: Dea
       const promptText = `You are a luxury watch market analyst. Analyze this deal:
 
 Watch: ${deal.brand} ${deal.model} ${deal.referenceNumber || ''}
-Asking Price: $${deal.price.toLocaleString()}
-Fair Value: $${fairValue.toLocaleString()}
-Potential Savings: $${savings.toLocaleString()}
+Asking Price: ${formatCurrency(deal.price, preferredCurrency)}
+Fair Value: ${formatCurrency(fairValue, preferredCurrency)}
+Potential Savings: ${formatCurrency(savings, preferredCurrency)}
 Condition: ${deal.condition}
 Days Listed: ${deal.daysListed || 'Unknown'}
 
@@ -129,7 +131,7 @@ Provide:
 
   const offerAmount = Math.round(fairValue * 0.92)
   const vsMarket = ((offerAmount - fairValue) / fairValue * 100).toFixed(1)
-  const offerReasoning = `Based on ${daysListed} days listed and current market for ${deal.brand} ${deal.referenceNumber || deal.model} averaging $${fairValue.toLocaleString()}, I'd like to offer $${offerAmount.toLocaleString()}. Happy to proceed quickly.`
+  const offerReasoning = `Based on ${daysListed} days listed and current market for ${deal.brand} ${deal.referenceNumber || deal.model} averaging ${formatCurrency(fairValue, preferredCurrency)}, I'd like to offer ${formatCurrency(offerAmount, preferredCurrency)}. Happy to proceed quickly.`
 
   const isSaved = savedDeals?.includes(deal.id)
   const isInWatchlist = watchlist?.includes(deal.id)
@@ -187,17 +189,17 @@ Provide:
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
             <Card className="bg-white/[0.02] border-white/[0.08] p-4">
               <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Asking Price</div>
-              <div className="text-xl md:text-2xl font-semibold">${deal.price.toLocaleString()}</div>
+              <div className="text-xl md:text-2xl font-semibold">{formatCurrency(deal.price, preferredCurrency)}</div>
             </Card>
 
             <Card className="bg-white/[0.02] border-white/[0.08] p-4">
               <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Fair Value</div>
-              <div className="text-xl md:text-2xl font-semibold">${fairValue.toLocaleString()}</div>
+              <div className="text-xl md:text-2xl font-semibold">{formatCurrency(fairValue, preferredCurrency)}</div>
             </Card>
 
             <Card className="bg-white/[0.02] border-white/[0.08] p-4">
               <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Potential Savings</div>
-              <div className="text-xl md:text-2xl font-semibold text-success">${savings.toLocaleString()} ({savingsPercent}%)</div>
+              <div className="text-xl md:text-2xl font-semibold text-success">{formatCurrency(savings, preferredCurrency)} ({savingsPercent}%)</div>
             </Card>
           </div>
 
@@ -283,7 +285,7 @@ Provide:
               <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                 <div>
                   <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Offer Amount</div>
-                  <div className="text-2xl md:text-3xl font-semibold">${offerAmount.toLocaleString()}</div>
+                  <div className="text-2xl md:text-3xl font-semibold">{formatCurrency(offerAmount, preferredCurrency)}</div>
                   <div className="text-sm text-muted-foreground mt-1">{vsMarket}% vs market average</div>
                 </div>
                 <Button onClick={handleCopyOffer} size="lg" className="gap-2 w-full md:w-auto">

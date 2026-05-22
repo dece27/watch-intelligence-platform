@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { User } from "@/lib/types"
 import { Button } from "@/components/ui/button"
+import { Label } from "@/components/ui/label"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,16 +10,20 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { SignOut, Vault, User as UserIcon, ChatCircleDots } from "@phosphor-icons/react"
 import { FeedbackModal } from "@/components/FeedbackModal"
+import { SUPPORTED_CURRENCIES } from "@/lib/currency"
 
 interface UserProfileProps {
   user: User
   onLogout: () => void
+  preferredCurrency: string
+  onCurrencyChange: (currency: string) => void
 }
 
-export function UserProfile({ user, onLogout }: UserProfileProps) {
+export function UserProfile({ user, onLogout, preferredCurrency, onCurrencyChange }: UserProfileProps) {
   const [feedbackOpen, setFeedbackOpen] = useState(false)
   
   const initials = user.name
@@ -55,6 +60,22 @@ export function UserProfile({ user, onLogout }: UserProfileProps) {
               <span className="text-xs text-muted-foreground">Your Vault</span>
             </div>
           </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <div className="px-2 py-2 space-y-2">
+            <Label htmlFor="preferred-currency" className="text-xs text-muted-foreground">Preferred Currency</Label>
+            <Select value={preferredCurrency} onValueChange={onCurrencyChange}>
+              <SelectTrigger id="preferred-currency" className="h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SUPPORTED_CURRENCIES.map((currency) => (
+                  <SelectItem key={currency} value={currency}>
+                    {currency}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => setFeedbackOpen(true)}>
             <ChatCircleDots className="mr-2 h-4 w-4" />

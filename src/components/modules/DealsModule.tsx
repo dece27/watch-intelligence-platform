@@ -11,11 +11,13 @@ import { Heart, MapPin, ArrowsClockwise } from "@phosphor-icons/react"
 import { DealDetailModal } from "@/components/DealDetailModal"
 import { callTrackedLlm } from "@/lib/adminAnalytics"
 import { searchChrono24Deals, clearChrono24SearchCache } from "@/lib/chrono24-client"
+import { formatCurrency } from "@/lib/currency"
 import { FALLBACK_DEALS } from "@/lib/fallback-deals"
 
 interface DealsModuleProps {
   watches: Watch[]
   userId: string
+  preferredCurrency?: string
 }
 
 const DEFAULT_MAX_PRICE = 25000
@@ -52,17 +54,7 @@ const toConditionLevel = (condition: string) => {
   return 0
 }
 
-const formatDealPrice = (amount: number, currency = "USD") => {
-  try {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency,
-      maximumFractionDigits: 0,
-    }).format(amount)
-  } catch {
-    return `$${amount.toLocaleString()}`
-  }
-}
+const formatDealPrice = (amount: number, currency = "USD") => formatCurrency(amount, currency, { maximumFractionDigits: 0 })
 
 const scoreHeuristically = (deal: Deal, watches: Watch[], prefs: DealsPreferences): Deal => {
   const ownedBrands = new Set(watches.map((watch) => watch.brand.toLowerCase()))
@@ -140,7 +132,7 @@ const parseAiRanking = (
   return rankingMap
 }
 
-export function DealsModule({ watches, userId }: DealsModuleProps) {
+export function DealsModule({ watches, userId, preferredCurrency = "USD" }: DealsModuleProps) {
   const [deals, setDeals] = useState<Deal[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -481,7 +473,7 @@ Return every deal id exactly once.`
             </div>
 
             <div className="space-y-2">
-              <Label>Max Price (USD)</Label>
+              <Label>Max Price ({preferredCurrency})</Label>
               <Input
                 type="number"
                 min={0}
@@ -632,12 +624,12 @@ Return every deal id exactly once.`
               <div className="flex justify-between items-baseline">
                 <div>
                   <div className="text-sm text-muted-foreground">Price</div>
-                  <div className="text-2xl font-semibold text-primary">{formatDealPrice(deal.price, deal.currency)}</div>
+                  <div className="text-2xl font-semibold text-primary">{formatDealPrice(deal.price, preferredCurrency)}</div>
                 </div>
                 <div className="text-right">
                   <div className="text-sm text-muted-foreground">Market</div>
                   <div className="text-lg font-medium line-through text-muted-foreground">
-                    {formatDealPrice(deal.marketValue || deal.fairValue || deal.price, deal.currency)}
+                    {formatDealPrice(deal.marketValue || deal.fairValue || deal.price, preferredCurrency)}
                   </div>
                 </div>
               </div>
@@ -700,6 +692,7 @@ Return every deal id exactly once.`
           open={isModalOpen}
           onOpenChange={setIsModalOpen}
           onFilterBrand={handleFilterBrand}
+          preferredCurrency={preferredCurrency}
         />
       )}
     </div>
