@@ -138,6 +138,30 @@ const FALLBACK_AUCTION_RESULTS: AuctionResult[] = [
 
 const AUCTION_SEARCH_TERMS = ['1518', '6264', '4131', 'rm27-01', 'resonance', 'tourbillon souverain']
 
+const formatAuctionDate = (dateValue: string) => {
+  const parsed = new Date(dateValue)
+  if (Number.isNaN(parsed.getTime())) {
+    return dateValue
+  }
+  return parsed.toLocaleDateString()
+}
+
+const getEstimatePerformanceLabel = (hasEstimate: boolean, aboveEstimate: boolean, withinEstimate: boolean) => {
+  if (!hasEstimate) {
+    return 'Estimate unavailable'
+  }
+
+  if (aboveEstimate) {
+    return 'Above estimate'
+  }
+
+  if (withinEstimate) {
+    return 'Within estimate'
+  }
+
+  return 'Below estimate'
+}
+
 export function MarketModule({ watches }: MarketModuleProps) {
   const [priceAlerts, setPriceAlerts] = useKV<PriceAlert[]>("priceAlerts", [])
   const [isAlertDialogOpen, setIsAlertDialogOpen] = useState(false)
@@ -301,14 +325,6 @@ export function MarketModule({ watches }: MarketModuleProps) {
     const query = `${sanitizedHouse} ${lotReferenceQuery} auction result`.trim()
 
     return `https://www.google.com/search?q=${encodeURIComponent(query)}`
-  }
-
-  const formatAuctionDate = (dateValue: string) => {
-    const parsed = new Date(dateValue)
-    if (Number.isNaN(parsed.getTime())) {
-      return dateValue
-    }
-    return parsed.toLocaleDateString()
   }
 
   const priceHistoryData = searchReference ? [
@@ -640,9 +656,7 @@ export function MarketModule({ watches }: MarketModuleProps) {
                   const aboveEstimate = hasEstimate && auction.result > (auction.estHigh ?? 0)
                   const withinEstimate = hasEstimate && !aboveEstimate && auction.result >= (auction.estLow ?? 0)
                   const resultColor = aboveEstimate ? '#5E8C6A' : withinEstimate ? '#C9A84C' : 'inherit'
-                  const performanceLabel = hasEstimate
-                    ? (aboveEstimate ? 'Above estimate' : withinEstimate ? 'Within estimate' : 'Below estimate')
-                    : 'Estimate unavailable'
+                  const performanceLabel = getEstimatePerformanceLabel(hasEstimate, aboveEstimate, withinEstimate)
                    
                   return (
                     <tr key={idx} className="border-b border-border last:border-0">
