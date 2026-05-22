@@ -52,7 +52,7 @@ function App() {
   const isMobile = useIsMobile()
 
   useEffect(() => {
-    const syncSharedSlug = () => {
+    const updateSharedSlugFromLocation = () => {
       setSharedSlug(
         getSharedSlugFromLocation(
           window.location.pathname,
@@ -62,13 +62,13 @@ function App() {
       )
     }
 
-    syncSharedSlug()
-    window.addEventListener("hashchange", syncSharedSlug)
-    window.addEventListener("popstate", syncSharedSlug)
+    updateSharedSlugFromLocation()
+    window.addEventListener("hashchange", updateSharedSlugFromLocation)
+    window.addEventListener("popstate", updateSharedSlugFromLocation)
 
     return () => {
-      window.removeEventListener("hashchange", syncSharedSlug)
-      window.removeEventListener("popstate", syncSharedSlug)
+      window.removeEventListener("hashchange", updateSharedSlugFromLocation)
+      window.removeEventListener("popstate", updateSharedSlugFromLocation)
     }
   }, [])
 
