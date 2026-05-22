@@ -7,6 +7,10 @@ const CHRONO24_API_HOST = import.meta.env.VITE_CHRONO24_API_HOST?.trim() || "chr
 const SEARCH_ENDPOINTS = ["/listings/search", "/search", "/api/search"]
 const FALLBACK_IMAGE = "https://images.unsplash.com/photo-1522312346375-d1a52e2b99b3?w=400"
 const DEFAULT_UNRANKED_SCORE = 60
+const SEARCH_CACHE_TTL_MS = 10 * 60 * 1000
+const MAX_RATE_LIMIT_RETRY_DELAY_MS = 1500
+const SEARCH_CACHE_PREFIX = "chrono24-search:"
+const PREFERRED_ENDPOINT_STORAGE_KEY = "chrono24-preferred-endpoint"
 
 export interface Chrono24SearchParams {
   query?: string
@@ -18,8 +22,100 @@ export interface Chrono24SearchParams {
   limit?: number
 }
 
+interface CachedChrono24Deals {
+  deals: Deal[]
+  expiresAt: number
+}
+
+class Chrono24HttpError extends Error {
+  constructor(
+    readonly status: number,
+    readonly retryAfterMs: number | null = null
+  ) {
+    super(`Chrono24 request failed (${status})`)
+    this.name = "Chrono24HttpError"
+  }
+}
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null
+
+const canUseStorage = () => typeof window !== "undefined" && typeof window.localStorage !== "undefined"
+
+const delay = (ms: number) => new Promise<void>((resolve) => {
+  window.setTimeout(resolve, ms)
+})
+
+const getSearchCacheKey = (params: Chrono24SearchParams) => {
+  const serialized = JSON.stringify(
+    Object.entries(params)
+      .filter(([, value]) => value !== undefined && value !== null && value !== "")
+      .sort(([left], [right]) => left.localeCompare(right))
+  )
+
+  return `${SEARCH_CACHE_PREFIX}${serialized}`
+}
+
+const readCachedDeals = (params: Chrono24SearchParams, allowExpired = false): Deal[] | null => {
+  if (!canUseStorage()) return null
+
+  const raw = window.localStorage.getItem(getSearchCacheKey(params))
+  if (!raw) return null
+
+  try {
+    const parsed = JSON.parse(raw) as CachedChrono24Deals
+    if (!Array.isArray(parsed.deals)) return null
+    if (!allowExpired && parsed.expiresAt < Date.now()) return null
+    return parsed.deals
+  } catch {
+    return null
+  }
+}
+
+const writeCachedDeals = (params: Chrono24SearchParams, deals: Deal[]) => {
+  if (!canUseStorage()) return
+
+  const payload: CachedChrono24Deals = {
+    deals,
+    expiresAt: Date.now() + SEARCH_CACHE_TTL_MS,
+  }
+
+  window.localStorage.setItem(getSearchCacheKey(params), JSON.stringify(payload))
+}
+
+const getPreferredEndpoint = () => {
+  if (!canUseStorage()) return null
+  const stored = window.localStorage.getItem(PREFERRED_ENDPOINT_STORAGE_KEY)
+  return stored && SEARCH_ENDPOINTS.includes(stored) ? stored : null
+}
+
+const setPreferredEndpoint = (endpoint: string) => {
+  if (!canUseStorage()) return
+  window.localStorage.setItem(PREFERRED_ENDPOINT_STORAGE_KEY, endpoint)
+}
+
+const getEndpointCandidates = () => {
+  const preferred = getPreferredEndpoint()
+  if (!preferred) return SEARCH_ENDPOINTS
+  return [preferred, ...SEARCH_ENDPOINTS.filter((endpoint) => endpoint !== preferred)]
+}
+
+const parseRetryAfterMs = (retryAfter: string | null) => {
+  if (!retryAfter) return null
+
+  const asSeconds = Number(retryAfter)
+  if (Number.isFinite(asSeconds) && asSeconds >= 0) {
+    return Math.round(asSeconds * 1000)
+  }
+
+  const asDate = Date.parse(retryAfter)
+  if (Number.isNaN(asDate)) return null
+
+  return Math.max(0, asDate - Date.now())
+}
+
+const shouldTryAlternativeEndpoint = (status: number) =>
+  status === 404 || status === 405 || status === 410 || status >= 500
 
 const toNumber = (value: unknown): number | null => {
   if (typeof value === "number" && Number.isFinite(value)) return value
@@ -135,20 +231,43 @@ const requestEndpoint = async (
     headers["X-RapidAPI-Host"] = CHRONO24_API_HOST
   }
 
-  const response = await fetch(url.toString(), { headers })
-  if (!response.ok) {
-    throw new Error(`Chrono24 request failed (${response.status})`)
-  }
+  let attemptedRetry = false
 
-  return response.json()
+  while (true) {
+    const response = await fetch(url.toString(), { headers })
+    if (response.ok) {
+      return response.json()
+    }
+
+    const retryAfterMs = parseRetryAfterMs(response.headers.get("Retry-After"))
+    if (
+      response.status === 429 &&
+      !attemptedRetry &&
+      retryAfterMs !== null &&
+      retryAfterMs <= MAX_RATE_LIMIT_RETRY_DELAY_MS
+    ) {
+      attemptedRetry = true
+      await delay(retryAfterMs)
+      continue
+    }
+
+    throw new Chrono24HttpError(response.status, retryAfterMs)
+  }
 }
 
 export const hasChrono24Credentials = Boolean(CHRONO24_API_KEY)
 
 export async function searchChrono24Deals(params: Chrono24SearchParams): Promise<Deal[]> {
-  const attemptedErrors: string[] = []
+  const cachedDeals = readCachedDeals(params)
+  if (cachedDeals && cachedDeals.length > 0) {
+    return cachedDeals
+  }
 
-  for (const endpoint of SEARCH_ENDPOINTS) {
+  const staleCachedDeals = readCachedDeals(params, true)
+  const attemptedErrors: string[] = []
+  let rateLimited = false
+
+  for (const endpoint of getEndpointCandidates()) {
     try {
       const payload = await requestEndpoint(endpoint, params)
       const items = getArrayPayload(payload)
@@ -157,11 +276,36 @@ export async function searchChrono24Deals(params: Chrono24SearchParams): Promise
         .filter((deal): deal is Deal => Boolean(deal))
 
       if (mapped.length > 0) {
+        setPreferredEndpoint(endpoint)
+        writeCachedDeals(params, mapped)
         return mapped
       }
     } catch (error) {
+      if (error instanceof Chrono24HttpError) {
+        attemptedErrors.push(error.message)
+
+        if (error.status === 429) {
+          rateLimited = true
+          break
+        }
+
+        if (!shouldTryAlternativeEndpoint(error.status)) {
+          break
+        }
+
+        continue
+      }
+
       attemptedErrors.push(error instanceof Error ? error.message : String(error))
     }
+  }
+
+  if (rateLimited && staleCachedDeals && staleCachedDeals.length > 0) {
+    return staleCachedDeals
+  }
+
+  if (rateLimited) {
+    throw new Error("Chrono24 rate limit reached (429). Requests are now throttled—please retry in a few minutes.")
   }
 
   if (attemptedErrors.length > 0) {

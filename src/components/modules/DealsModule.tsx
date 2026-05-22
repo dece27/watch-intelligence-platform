@@ -94,6 +94,8 @@ const HEURISTIC_MATCH_BLEND_WEIGHT = 1 - AI_MATCH_BLEND_WEIGHT
 const DEFAULT_FALLBACK_DEAL_SCORE = 60
 const DEAL_SCORE_DIVISOR = 2
 const FALLBACK_QUERY_BRANDS = ["Rolex", "Omega"] as const
+const MAX_BRANDS_TO_QUERY = 2
+const TARGET_LIVE_DEAL_COUNT = 24
 
 const extractJsonPayload = (response: string) => {
   const trimmed = response.trim()
@@ -287,25 +289,37 @@ export function DealsModule({ watches, userId }: DealsModuleProps) {
     try {
       const portfolioBrands = Array.from(new Set(watches.map((watch) => watch.brand)))
       const brandsToQuery = (preferences.preferredBrands.length > 0 ? preferences.preferredBrands : portfolioBrands)
-        .slice(0, 4)
+        .slice(0, MAX_BRANDS_TO_QUERY)
 
       const queryTargets = brandsToQuery.length > 0 ? brandsToQuery : [...FALLBACK_QUERY_BRANDS]
-      const responses = await Promise.all(
-        queryTargets.map((brand) =>
-          searchChrono24Deals({
+      const uniqueDealsMap = new Map<string, Deal>()
+      const fetchErrors: string[] = []
+
+      for (const brand of queryTargets) {
+        try {
+          const brandDeals = await searchChrono24Deals({
             brand,
             maxPrice: preferences.maxPrice > 0 ? preferences.maxPrice : undefined,
             page: 1,
-            limit: 30,
+            limit: 24,
           })
-        )
-      )
 
-      const merged = responses.flat()
-      const uniqueDeals = Array.from(new Map(merged.map((deal) => [deal.id, deal])).values())
+          for (const deal of brandDeals) {
+            uniqueDealsMap.set(deal.id, deal)
+          }
+
+          if (uniqueDealsMap.size >= TARGET_LIVE_DEAL_COUNT) {
+            break
+          }
+        } catch (error) {
+          fetchErrors.push(error instanceof Error ? error.message : String(error))
+        }
+      }
+
+      const uniqueDeals = Array.from(uniqueDealsMap.values())
 
       if (uniqueDeals.length === 0) {
-        throw new Error("No live deals returned")
+        throw new Error(fetchErrors[0] || "No live deals returned")
       }
 
       const heuristicScored = uniqueDeals.map((deal) => scoreHeuristically(deal, watches, preferences))
