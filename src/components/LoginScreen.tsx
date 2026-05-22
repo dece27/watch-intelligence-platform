@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Watch as WatchIcon } from "@phosphor-icons/react"
+import { Eye, EyeSlash, Watch as WatchIcon } from "@phosphor-icons/react"
 import { AuthRecord, User } from "@/lib/types"
 import { hashPassword, verifyPassword } from "@/lib/auth"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -20,6 +20,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
   const [vaultName, setVaultName] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
   const [rememberMe, setRememberMe] = useState(true)
   const [isReturningUser, setIsReturningUser] = useState(false)
   const [isCheckingAccount, setIsCheckingAccount] = useState(false)
@@ -255,10 +256,31 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="password">Passphrase</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password">Passphrase</Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-auto px-2 py-1 text-xs"
+                  onClick={() => setShowPassword((value) => !value)}
+                >
+                  {showPassword ? (
+                    <>
+                      <EyeSlash size={14} className="mr-1" />
+                      Hide
+                    </>
+                  ) : (
+                    <>
+                      <Eye size={14} className="mr-1" />
+                      Show
+                    </>
+                  )}
+                </Button>
+              </div>
               <Input
                 id="password"
-                type="password"
+                type={showPassword ? "text" : "password"}
                 placeholder={isReturningUser ? "Enter your passphrase" : "Create a secure passphrase"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -271,7 +293,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                 <Label htmlFor="confirmPassword">Confirm Passphrase</Label>
                 <Input
                   id="confirmPassword"
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   placeholder="Confirm your passphrase"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
