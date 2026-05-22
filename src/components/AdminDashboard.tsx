@@ -115,8 +115,6 @@ export function AdminDashboard() {
 
       // Update user index to remove all users
       await window.spark.kv.set("all_user_ids", [])
-      await window.spark.kv.delete("currentUser")
-      sessionStorage.removeItem("currentUserSession")
 
       // Delete all feedback
       const feedbackIds = await window.spark.kv.get<string[]>("all_feedback_ids") || []
@@ -128,7 +126,8 @@ export function AdminDashboard() {
       await window.spark.kv.set("all_feedback_ids", [])
 
       const deletedUserCount = userIds.length
-      toast.success(`Deleted all user data: ${deletedUserCount} accounts removed.`)
+      const deletedFeedbackCount = feedbackIds.length
+      toast.success(`Deleted all user data: ${deletedUserCount} accounts and ${deletedFeedbackCount} feedback entr${deletedFeedbackCount === 1 ? "y" : "ies"} removed.`)
       await loadStats()
     } catch (error) {
       console.error("Error resetting environment:", error)
