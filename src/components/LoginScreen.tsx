@@ -22,6 +22,11 @@ function isValidLoginIdentifier(value: string): boolean {
   return normalized === ADMIN_LOGIN_IDENTIFIER || EMAIL_REGEX.test(normalized)
 }
 
+export function shouldShowAccountCreationFields(loginIdentifier: string, isReturningUser: boolean): boolean {
+  const normalized = loginIdentifier.trim().toLowerCase()
+  return !isReturningUser && normalized !== ADMIN_LOGIN_IDENTIFIER
+}
+
 export function LoginScreen({ onLogin }: LoginScreenProps) {
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
@@ -35,6 +40,8 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const [isBootstrapped, setIsBootstrapped] = useState(false)
+  const normalizedEmailInput = email.trim().toLowerCase()
+  const isAdministratorLogin = normalizedEmailInput === ADMIN_LOGIN_IDENTIFIER
 
   useEffect(() => {
     ensureDefaultAccount()
@@ -106,16 +113,16 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
     e.preventDefault()
 
     setError("")
-    const trimmedEmail = email.trim().toLowerCase()
+    const normalizedLoginIdentifier = email.trim().toLowerCase()
     const trimmedName = name.trim()
     const trimmedVaultName = vaultName.trim()
 
-    if (!trimmedEmail || !password.trim()) {
+    if (!normalizedLoginIdentifier || !password.trim()) {
       setError("Email and passphrase are required.")
       return
     }
 
-    if (!isValidLoginIdentifier(trimmedEmail)) {
+    if (!isValidLoginIdentifier(normalizedLoginIdentifier)) {
       setError("Enter a valid email address.")
       return
     }
@@ -124,7 +131,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
 
     try {
       await ensureDefaultAccount()
-      const emailKey = `user_email_${trimmedEmail}`
+      const emailKey = `user_email_${normalizedLoginIdentifier}`
       const existingUserId = await window.spark.kv.get<string>(emailKey)
 
       if (existingUserId) {
@@ -169,6 +176,11 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
         return
       }
 
+      if (normalizedLoginIdentifier === ADMIN_LOGIN_IDENTIFIER) {
+        setError("Administrator account not found. Please verify system configuration or contact support.")
+        return
+      }
+
       if (!trimmedName || !trimmedVaultName) {
         setError("Name and vault name are required for new accounts.")
         return
@@ -189,7 +201,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
       const user: User = {
         id: userId,
         name: trimmedName,
-        email: trimmedEmail,
+        email: normalizedLoginIdentifier,
         vaultName: trimmedVaultName,
         createdAt,
       }
@@ -250,7 +262,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
               )}
             </div>
 
-            {!isReturningUser && (
+            {shouldShowAccountCreationFields(email, isReturningUser) && (
               <>
                 <div className="space-y-2">
                   <Label htmlFor="name">Your Name</Label>
@@ -304,14 +316,14 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
               <Input
                 id="password"
                 type={showPassword ? "text" : "password"}
-                placeholder={isReturningUser ? "Enter your passphrase" : "Create a secure passphrase"}
+                placeholder={isReturningUser || isAdministratorLogin ? "Enter your passphrase" : "Create a secure passphrase"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
               />
             </div>
 
-            {!isReturningUser && (
+            {shouldShowAccountCreationFields(email, isReturningUser) && (
               <div className="space-y-2">
                 <Label htmlFor="confirmPassword">Confirm Passphrase</Label>
                 <Input
@@ -344,7 +356,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
               size="lg"
               disabled={isLoading}
             >
-              {isLoading ? "Verifying..." : isReturningUser ? "Unlock Vault" : "Create Vault"}
+              {isLoading ? "Verifying..." : isReturningUser || isAdministratorLogin ? "Unlock Vault" : "Create Vault"}
             </Button>
           </form>
 
