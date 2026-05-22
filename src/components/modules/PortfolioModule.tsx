@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Watch } from "@/lib/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -6,12 +6,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { TrendUp, TrendDown } from "@phosphor-icons/react"
 import { WhatIfSellCalculator } from "@/components/WhatIfSellCalculator"
+import { watchChartsClient } from "@/lib/watchcharts-client"
 
 interface PortfolioModuleProps {
   watches: Watch[]
 }
 
-function getMockMarketValue(watch: Watch): number {
+function getEstimatedMarketValue(watch: Watch): number {
   if (watch.currentValue) return watch.currentValue
 
   const brandMultipliers: Record<string, number> = {
@@ -70,7 +71,7 @@ function calculateHealthScore(watches: Watch[]): number {
   
   const watchesWithValues = watches.map(w => ({
     ...w,
-    marketValue: getMockMarketValue(w)
+    marketValue: getEstimatedMarketValue(w)
   }))
   
   const totalCost = watchesWithValues.reduce((sum, w) => sum + w.purchasePrice, 0)
@@ -101,10 +102,56 @@ function calculateHealthScore(watches: Watch[]): number {
 export function PortfolioModule({ watches }: PortfolioModuleProps) {
   const [sortField, setSortField] = useState<'brand' | 'roi' | 'value' | 'holdPeriod'>('roi')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
+  const [liveMarketValues, setLiveMarketValues] = useState<Record<string, number>>({})
+
+  useEffect(() => {
+    let canceled = false
+
+    const loadLiveMarketValues = async () => {
+      if (watches.length === 0) {
+        if (!canceled) setLiveMarketValues({})
+        return
+      }
+
+      const results = await Promise.allSettled(
+        watches.map(async (watch) => ({
+          watchId: watch.id,
+          value: await watchChartsClient.getMarketValue({
+            brand: watch.brand,
+            model: watch.model,
+            referenceNumber: watch.referenceNumber,
+          }),
+        }))
+      )
+
+      if (canceled) return
+
+      const nextValues: Record<string, number> = {}
+      for (const result of results) {
+        if (result.status !== 'fulfilled') continue
+        if (typeof result.value.value !== 'number' || !Number.isFinite(result.value.value) || result.value.value <= 0) {
+          continue
+        }
+        nextValues[result.value.watchId] = result.value.value
+      }
+
+      setLiveMarketValues(nextValues)
+    }
+
+    void loadLiveMarketValues()
+
+    return () => {
+      canceled = true
+    }
+  }, [watches])
+
+  const getMarketValue = (watch: Watch): number => {
+    return liveMarketValues[watch.id] ?? watch.currentValue ?? getEstimatedMarketValue(watch)
+  }
 
   const watchesWithMetrics = useMemo(() => {
     return watches.map(watch => {
-      const marketValue = getMockMarketValue(watch)
+      const marketValue = getMarketValue(watch)
       const roi = ((marketValue - watch.purchasePrice) / watch.purchasePrice) * 100
       const roiDollar = marketValue - watch.purchasePrice
       const holdPeriod = calculateHoldPeriod(watch.purchaseDate)
@@ -118,7 +165,7 @@ export function PortfolioModule({ watches }: PortfolioModuleProps) {
         holdPeriodDays: Math.ceil((new Date().getTime() - new Date(watch.purchaseDate).getTime()) / (1000 * 60 * 60 * 24))
       }
     })
-  }, [watches])
+  }, [watches, liveMarketValues])
 
   const sortedWatches = useMemo(() => {
     return [...watchesWithMetrics].sort((a, b) => {
@@ -156,7 +203,9 @@ export function PortfolioModule({ watches }: PortfolioModuleProps) {
   const totalCost = watchesWithMetrics.reduce((sum, w) => sum + w.purchasePrice, 0)
   const totalReturn = totalValue - totalCost
   const totalReturnPercent = totalCost > 0 ? ((totalReturn / totalCost) * 100) : 0
-  const healthScore = calculateHealthScore(watches)
+  const healthScore = useMemo(() => calculateHealthScore(
+    watchesWithMetrics.map(({ marketValue, ...watch }) => ({ ...watch, currentValue: marketValue }))
+  ), [watchesWithMetrics])
 
   const brandData = useMemo(() => {
     const brandMap = watchesWithMetrics.reduce((acc, watch) => {
@@ -346,7 +395,7 @@ export function PortfolioModule({ watches }: PortfolioModuleProps) {
 
       <WhatIfSellCalculator 
         watches={watches}
-        getMockMarketValue={getMockMarketValue}
+        getMockMarketValue={getMarketValue}
         calculateHealthScore={calculateHealthScore}
       />
 
