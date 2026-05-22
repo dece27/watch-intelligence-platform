@@ -109,29 +109,42 @@ export function AdminDashboard() {
 
     const normalizedUserEmail = normalizeEmail(userEmail)
     const feedbackIds = await window.spark.kv.get<string[]>("all_feedback_ids") || []
+    const feedbackRecords = await Promise.all(
+      feedbackIds.map(async (feedbackId) => {
+        const lookupKeys = Array.from(new Set([feedbackId, `feedback_${feedbackId}`]))
+        const feedbackCandidates = await Promise.all(
+          lookupKeys.map(async (lookupKey) => ({
+            lookupKey,
+            feedback: await window.spark.kv.get<{ userEmail?: string }>(lookupKey),
+          }))
+        )
+        const resolvedFeedback = feedbackCandidates.find((candidate) => candidate.feedback)
+        return {
+          feedbackId,
+          feedbackOwnerEmail: resolvedFeedback?.feedback?.userEmail,
+          resolvedFeedbackKey: resolvedFeedback?.lookupKey,
+        }
+      })
+    )
+
+    const feedbackKeysToDelete: string[] = []
     const keptFeedbackIds: string[] = []
 
-    for (const feedbackId of feedbackIds) {
-      const lookupKeys = Array.from(new Set([feedbackId, `feedback_${feedbackId}`]))
-      const feedbackCandidates = await Promise.all(
-        lookupKeys.map(async (lookupKey) => ({
-          lookupKey,
-          feedback: await window.spark.kv.get<{ userEmail?: string }>(lookupKey),
-        }))
-      )
-      const resolvedFeedback = feedbackCandidates.find((candidate) => candidate.feedback)
-      const feedbackOwnerEmail = resolvedFeedback?.feedback?.userEmail
-      const resolvedFeedbackKey = resolvedFeedback?.lookupKey
-
-      if (feedbackOwnerEmail && normalizeEmail(feedbackOwnerEmail) === normalizedUserEmail) {
-        if (resolvedFeedbackKey) {
-          await window.spark.kv.delete(resolvedFeedbackKey)
+    for (const feedbackRecord of feedbackRecords) {
+      if (
+        feedbackRecord.feedbackOwnerEmail &&
+        normalizeEmail(feedbackRecord.feedbackOwnerEmail) === normalizedUserEmail
+      ) {
+        if (feedbackRecord.resolvedFeedbackKey) {
+          feedbackKeysToDelete.push(feedbackRecord.resolvedFeedbackKey)
         }
         continue
       }
 
-      keptFeedbackIds.push(feedbackId)
+      keptFeedbackIds.push(feedbackRecord.feedbackId)
     }
+
+    await Promise.all(feedbackKeysToDelete.map((feedbackKey) => window.spark.kv.delete(feedbackKey)))
 
     await window.spark.kv.set("all_feedback_ids", keptFeedbackIds)
   }
