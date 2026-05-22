@@ -9,9 +9,11 @@ import { resolve } from 'path'
 
 const configDir = fileURLToPath(new URL(".", import.meta.url))
 const projectRoot = process.env.PROJECT_ROOT || configDir
+const basePath = process.env.VITE_BASE_PATH || "/"
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: basePath.endsWith("/") ? basePath : `${basePath}/`,
   envPrefix: ["VITE_", "CHRONO24_"],
   plugins: [
     react(),

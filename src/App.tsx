@@ -18,6 +18,7 @@ import { AdminDashboard } from "@/components/AdminDashboard"
 import { Toaster } from "@/components/ui/sonner"
 import { MobileNav } from "@/components/MobileNav"
 import { isAdminEmail } from "@/lib/adminAnalytics"
+import { getSharedSlugFromLocation } from "@/lib/sitePath"
 import {
   getWatchPhotoKey,
   isWatchPhotoRef,
@@ -51,9 +52,23 @@ function App() {
   const isMobile = useIsMobile()
 
   useEffect(() => {
-    const [first, second] = window.location.pathname.split("/").filter(Boolean)
-    if (first === "shared" && second) {
-      setSharedSlug(decodeURIComponent(second))
+    const updateSharedSlugFromLocation = () => {
+      setSharedSlug(
+        getSharedSlugFromLocation(
+          window.location.pathname,
+          window.location.hash,
+          import.meta.env.BASE_URL,
+        )
+      )
+    }
+
+    updateSharedSlugFromLocation()
+    window.addEventListener("hashchange", updateSharedSlugFromLocation)
+    window.addEventListener("popstate", updateSharedSlugFromLocation)
+
+    return () => {
+      window.removeEventListener("hashchange", updateSharedSlugFromLocation)
+      window.removeEventListener("popstate", updateSharedSlugFromLocation)
     }
   }, [])
 
