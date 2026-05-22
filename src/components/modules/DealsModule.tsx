@@ -103,6 +103,7 @@ const getDefaultPreferences = (watches: Watch[]): DealsPreferences => {
 }
 
 const getPreferencesKey = (userId: string) => `${USER_PREFERENCES_PREFIX}${userId}`
+const roundToTwoDecimals = (value: number) => Math.round(value * 100) / 100
 
 const parseAiRanking = (
   rawResponse: string,
@@ -215,7 +216,7 @@ export function DealsModule({ watches, userId, preferredCurrency = "USD" }: Deal
 
     setPreferences((current) => ({
       ...current,
-      maxPrice: Math.max(0, Number(convertCurrency(current.maxPrice, previousCurrency, currentCurrency).toFixed(2))),
+      maxPrice: Math.max(0, roundToTwoDecimals(convertCurrency(current.maxPrice, previousCurrency, currentCurrency))),
     }))
     previousCurrencyRef.current = currentCurrency
   }, [preferredCurrency])
