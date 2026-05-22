@@ -10,7 +10,7 @@ import { Switch } from "@/components/ui/switch"
 import { Heart, MapPin, ArrowsClockwise } from "@phosphor-icons/react"
 import { DealDetailModal } from "@/components/DealDetailModal"
 import { callTrackedLlm } from "@/lib/adminAnalytics"
-import { searchChrono24Deals } from "@/lib/chrono24-client"
+import { hasChrono24Credentials, searchChrono24Deals } from "@/lib/chrono24-client"
 
 interface DealsModuleProps {
   watches: Watch[]
@@ -287,6 +287,13 @@ export function DealsModule({ watches, userId }: DealsModuleProps) {
     setErrorMessage(null)
 
     try {
+      if (!hasChrono24Credentials) {
+        const fallbackDeals = FALLBACK_DEALS.map((deal) => scoreHeuristically(deal, watches, preferences))
+        setDeals(fallbackDeals)
+        setIsLiveData(false)
+        return
+      }
+
       const portfolioBrands = Array.from(new Set(watches.map((watch) => watch.brand)))
       const brandsToQuery = (preferences.preferredBrands.length > 0 ? preferences.preferredBrands : portfolioBrands)
         .slice(0, MAX_BRANDS_TO_QUERY)
