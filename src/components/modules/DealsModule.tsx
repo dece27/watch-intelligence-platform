@@ -88,6 +88,10 @@ const FALLBACK_DEALS: Deal[] = [
 
 const DEFAULT_MAX_PRICE = 25000
 const USER_PREFERENCES_PREFIX = "user_preferences_"
+const PREFERENCES_PERSIST_DEBOUNCE_MS = 350
+const AI_MATCH_BLEND_WEIGHT = 0.55
+const HEURISTIC_MATCH_BLEND_WEIGHT = 1 - AI_MATCH_BLEND_WEIGHT
+const DEFAULT_FALLBACK_DEAL_SCORE = 60
 
 const extractJsonPayload = (response: string) => {
   const trimmed = response.trim()
@@ -255,7 +259,7 @@ export function DealsModule({ watches, userId }: DealsModuleProps) {
       } catch {
         // Silent persistence failure; UI remains functional.
       }
-    }, 350)
+    }, PREFERENCES_PERSIST_DEBOUNCE_MS)
 
     return () => {
       window.clearTimeout(timeout)
@@ -342,12 +346,17 @@ Return every deal id exactly once.`
             const ranked = rankingMap.get(deal.id)
             if (!ranked) return deal
 
-            const blendedScore = Math.round((deal.matchScore * 0.45) + (ranked.matchScore * 0.55))
+            const blendedScore = Math.round(
+              (deal.matchScore * HEURISTIC_MATCH_BLEND_WEIGHT) + (ranked.matchScore * AI_MATCH_BLEND_WEIGHT)
+            )
             return {
               ...deal,
               matchScore: Math.max(0, Math.min(100, blendedScore)),
               aiReasoning: ranked.reasoning,
-              dealScore: Math.max(0, Math.min(100, Math.round(((deal.dealScore || 60) + blendedScore) / 2))),
+              dealScore: Math.max(
+                0,
+                Math.min(100, Math.round(((deal.dealScore || DEFAULT_FALLBACK_DEAL_SCORE) + blendedScore) / 2))
+              ),
             }
           })
         }

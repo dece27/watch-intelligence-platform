@@ -6,6 +6,7 @@ const CHRONO24_API_HOST = import.meta.env.VITE_CHRONO24_API_HOST?.trim() || "chr
 
 const SEARCH_ENDPOINTS = ["/listings/search", "/search", "/api/search"]
 const FALLBACK_IMAGE = "https://images.unsplash.com/photo-1522312346375-d1a52e2b99b3?w=400"
+const DEFAULT_UNRANKED_SCORE = 60
 
 export interface Chrono24SearchParams {
   query?: string
@@ -104,8 +105,8 @@ const mapChrono24Listing = (item: unknown, index: number): Deal | null => {
     sourceUrl,
     listedAt: listedAt || undefined,
     imageUrl,
-    matchScore: 60,
-    dealScore: 60,
+    matchScore: DEFAULT_UNRANKED_SCORE,
+    dealScore: DEFAULT_UNRANKED_SCORE,
     daysListed: pickNumber(item, ["daysListed", "listingAgeDays"]) || undefined,
     sellerRating: pickNumber(item, ["sellerRating", "dealerRating"]) || undefined,
     hasBox: Boolean(item.hasBox ?? item.box),
