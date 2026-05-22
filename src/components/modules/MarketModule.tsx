@@ -420,7 +420,7 @@ export function MarketModule({ watches }: MarketModuleProps) {
           const isOwned = userBrands.has(brandIndex.brand)
           const oneMonthChange = getTrendChange(brandIndex.trend, 1)
           const sixMonthChange = getTrendChange(brandIndex.trend, 6)
-          const twelveMonthChange = getTrendChange(brandIndex.trend, Math.min(11, brandIndex.trend.length - 1))
+          const twelveMonthChange = getTrendChange(brandIndex.trend, Math.min(12, brandIndex.trend.length - 1))
           const trendData = brandIndex.trend.map((value, index) => ({
             value,
             month: last12MonthLabels[index] ?? `M${index + 1}`
