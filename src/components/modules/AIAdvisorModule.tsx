@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Sparkle, PaperPlaneTilt, Image as ImageIcon, Plus, Fire, Star, ShoppingCart, TrendUp, TrendDown } from "@phosphor-icons/react"
 import { toast } from "sonner"
 import { callTrackedLlm } from "@/lib/adminAnalytics"
+import { hasChrono24Credentials, searchChrono24Deals } from "@/lib/chrono24-client"
 
 interface AIAdvisorModuleProps {
   watches: Watch[]
@@ -28,6 +29,9 @@ interface RebalanceAnalysis {
 const DEFAULT_STRATEGIC_SCORE = 5
 const DEFAULT_NO_SELL_ACTION = 'No sell action needed — nothing should be done.'
 const DEFAULT_NO_BUY_ACTION = 'No buy action needed — nothing should be done.'
+const DEAL_OF_DAY_QUERY_LIMIT = 20
+const MAX_DEAL_OF_DAY_BRANDS = 4
+const DEAL_OF_DAY_FALLBACK_BRANDS = ["Rolex", "Omega", "Patek Philippe", "Audemars Piguet"]
 
 const extractJsonPayload = (response: string) => {
   const trimmed = response.trim()
@@ -105,6 +109,7 @@ export function AIAdvisorModule({ watches }: AIAdvisorModuleProps) {
   const [dealAssessment, setDealAssessment] = useState<string>('')
   const [isLoadingDeal, setIsLoadingDeal] = useState(false)
   const [mockListings, setMockListings] = useKV<Deal[]>("mockListings", [])
+  const [isLiveDealData, setIsLiveDealData] = useState(false)
 
   useEffect(() => {
     if (watches.length > 0 && signals.length === 0) {
@@ -113,10 +118,9 @@ export function AIAdvisorModule({ watches }: AIAdvisorModuleProps) {
   }, [watches])
 
   useEffect(() => {
-    if (mockListings && mockListings.length > 0) {
-      loadDealOfDay()
-    }
-  }, [mockListings])
+    if (watches.length === 0 && (!mockListings || mockListings.length === 0)) return
+    loadDealOfDay()
+  }, [watches, mockListings])
 
   const generateSignals = async () => {
     if (watches.length === 0) return
@@ -265,11 +269,52 @@ Respond in valid JSON format:
   }
 
   const loadDealOfDay = async () => {
-    if (!mockListings || mockListings.length === 0) return
-    
     setIsLoadingDeal(true)
     try {
-      const listingsWithScores = mockListings.map(l => {
+      let listings: Deal[] = []
+
+      if (hasChrono24Credentials) {
+        const portfolioBrands = Array.from(new Set(watches.map((watch) => watch.brand))).slice(0, MAX_DEAL_OF_DAY_BRANDS)
+        const queryTargets = portfolioBrands.length > 0 ? portfolioBrands : DEAL_OF_DAY_FALLBACK_BRANDS
+        const uniqueDealsMap = new Map<string, Deal>()
+
+        for (const brand of queryTargets) {
+          try {
+            const brandDeals = await searchChrono24Deals({
+              brand,
+              page: 1,
+              limit: DEAL_OF_DAY_QUERY_LIMIT,
+            })
+
+            for (const deal of brandDeals) {
+              uniqueDealsMap.set(deal.id, deal)
+            }
+
+            if (uniqueDealsMap.size >= DEAL_OF_DAY_QUERY_LIMIT) {
+              break
+            }
+          } catch {
+            // Keep iterating through the remaining brands before falling back.
+          }
+        }
+
+        listings = Array.from(uniqueDealsMap.values())
+      }
+
+      if (listings.length > 0) {
+        setMockListings(listings)
+        setIsLiveDealData(true)
+      } else if (mockListings && mockListings.length > 0) {
+        listings = mockListings
+        setIsLiveDealData(false)
+      } else {
+        setDealOfDay(null)
+        setDealAssessment('')
+        setIsLiveDealData(false)
+        return
+      }
+
+      const listingsWithScores = listings.map(l => {
         const fairVal = l.fairValue || l.marketValue || l.price
         const dealScore = Math.max(0, Math.min(100, Math.round(
           100 - ((l.price / fairVal) * 100) + 
@@ -289,6 +334,7 @@ Respond in valid JSON format:
       setDealAssessment(assessment)
     } catch (error) {
       console.error("Failed to load deal of day:", error)
+      setIsLiveDealData(false)
     } finally {
       setIsLoadingDeal(false)
     }
@@ -379,7 +425,7 @@ Respond in valid JSON format:
                 🔥 Deal of the Day
               </CardTitle>
               <Badge variant="outline" className="bg-muted/20">
-                Updated daily
+                {isLiveDealData ? "Live Chrono24" : "Cached fallback"}
               </Badge>
             </div>
           </CardHeader>
