@@ -105,6 +105,20 @@ export function CollectionModule({ watches, onUpdate, triggerAdd, onTriggerCompl
       return
     }
 
+    const normalizedImageUrl = formData.imageUrl?.trim()
+    if (normalizedImageUrl && !normalizedImageUrl.startsWith('data:image/')) {
+      try {
+        const parsedUrl = new URL(normalizedImageUrl)
+        if (parsedUrl.protocol !== 'https:') {
+          toast.error("Please use an HTTPS image URL.")
+          return
+        }
+      } catch {
+        toast.error("Please enter a valid image URL.")
+        return
+      }
+    }
+
     const watch: Watch = {
       id: editingWatch?.id || `watch-${Date.now()}`,
       brand: formData.brand,
@@ -117,7 +131,7 @@ export function CollectionModule({ watches, onUpdate, triggerAdd, onTriggerCompl
       currentValue: formData.currentValue ? Number(formData.currentValue) : undefined,
       condition: formData.condition || 'excellent',
       category: formData.category || 'dress',
-      imageUrl: formData.imageUrl,
+      imageUrl: normalizedImageUrl || undefined,
       movement: formData.movement,
       caseMaterial: formData.caseMaterial,
       caseDiameter: formData.caseDiameter,
@@ -542,7 +556,7 @@ export function CollectionModule({ watches, onUpdate, triggerAdd, onTriggerCompl
                               return
                             }
                             
-                            setFormData({ ...formData, imageUrl: compressedDataUrl })
+                            setFormData((current) => ({ ...current, imageUrl: compressedDataUrl }))
                             toast.success(`Image uploaded (${sizeInKB}KB)`)
                           }
                           
