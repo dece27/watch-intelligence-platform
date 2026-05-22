@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
@@ -44,13 +44,7 @@ export function DealDetailModal({ deal, open, onOpenChange, onFilterBrand, prefe
   const [isLoadingAI, setIsLoadingAI] = useState(false)
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null)
 
-  useEffect(() => {
-    if (open && deal) {
-      analyzeWithAI()
-    }
-  }, [open, deal, preferredCurrency])
-
-  const analyzeWithAI = async () => {
+  const analyzeWithAI = useCallback(async () => {
     setIsLoadingAI(true)
     try {
       const fairValue = deal.fairValue || deal.price
@@ -89,7 +83,7 @@ Provide:
           risk: 'Analysis incomplete'
         })
       }
-    } catch (error) {
+    } catch {
       setAiAnalysis({
         verdict: 'FAIR DEAL',
         reasoning: 'Unable to complete analysis. Please verify details manually.',
@@ -97,7 +91,13 @@ Provide:
       })
     }
     setIsLoadingAI(false)
-  }
+  }, [deal, preferredCurrency])
+
+  useEffect(() => {
+    if (open && deal) {
+      void analyzeWithAI()
+    }
+  }, [analyzeWithAI, deal, open])
 
   const getVerdictStyle = (verdict: AIAnalysis['verdict']) => {
     switch (verdict) {

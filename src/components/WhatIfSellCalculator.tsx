@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Watch } from "@/lib/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -35,11 +35,11 @@ export function WhatIfSellCalculator({ watches, getMockMarketValue, calculateHea
   const sliderMin = Math.round(currentMarketValue * 0.7)
   const sliderMax = Math.round(currentMarketValue * 1.3)
 
-  useMemo(() => {
-    if (selectedWatch && salePrice === 0) {
-      setSalePrice(currentMarketValue)
+  useEffect(() => {
+    if (selectedWatch) {
+      setSalePrice((currentPrice) => currentPrice === 0 ? currentMarketValue : currentPrice)
     }
-  }, [selectedWatch, currentMarketValue])
+  }, [currentMarketValue, selectedWatch])
 
   const currentMetrics = useMemo(() => {
     const watchesWithValues = watches.map(w => ({
@@ -77,7 +77,6 @@ export function WhatIfSellCalculator({ watches, getMockMarketValue, calculateHea
     const brands = new Set(remainingWatches.map(w => w.brand))
     const healthScore = calculateHealthScore(remainingWatches)
 
-    const brandsBeforeSale = new Set(watches.map(w => w.brand))
     const watchesOfSameBrand = watches.filter(w => w.brand === selectedWatch.brand)
     const isLastOfBrand = watchesOfSameBrand.length === 1
 
@@ -131,7 +130,7 @@ export function WhatIfSellCalculator({ watches, getMockMarketValue, calculateHea
 
       const response = await callTrackedLlm(promptText, "gpt-4o-mini")
       setLlmSuggestion(response)
-    } catch (error) {
+    } catch {
       setLlmSuggestion("Unable to generate suggestion at this time. Please try again.")
     } finally {
       setIsLoadingSuggestion(false)

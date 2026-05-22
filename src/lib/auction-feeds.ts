@@ -42,6 +42,14 @@ function isTrustedHost(hostname: string, trustedDomain: string): boolean {
   return normalizedHost === trustedDomain || normalizedHost.endsWith(`.${trustedDomain}`)
 }
 
+function tryParseUrl(url: string): URL | undefined {
+  try {
+    return new URL(url)
+  } catch {
+    return undefined
+  }
+}
+
 // Include Christie's-specific price field names alongside generic ones.
 const VALUE_KEYS = [
   'sold_for',
@@ -192,7 +200,7 @@ function extractNumber(value: unknown): number | undefined {
 
 function extractEstimateRange(text: string): { low?: number; high?: number } {
   const match = text.match(
-    /(estimate|est\.?)\s*[:\-]?\s*(?:US\$|\$|USD|HK\$|CHF|GBP|£|€)?\s*([\d,.]+)\s*(?:-|–|to)\s*(?:US\$|\$|USD|HK\$|CHF|GBP|£|€)?\s*([\d,.]+)/i
+    /(estimate|est\.?)\s*(?::|-|–)?\s*(?:US\$|\$|USD|HK\$|CHF|GBP|£|€)?\s*([\d,.]+)\s*(?:-|–|to)\s*(?:US\$|\$|USD|HK\$|CHF|GBP|£|€)?\s*([\d,.]+)/i
   )
 
   if (!match) {
@@ -251,13 +259,11 @@ function resolveSourceUrl(rawUrl: string, house: string): string | undefined {
 
   if (normalizedPath.startsWith('https://') || normalizedPath.startsWith('http://')) {
     if (normalizedHouse.includes('christie')) {
-      try {
-        const parsed = new URL(normalizedPath)
-        if (isTrustedHost(parsed.hostname, 'christies.com')) {
-          parsed.pathname = withChristiesLocalePath(parsed.pathname)
-          return parsed.toString()
-        }
-      } catch {}
+      const parsed = tryParseUrl(normalizedPath)
+      if (parsed && isTrustedHost(parsed.hostname, 'christies.com')) {
+        parsed.pathname = withChristiesLocalePath(parsed.pathname)
+        return parsed.toString()
+      }
     }
     return normalizedPath
   }
