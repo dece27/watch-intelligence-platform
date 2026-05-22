@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { TrendUp, TrendDown, Bell, X, MagnifyingGlass } from "@phosphor-icons/react"
-import { LineChart, Line, ResponsiveContainer } from 'recharts'
+import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend, CartesianGrid } from 'recharts'
 import { toast } from "sonner"
 
 interface MarketModuleProps {
@@ -21,49 +21,31 @@ const BRAND_INDICES: BrandIndex[] = [
   {
     brand: 'Rolex',
     currentIndex: 127.5,
-    change30d: -0.8,
-    change90d: 5.7,
-    change180d: 8.2,
     trend: [120, 122, 121, 123, 125, 124, 126, 127, 128, 127, 128, 127.5]
   },
   {
     brand: 'Patek Philippe',
     currentIndex: 142.8,
-    change30d: 0.5,
-    change90d: 7.2,
-    change180d: 12.5,
     trend: [128, 130, 132, 135, 137, 138, 140, 141, 142, 143, 142, 142.8]
   },
   {
     brand: 'Audemars Piguet',
     currentIndex: 135.2,
-    change30d: 0.8,
-    change90d: 4.3,
-    change180d: 9.8,
     trend: [123, 125, 127, 128, 130, 131, 132, 133, 134, 135, 136, 135.2]
   },
   {
     brand: 'IWC',
     currentIndex: 112.7,
-    change30d: -1.1,
-    change90d: 2.8,
-    change180d: 5.5,
     trend: [107, 108, 109, 109, 110, 111, 111, 112, 112, 113, 113, 112.7]
   },
   {
     brand: 'Omega',
     currentIndex: 108.4,
-    change30d: -0.4,
-    change90d: 1.5,
-    change180d: 3.2,
     trend: [105, 105, 106, 106, 107, 107, 108, 108, 108, 109, 108, 108.4]
   },
   {
     brand: 'Grand Seiko',
     currentIndex: 115.9,
-    change30d: 1.3,
-    change90d: 4.6,
-    change180d: 7.3,
     trend: [108, 109, 110, 111, 112, 113, 114, 114, 115, 116, 116, 115.9]
   }
 ]
@@ -150,6 +132,9 @@ const AUCTION_BRANDS = [
 ].sort((left, right) => right.length - left.length)
 const AUCTION_TITLE_LEADING_SEPARATOR_PATTERN = /^[\u2010-\u2015\-:\s]+/
 const AUCTION_TITLE_REFERENCE_PREFIX_PATTERN = /^Ref\.?\s*/i
+const SENTIMENT_LINE_COLORS = ['#5E8C6A', '#4A7C90', '#C9A84C', '#A0785A', '#6A5ACD', '#3B9D9D']
+const GOLDEN_ANGLE_DEGREES = 137.508
+const SENTIMENT_Y_AXIS_PADDING = 2
 
 const formatAuctionDate = (dateValue: string) => {
   const parsed = new Date(dateValue)
@@ -184,6 +169,20 @@ const getAuctionBrandAndModel = (auction: AuctionResult) => {
   }
 }
 
+const getTrendChange = (trend: number[], months: number) => {
+  if (trend.length < 2) return 0
+
+  const current = trend[trend.length - 1]
+  const startIndex = Math.max(0, trend.length - 1 - months)
+  const baseline = trend[startIndex]
+
+  if (!baseline) return 0
+
+  return ((current - baseline) / baseline) * 100
+}
+
+const formatTrend = (change: number) => `${change >= 0 ? '+' : ''}${change.toFixed(1)}%`
+
 export function MarketModule({ watches }: MarketModuleProps) {
   const [priceAlerts, setPriceAlerts] = useKV<PriceAlert[]>("priceAlerts", [])
   const [isAlertDialogOpen, setIsAlertDialogOpen] = useState(false)
@@ -211,21 +210,84 @@ export function MarketModule({ watches }: MarketModuleProps) {
     return (total / BRAND_INDICES.length).toFixed(1)
   }, [])
 
-  const overallChange30d = useMemo(() => {
-    const total = BRAND_INDICES.reduce((sum, b) => sum + b.change30d, 0)
-    return (total / BRAND_INDICES.length).toFixed(1)
+  const last12MonthLabels = useMemo(() => {
+    return Array.from({ length: 12 }, (_, idx) => {
+      const date = new Date()
+      date.setMonth(date.getMonth() - (11 - idx))
+      return date.toLocaleString('en-US', { month: 'short' })
+    })
+  }, [])
+
+  const trendRangeLabel = `${last12MonthLabels[0]}–${last12MonthLabels[last12MonthLabels.length - 1]}`
+
+  const overallChange1m = useMemo(() => {
+    const total = BRAND_INDICES.reduce((sum, b) => sum + getTrendChange(b.trend, 1), 0)
+    return Number((total / BRAND_INDICES.length).toFixed(1))
   }, [])
 
   const marketSentiment = useMemo(() => {
-    const positiveCount = BRAND_INDICES.filter(b => b.change30d > 0).length
+    const positiveCount = BRAND_INDICES.filter(b => getTrendChange(b.trend, 1) > 0).length
     if (positiveCount >= 5) return { type: 'bull', color: '#5E8C6A', label: 'BULL 🐂' }
     if (positiveCount >= 3) return { type: 'neutral', color: '#C9A84C', label: 'NEUTRAL —' }
     return { type: 'bear', color: '#A0785A', label: 'BEAR 🐻' }
   }, [])
 
   const positiveBrandsCount = useMemo(() => {
-    return BRAND_INDICES.filter(b => b.change30d > 0).length
+    return BRAND_INDICES.filter(b => getTrendChange(b.trend, 1) > 0).length
   }, [])
+
+  const sentimentMonthLabels = useMemo(() => {
+    const formatter = new Intl.DateTimeFormat('en-US', { month: 'short' })
+    const now = new Date()
+
+    return Array.from({ length: 12 }, (_, index) => {
+      const date = new Date(now)
+      date.setMonth(now.getMonth() - (11 - index))
+      return formatter.format(date)
+    })
+  }, [])
+
+  const brandSentimentSeries = useMemo(() => {
+    const getLineColor = (index: number) => {
+      if (index < SENTIMENT_LINE_COLORS.length) {
+        return SENTIMENT_LINE_COLORS[index]
+      }
+
+      const hue = Math.round((index * GOLDEN_ANGLE_DEGREES) % 360)
+      return `hsl(${hue}, 52%, 46%)`
+    }
+
+    return BRAND_INDICES.map((brandIndex, index) => ({
+      key: `brand-${index}`,
+      brand: brandIndex.brand,
+      trend: brandIndex.trend,
+      color: getLineColor(index),
+    }))
+  }, [])
+
+  const [visibleSentimentBrands, setVisibleSentimentBrands] = useState<string[]>(() =>
+    BRAND_INDICES.map((_, index) => `brand-${index}`)
+  )
+
+  const overallSentimentChartData = useMemo(() => {
+    return sentimentMonthLabels.map((month, monthIndex) => {
+      const point: { month: string; [key: string]: number | string | null } = { month }
+      brandSentimentSeries.forEach((series) => {
+        point[series.key] = series.trend[monthIndex] ?? null
+      })
+      return point
+    })
+  }, [brandSentimentSeries, sentimentMonthLabels])
+
+  const toggleSentimentBrandVisibility = (seriesKey: string) => {
+    setVisibleSentimentBrands((current) => {
+      if (current.includes(seriesKey)) {
+        if (current.length === 1) return current
+        return current.filter((key) => key !== seriesKey)
+      }
+      return [...current, seriesKey]
+    })
+  }
 
   useEffect(() => {
     let isMounted = true
@@ -320,7 +382,7 @@ export function MarketModule({ watches }: MarketModuleProps) {
 
       <Card className="bg-card border-border">
         <CardContent className="py-4">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 mb-4">
             <div className="flex items-center gap-3 flex-1">
               <div className="text-sm font-medium text-muted-foreground whitespace-nowrap">Market Sentiment:</div>
               <div 
@@ -339,8 +401,59 @@ export function MarketModule({ watches }: MarketModuleProps) {
               </div>
             </div>
             <div className="text-right">
-              <div className="text-xs text-muted-foreground">30d Trend</div>
+              <div className="text-xs text-muted-foreground">1m Trend</div>
               <div className="text-sm font-medium">{positiveBrandsCount}/{BRAND_INDICES.length} brands positive</div>
+            </div>
+          </div>
+          <div className="space-y-3">
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={overallSentimentChartData}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+                  <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                  <YAxis
+                    tick={{ fontSize: 12 }}
+                    domain={[
+                      `dataMin - ${SENTIMENT_Y_AXIS_PADDING}`,
+                      `dataMax + ${SENTIMENT_Y_AXIS_PADDING}`,
+                    ]}
+                    width={40}
+                  />
+                  <Tooltip />
+                  <Legend />
+                  {brandSentimentSeries
+                    .filter((series) => visibleSentimentBrands.includes(series.key))
+                    .map((series) => (
+                      <Line
+                        key={series.key}
+                        type="monotone"
+                        dataKey={series.key}
+                        name={series.brand}
+                        stroke={series.color}
+                        strokeWidth={2}
+                        dot={false}
+                      />
+                    ))}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {brandSentimentSeries.map((series) => {
+                const isVisible = visibleSentimentBrands.includes(series.key)
+                return (
+                  <Button
+                    key={series.key}
+                    type="button"
+                    variant={isVisible ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => toggleSentimentBrandVisibility(series.key)}
+                    className="h-8"
+                  >
+                    <span className="inline-block w-2 h-2 rounded-full mr-2" style={{ backgroundColor: series.color }} />
+                    {series.brand}
+                  </Button>
+                )
+              })}
             </div>
           </div>
         </CardContent>
@@ -354,8 +467,8 @@ export function MarketModule({ watches }: MarketModuleProps) {
           <CardContent>
             <div className="text-3xl font-semibold tabular-nums text-primary">{overallIndex}</div>
             <div className="flex items-center gap-1 mt-1">
-              <TrendUp className="text-success" size={14} />
-              <span className="text-xs text-success">+{overallChange30d}% (30d)</span>
+              {overallChange1m >= 0 ? <TrendUp className="text-success" size={14} /> : <TrendDown className="text-destructive" size={14} />}
+              <span className={overallChange1m >= 0 ? 'text-xs text-success' : 'text-xs text-destructive'}>{formatTrend(overallChange1m)} (1m)</span>
             </div>
           </CardContent>
         </Card>
@@ -367,8 +480,8 @@ export function MarketModule({ watches }: MarketModuleProps) {
           <CardContent>
             <div className="text-3xl font-semibold tabular-nums">{BRAND_INDICES[0].currentIndex}</div>
             <div className="flex items-center gap-1 mt-1">
-              <TrendUp className="text-success" size={14} />
-              <span className="text-xs text-success">+{BRAND_INDICES[0].change30d}% (30d)</span>
+              {getTrendChange(BRAND_INDICES[0].trend, 1) >= 0 ? <TrendUp className="text-success" size={14} /> : <TrendDown className="text-destructive" size={14} />}
+              <span className={getTrendChange(BRAND_INDICES[0].trend, 1) >= 0 ? 'text-xs text-success' : 'text-xs text-destructive'}>{formatTrend(getTrendChange(BRAND_INDICES[0].trend, 1))} (1m)</span>
             </div>
           </CardContent>
         </Card>
@@ -380,8 +493,8 @@ export function MarketModule({ watches }: MarketModuleProps) {
           <CardContent>
             <div className="text-3xl font-semibold tabular-nums">{BRAND_INDICES[1].currentIndex}</div>
             <div className="flex items-center gap-1 mt-1">
-              <TrendUp className="text-success" size={14} />
-              <span className="text-xs text-success">+{BRAND_INDICES[1].change30d}% (30d)</span>
+              {getTrendChange(BRAND_INDICES[1].trend, 1) >= 0 ? <TrendUp className="text-success" size={14} /> : <TrendDown className="text-destructive" size={14} />}
+              <span className={getTrendChange(BRAND_INDICES[1].trend, 1) >= 0 ? 'text-xs text-success' : 'text-xs text-destructive'}>{formatTrend(getTrendChange(BRAND_INDICES[1].trend, 1))} (1m)</span>
             </div>
           </CardContent>
         </Card>
@@ -393,8 +506,8 @@ export function MarketModule({ watches }: MarketModuleProps) {
           <CardContent>
             <div className="text-3xl font-semibold tabular-nums">{BRAND_INDICES[2].currentIndex}</div>
             <div className="flex items-center gap-1 mt-1">
-              <TrendUp className="text-success" size={14} />
-              <span className="text-xs text-success">+{BRAND_INDICES[2].change30d}% (30d)</span>
+              {getTrendChange(BRAND_INDICES[2].trend, 1) >= 0 ? <TrendUp className="text-success" size={14} /> : <TrendDown className="text-destructive" size={14} />}
+              <span className={getTrendChange(BRAND_INDICES[2].trend, 1) >= 0 ? 'text-xs text-success' : 'text-xs text-destructive'}>{formatTrend(getTrendChange(BRAND_INDICES[2].trend, 1))} (1m)</span>
             </div>
           </CardContent>
         </Card>
@@ -403,6 +516,13 @@ export function MarketModule({ watches }: MarketModuleProps) {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {BRAND_INDICES.map((brandIndex) => {
           const isOwned = userBrands.has(brandIndex.brand)
+          const oneMonthChange = getTrendChange(brandIndex.trend, 1)
+          const sixMonthChange = getTrendChange(brandIndex.trend, 6)
+          const twelveMonthChange = getTrendChange(brandIndex.trend, brandIndex.trend.length - 1)
+          const trendData = brandIndex.trend.map((value, index) => ({
+            value,
+            month: last12MonthLabels[index] ?? `M${index + 1}`
+          }))
           return (
             <Card key={brandIndex.brand} className={`bg-card border-border ${isOwned ? 'ring-2 ring-primary/30' : ''}`}>
               <CardHeader className="pb-3">
@@ -423,7 +543,7 @@ export function MarketModule({ watches }: MarketModuleProps) {
 
                 <div className="h-16">
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={brandIndex.trend.map((val, idx) => ({ value: val, index: idx }))}>
+                    <LineChart data={trendData}>
                       <Line 
                         type="monotone" 
                         dataKey="value" 
@@ -435,23 +555,25 @@ export function MarketModule({ watches }: MarketModuleProps) {
                   </ResponsiveContainer>
                 </div>
 
+                <div className="text-[11px] text-muted-foreground -mt-1">Trend · Last 12 months ({trendRangeLabel})</div>
+
                 <div className="grid grid-cols-3 gap-2 text-xs">
                   <div>
-                    <div className="text-muted-foreground">30d</div>
-                    <div className={brandIndex.change30d >= 0 ? 'text-success' : 'text-destructive'}>
-                      {brandIndex.change30d >= 0 ? '+' : ''}{brandIndex.change30d}%
+                    <div className="text-muted-foreground">1m</div>
+                    <div className={oneMonthChange >= 0 ? 'text-success' : 'text-destructive'}>
+                      {formatTrend(oneMonthChange)}
                     </div>
                   </div>
                   <div>
-                    <div className="text-muted-foreground">90d</div>
-                    <div className={brandIndex.change90d >= 0 ? 'text-success' : 'text-destructive'}>
-                      {brandIndex.change90d >= 0 ? '+' : ''}{brandIndex.change90d}%
+                    <div className="text-muted-foreground">6m</div>
+                    <div className={sixMonthChange >= 0 ? 'text-success' : 'text-destructive'}>
+                      {formatTrend(sixMonthChange)}
                     </div>
                   </div>
                   <div>
-                    <div className="text-muted-foreground">180d</div>
-                    <div className={brandIndex.change180d >= 0 ? 'text-success' : 'text-destructive'}>
-                      {brandIndex.change180d >= 0 ? '+' : ''}{brandIndex.change180d}%
+                    <div className="text-muted-foreground">12m</div>
+                    <div className={twelveMonthChange >= 0 ? 'text-success' : 'text-destructive'}>
+                      {formatTrend(twelveMonthChange)}
                     </div>
                   </div>
                 </div>
