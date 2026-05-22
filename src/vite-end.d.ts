@@ -9,6 +9,8 @@ interface ImportMetaEnv {
 	readonly VITE_CHRONO24_WRAPPER_API_KEY?: string
 	readonly VITE_CHRONO24_WRAPPER_AUTH_HEADER?: string
 	readonly VITE_CHRONO24_WRAPPER_AUTH_SCHEME?: string
+	readonly VITE_CHRONO24_API_AUTH_HEADER?: string
+	readonly VITE_CHRONO24_API_AUTH_SCHEME?: string
 	readonly VITE_CHRONO24_WRAPPER_SEARCH_ENDPOINT?: string
 	readonly VITE_CHRONO24_WRAPPER_SEARCH_ENDPOINTS?: string
 	readonly VITE_CHRONO24_API_BASE_URL?: string
@@ -18,6 +20,8 @@ interface ImportMetaEnv {
 	readonly CHRONO24_WRAPPER_API_KEY?: string
 	readonly CHRONO24_WRAPPER_AUTH_HEADER?: string
 	readonly CHRONO24_WRAPPER_AUTH_SCHEME?: string
+	readonly CHRONO24_API_AUTH_HEADER?: string
+	readonly CHRONO24_API_AUTH_SCHEME?: string
 	readonly CHRONO24_WRAPPER_SEARCH_ENDPOINT?: string
 	readonly CHRONO24_WRAPPER_SEARCH_ENDPOINTS?: string
 	readonly CHRONO24_API_BASE_URL?: string

@@ -27,10 +27,14 @@ const CHRONO24_WRAPPER_API_KEY = trimEnv(import.meta.env.VITE_CHRONO24_WRAPPER_A
   || trimEnv(import.meta.env.CHRONO24_WRAPPER_API_KEY)
   || trimEnv(import.meta.env.CHRONO24_API_KEY)
 const CHRONO24_WRAPPER_AUTH_HEADER = trimEnv(import.meta.env.VITE_CHRONO24_WRAPPER_AUTH_HEADER)
+  || trimEnv(import.meta.env.VITE_CHRONO24_API_AUTH_HEADER)
   || trimEnv(import.meta.env.CHRONO24_WRAPPER_AUTH_HEADER)
+  || trimEnv(import.meta.env.CHRONO24_API_AUTH_HEADER)
   || "Authorization"
 const CHRONO24_WRAPPER_AUTH_SCHEME = trimEnv(import.meta.env.VITE_CHRONO24_WRAPPER_AUTH_SCHEME)
+  || trimEnv(import.meta.env.VITE_CHRONO24_API_AUTH_SCHEME)
   || trimEnv(import.meta.env.CHRONO24_WRAPPER_AUTH_SCHEME)
+  || trimEnv(import.meta.env.CHRONO24_API_AUTH_SCHEME)
   || "Bearer"
 const CHRONO24_WRAPPER_ENDPOINT = trimEnv(import.meta.env.VITE_CHRONO24_WRAPPER_SEARCH_ENDPOINT)
   || trimEnv(import.meta.env.CHRONO24_WRAPPER_SEARCH_ENDPOINT)
