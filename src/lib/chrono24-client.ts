@@ -1,13 +1,10 @@
 import { Deal } from "@/lib/types"
 
-const CHRONO24_CONFIG_ERROR_MESSAGE =
+export const CHRONO24_CONFIG_ERROR_MESSAGE =
   "Chrono24 API not configured. Start the chrono24-api server and set " +
   "VITE_CHRONO24_WRAPPER_BASE_URL (or VITE_CHRONO24_API_HOST) to enable live deals."
 
-const trimEnv = (value?: string) => {
-  const trimmed = value?.trim()
-  return trimmed ? trimmed : undefined
-}
+const trimEnv = (value?: string) => value?.trim() || undefined
 
 const isLocalDevHost = () => {
   if (typeof window === "undefined") return false
