@@ -548,7 +548,7 @@ export function MarketModule({ watches }: MarketModuleProps) {
           const trendMetrics = [
             { label: '1M', change: oneMonthChange, description: 'vs last month' },
             { label: '6M', change: sixMonthChange, description: 'vs 6 months ago' },
-            { label: '12M', change: twelveMonthChange, description: 'vs 12 months ago' },
+            { label: '12M', change: twelveMonthChange, description: 'vs 12 months ago' }
           ]
 
           return (
@@ -582,9 +582,9 @@ export function MarketModule({ watches }: MarketModuleProps) {
                             {metric.label}
                           </div>
                           {isPositive ? (
-                            <TrendUp className="text-success" size={18} weight="bold" />
+                            <TrendUp aria-label="Positive trend" className="text-success" size={18} weight="bold" />
                           ) : (
-                            <TrendDown className="text-destructive" size={18} weight="bold" />
+                            <TrendDown aria-label="Negative trend" className="text-destructive" size={18} weight="bold" />
                           )}
                         </div>
                         <div className={`mt-3 text-2xl font-semibold tabular-nums ${getTrendDirectionColor(metric.change)}`}>
