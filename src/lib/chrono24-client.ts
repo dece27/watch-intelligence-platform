@@ -1,10 +1,23 @@
 import { Deal } from "@/lib/types"
 
-const CHRONO24_BASE_URL = import.meta.env.VITE_CHRONO24_API_BASE_URL?.trim() || "https://chrono24.p.rapidapi.com"
-const CHRONO24_API_KEY = import.meta.env.VITE_CHRONO24_API_KEY?.trim()
-const CHRONO24_API_HOST = import.meta.env.VITE_CHRONO24_API_HOST?.trim() || "chrono24.p.rapidapi.com"
+const CHRONO24_WRAPPER_BASE_URL = import.meta.env.VITE_CHRONO24_WRAPPER_BASE_URL?.trim()
+  || import.meta.env.VITE_CHRONO24_API_BASE_URL?.trim()
+const CHRONO24_WRAPPER_API_KEY = import.meta.env.VITE_CHRONO24_WRAPPER_API_KEY?.trim()
+  || import.meta.env.VITE_CHRONO24_API_KEY?.trim()
+const CHRONO24_WRAPPER_AUTH_HEADER = import.meta.env.VITE_CHRONO24_WRAPPER_AUTH_HEADER?.trim() || "Authorization"
+const CHRONO24_WRAPPER_AUTH_SCHEME = import.meta.env.VITE_CHRONO24_WRAPPER_AUTH_SCHEME?.trim() || "Bearer"
+const CHRONO24_WRAPPER_ENDPOINT = import.meta.env.VITE_CHRONO24_WRAPPER_SEARCH_ENDPOINT?.trim()
+const CHRONO24_WRAPPER_ENDPOINTS = import.meta.env.VITE_CHRONO24_WRAPPER_SEARCH_ENDPOINTS
+  ?.split(",")
+  .map((endpoint) => endpoint.trim())
+  .filter(Boolean)
 
-const SEARCH_ENDPOINTS = ["/listings/search", "/search", "/api/search"]
+const DEFAULT_SEARCH_ENDPOINTS = ["/search", "/listings/search", "/api/search"]
+const SEARCH_ENDPOINTS = CHRONO24_WRAPPER_ENDPOINTS && CHRONO24_WRAPPER_ENDPOINTS.length > 0
+  ? CHRONO24_WRAPPER_ENDPOINTS
+  : CHRONO24_WRAPPER_ENDPOINT
+    ? [CHRONO24_WRAPPER_ENDPOINT]
+    : DEFAULT_SEARCH_ENDPOINTS
 const FALLBACK_IMAGE = "https://images.unsplash.com/photo-1522312346375-d1a52e2b99b3?w=400"
 const DEFAULT_UNRANKED_SCORE = 60
 const SEARCH_CACHE_TTL_MS = 10 * 60 * 1000
@@ -45,6 +58,9 @@ class Chrono24HttpError extends Error {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null
+
+const ensureTrailingSlash = (value: string) => (value.endsWith("/") ? value : `${value}/`)
+const normalizeEndpointPath = (endpoint: string) => endpoint.replace(/^\//, "")
 
 const canUseLocalStorage = () => typeof window !== "undefined" && typeof window.localStorage !== "undefined"
 
@@ -120,7 +136,7 @@ const getEndpointCandidates = () => {
   return [preferred, ...SEARCH_ENDPOINTS.filter((endpoint) => endpoint !== preferred)]
 }
 
-const getRequestParams = (endpoint: string, params: Chrono24SearchParams) => {
+const getRequestParams = (params: Chrono24SearchParams) => {
   const requestParams = new URLSearchParams()
   const queryValue = params.query || [params.brand, params.model].filter(Boolean).join(" ").trim() || undefined
 
@@ -133,24 +149,10 @@ const getRequestParams = (endpoint: string, params: Chrono24SearchParams) => {
   append("query", queryValue)
   append("brand", params.brand)
   append("model", params.model)
-  append("minPrice", params.minPrice)
-  append("maxPrice", params.maxPrice)
+  append("min_price", params.minPrice)
+  append("max_price", params.maxPrice)
   append("page", params.page)
   append("limit", params.limit)
-  append("max_price", params.maxPrice)
-  append("min_price", params.minPrice)
-
-  if (endpoint === "/search") {
-    append("q", queryValue)
-    append("per_page", params.limit)
-  }
-
-  if (endpoint === "/api/search") {
-    append("q", queryValue)
-    append("pageSize", params.limit)
-    append("priceMax", params.maxPrice)
-    append("priceMin", params.minPrice)
-  }
 
   return requestParams
 }
@@ -210,6 +212,18 @@ const pickNumber = (source: Record<string, unknown>, keys: string[]): number | n
   return null
 }
 
+const pickFirstArrayString = (source: Record<string, unknown>, keys: string[]): string | null => {
+  for (const key of keys) {
+    const value = source[key]
+    if (!Array.isArray(value)) continue
+    for (const entry of value) {
+      const stringValue = toStringValue(entry)
+      if (stringValue) return stringValue
+    }
+  }
+  return null
+}
+
 const getArrayPayload = (payload: unknown): unknown[] => {
   if (Array.isArray(payload)) return payload
   if (!isRecord(payload)) return []
@@ -234,15 +248,20 @@ const getArrayPayload = (payload: unknown): unknown[] => {
 const mapChrono24Listing = (item: unknown, index: number): Deal | null => {
   if (!isRecord(item)) return null
 
-  const price = pickNumber(item, ["price", "askingPrice", "priceAmount", "amount"])
+  const price = pickNumber(item, ["price", "askingPrice", "priceAmount", "amount", "listing_price"])
   if (price === null || price <= 0) return null
 
   const marketValue = pickNumber(item, ["marketValue", "estimatedMarketValue", "estimatedValue"])
   const fairValue = pickNumber(item, ["fairValue", "estimatedFairValue"]) ?? marketValue ?? null
   const discount = fairValue && fairValue > 0 ? Math.round(((fairValue - price) / fairValue) * 100) : 0
-  const imageUrl = pickString(item, ["imageUrl", "image", "thumbnailUrl", "image_url"]) || FALLBACK_IMAGE
-  const listedAt = pickString(item, ["listedAt", "listingDate", "createdAt", "publishedAt"])
+  const imageUrl = pickString(item, ["imageUrl", "image", "thumbnailUrl", "image_url"])
+    || pickFirstArrayString(item, ["image_urls", "images"])
+    || FALLBACK_IMAGE
+  const listedAt = pickString(item, ["listedAt", "listingDate", "createdAt", "publishedAt", "created_at"])
   const sourceUrl = pickString(item, ["url", "listingUrl", "sourceUrl", "href", "link"])
+  const scopeOfDelivery = pickString(item, ["scope_of_delivery"])?.toLowerCase() || ""
+  const hasBoxFromScope = /\bbox\b/.test(scopeOfDelivery)
+  const hasPapersFromScope = /\bpapers?\b/.test(scopeOfDelivery)
   let stableUrlIdentifier: string | null = null
   if (sourceUrl) {
     try {
@@ -260,16 +279,16 @@ const mapChrono24Listing = (item: unknown, index: number): Deal | null => {
 
   return {
     id: `chrono24-${listingIdentifier}`,
-    brand: pickString(item, ["brand", "manufacturer"]) || "Unknown",
+    brand: pickString(item, ["brand", "manufacturer", "brand_name"]) || "Unknown",
     model: pickString(item, ["model", "name", "title"]) || "Unknown Model",
-    referenceNumber: pickString(item, ["referenceNumber", "reference", "ref"]) || undefined,
+    referenceNumber: pickString(item, ["referenceNumber", "reference", "ref", "reference_number"]) || undefined,
     price,
     currency: pickString(item, ["currency", "currencyCode"]) || "USD",
     marketValue: marketValue ?? undefined,
     fairValue: fairValue ?? undefined,
     discount,
     condition: pickString(item, ["condition", "conditionText"]) || "Good",
-    seller: pickString(item, ["seller", "dealerName", "merchant"]) || "Chrono24 Seller",
+    seller: pickString(item, ["seller", "dealerName", "merchant", "merchant_name"]) || "Chrono24 Seller",
     location: pickString(item, ["location", "country", "city"]) || "Unknown",
     source: "Chrono24",
     sourceUrl: sourceUrl || undefined,
@@ -278,10 +297,10 @@ const mapChrono24Listing = (item: unknown, index: number): Deal | null => {
     matchScore: DEFAULT_UNRANKED_SCORE,
     dealScore: DEFAULT_UNRANKED_SCORE,
     daysListed: pickNumber(item, ["daysListed", "listingAgeDays"]) || undefined,
-    sellerRating: pickNumber(item, ["sellerRating", "dealerRating"]) || undefined,
-    hasBox: Boolean(item.hasBox ?? item.box),
-    hasPapers: Boolean(item.hasPapers ?? item.papers),
-    year: pickNumber(item, ["year", "productionYear"]) || undefined,
+    sellerRating: pickNumber(item, ["sellerRating", "dealerRating", "merchant_rating"]) || undefined,
+    hasBox: Boolean(item.hasBox ?? item.box) || hasBoxFromScope,
+    hasPapers: Boolean(item.hasPapers ?? item.papers) || hasPapersFromScope,
+    year: pickNumber(item, ["year", "productionYear", "year_of_production"]) || undefined,
   }
 }
 
@@ -289,8 +308,15 @@ const requestEndpoint = async (
   endpoint: string,
   params: Chrono24SearchParams
 ): Promise<unknown> => {
-  const url = new URL(`${CHRONO24_BASE_URL}${endpoint}`)
-  const requestParams = getRequestParams(endpoint, params)
+  if (!CHRONO24_WRAPPER_BASE_URL) {
+    throw new Error(
+      "Chrono24 wrapper base URL missing. Set VITE_CHRONO24_WRAPPER_BASE_URL (or legacy VITE_CHRONO24_API_BASE_URL)."
+    )
+  }
+
+  const baseUrl = ensureTrailingSlash(CHRONO24_WRAPPER_BASE_URL)
+  const url = new URL(normalizeEndpointPath(endpoint), baseUrl)
+  const requestParams = getRequestParams(params)
   requestParams.forEach((value, key) => {
     url.searchParams.set(key, value)
   })
@@ -299,9 +325,11 @@ const requestEndpoint = async (
     Accept: "application/json",
   }
 
-  if (CHRONO24_API_KEY) {
-    headers["X-RapidAPI-Key"] = CHRONO24_API_KEY
-    headers["X-RapidAPI-Host"] = CHRONO24_API_HOST
+  if (CHRONO24_WRAPPER_API_KEY) {
+    const isAuthorizationHeader = CHRONO24_WRAPPER_AUTH_HEADER.toLowerCase() === "authorization"
+    headers[CHRONO24_WRAPPER_AUTH_HEADER] = isAuthorizationHeader
+      ? `${CHRONO24_WRAPPER_AUTH_SCHEME} ${CHRONO24_WRAPPER_API_KEY}`
+      : CHRONO24_WRAPPER_API_KEY
   }
 
   let attemptedRetry = false
@@ -342,7 +370,7 @@ const requestEndpoint = async (
   }
 }
 
-export const hasChrono24Credentials = Boolean(CHRONO24_API_KEY)
+export const hasChrono24Credentials = Boolean(CHRONO24_WRAPPER_BASE_URL)
 
 export async function searchChrono24Deals(params: Chrono24SearchParams): Promise<Deal[]> {
   const cachedDeals = readCachedDeals(params)

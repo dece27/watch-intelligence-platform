@@ -5,6 +5,12 @@ declare const BASE_KV_SERVICE_URL: string
 interface ImportMetaEnv {
 	readonly VITE_WATCHCHARTS_API_KEY?: string
 	readonly VITE_WATCHCHARTS_BASE_URL?: string
+	readonly VITE_CHRONO24_WRAPPER_BASE_URL?: string
+	readonly VITE_CHRONO24_WRAPPER_API_KEY?: string
+	readonly VITE_CHRONO24_WRAPPER_AUTH_HEADER?: string
+	readonly VITE_CHRONO24_WRAPPER_AUTH_SCHEME?: string
+	readonly VITE_CHRONO24_WRAPPER_SEARCH_ENDPOINT?: string
+	readonly VITE_CHRONO24_WRAPPER_SEARCH_ENDPOINTS?: string
 	readonly VITE_CHRONO24_API_BASE_URL?: string
 	readonly VITE_CHRONO24_API_KEY?: string
 	readonly VITE_CHRONO24_API_HOST?: string
