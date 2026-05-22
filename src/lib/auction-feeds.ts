@@ -44,11 +44,14 @@ function isTrustedHost(hostname: string, trustedDomain: string): boolean {
 
 // Include Christie's-specific price field names alongside generic ones.
 const VALUE_KEYS = [
+  'sold_for',
+  'soldFor',
+  'sold_price',
+  'soldPrice',
   'result',
   'hammerPrice',
   'realizedPrice',
   'price',
-  'soldPrice',
   'amount',
   'priceRealised_USD',
   'priceRealised',
@@ -80,11 +83,30 @@ function getValueKeysForHouse(house: string): string[] {
       'price_realised',
       'priceRealised',
       'priceRealised_USD',
+      'realised',
       'realizedPrice',
       'soldPrice',
+      'sold_for',
+      'soldFor',
       'hammerPrice',
       'result',
       'price',
+    ]
+  }
+  if (normalizedHouse.includes('phillips')) {
+    return [
+      'sold_for',
+      'soldFor',
+      'sold_price',
+      'soldPrice',
+      'realizedPrice',
+      'price_realised',
+      'priceRealised',
+      'priceRealised_USD',
+      'hammerPrice',
+      'result',
+      'price',
+      'amount',
     ]
   }
   return VALUE_KEYS
@@ -93,12 +115,55 @@ function getValueKeysForHouse(house: string): string[] {
 function getUrlKeysForHouse(house: string): string[] {
   const normalizedHouse = house.toLowerCase()
   if (normalizedHouse.includes('christie')) {
-    return ['lot_url', 'lotUrl', 'detailUrl', 'url', 'link', 'sourceUrl']
+    return ['url', 'detailUrl', 'lot_url', 'lotUrl', 'link', 'sourceUrl']
   }
   if (normalizedHouse.includes('phillips')) {
     return ['detailUrl', 'url', 'link', 'sourceUrl', 'lot_url', 'lotUrl']
   }
   return URL_KEYS
+}
+
+function getAllStringValues(record: UnknownRecord, keys: string[]): string[] {
+  const uniqueValues = new Set<string>()
+  for (const key of keys) {
+    const value = record[key]
+    if (typeof value === 'string') {
+      const trimmed = value.trim()
+      if (trimmed.length > 0) {
+        uniqueValues.add(trimmed)
+      }
+    }
+  }
+  return Array.from(uniqueValues)
+}
+
+function getBestUrlValue(record: UnknownRecord, house: string): string {
+  const candidates = getAllStringValues(record, getUrlKeysForHouse(house))
+  if (candidates.length === 0) {
+    return ''
+  }
+
+  const normalizedHouse = house.toLowerCase()
+  if (normalizedHouse.includes('christie')) {
+    const exactLotPathCandidate = candidates.find((value) => /(?:^|\/)lot\/lot-\d+/i.test(value))
+    if (exactLotPathCandidate) {
+      return exactLotPathCandidate
+    }
+
+    const lotPathCandidate = candidates.find((value) => value.toLowerCase().includes('/lot/'))
+    if (lotPathCandidate) {
+      return lotPathCandidate
+    }
+  }
+
+  if (normalizedHouse.includes('phillips')) {
+    const detailPathCandidate = candidates.find((value) => value.toLowerCase().includes('/detail/'))
+    if (detailPathCandidate) {
+      return detailPathCandidate
+    }
+  }
+
+  return candidates[0]
 }
 
 function extractNumber(value: unknown): number | undefined {
@@ -218,7 +283,7 @@ function normalizeJsonItem(item: UnknownRecord, house: string): AuctionResult | 
   const notes = getStringValue(item, NOTES_KEYS)
   const dateString = getStringValue(item, DATE_KEYS)
   const reference = getStringValue(item, REFERENCE_KEYS)
-  const sourceUrl = resolveSourceUrl(getStringValue(item, getUrlKeysForHouse(house)), house)
+  const sourceUrl = resolveSourceUrl(getBestUrlValue(item, house), house)
 
   const result = extractNumber(getFirstValue(item, getValueKeysForHouse(house)))
   if (result === undefined) {
