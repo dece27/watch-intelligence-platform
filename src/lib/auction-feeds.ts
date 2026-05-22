@@ -21,6 +21,7 @@ interface FeedConfig {
 }
 
 const DEFAULT_RESULT_LIMIT = 8
+const RECENT_WINDOW_MONTHS = 12
 
 // Optional env-var-configured custom feed URLs (take precedence over the built-in endpoints).
 const CUSTOM_FEED_CONFIGS: FeedConfig[] = [
@@ -125,6 +126,12 @@ function parseDateToTimestamp(dateValue: string): number | null {
     return null
   }
   return parsed.getTime()
+}
+
+function getRecentWindowStartTimestamp(): number {
+  const cutoffDate = new Date()
+  cutoffDate.setMonth(cutoffDate.getMonth() - RECENT_WINDOW_MONTHS)
+  return cutoffDate.getTime()
 }
 
 /**
@@ -346,9 +353,20 @@ function normalizeAndFilter(
   limit: number
 ): AuctionResult[] {
   const lowerCaseRefs = references.map((reference) => reference.toLowerCase())
+  const recentWindowStartTimestamp = getRecentWindowStartTimestamp()
 
   return items
     .filter((item) => {
+      const normalizedHouse = item.house.toLowerCase()
+      if (!normalizedHouse.includes('christie') && !normalizedHouse.includes('phillips')) {
+        return false
+      }
+
+      const itemTimestamp = parseDateToTimestamp(item.date)
+      if (itemTimestamp === null || itemTimestamp < recentWindowStartTimestamp) {
+        return false
+      }
+
       const searchableText = `${item.lot} ${item.notes} ${item.reference || ''}`.toLowerCase()
       return lowerCaseRefs.some((reference) => searchableText.includes(reference))
     })

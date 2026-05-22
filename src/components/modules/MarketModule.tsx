@@ -80,15 +80,63 @@ const TOP_MOVERS = [
 ]
 
 const FALLBACK_AUCTION_RESULTS: AuctionResult[] = [
-  { house: 'Phillips Geneva', date: 'Nov 2024', lot: 'Patek Philippe 1518 Stainless Steel', result: 1240000, estLow: 900000, estHigh: 1400000, notes: 'One of 4 known steel examples' },
-  { house: 'Christie\'s New York', date: 'Dec 2024', lot: 'Rolex Daytona Paul Newman Ref. 6241', result: 287500, estLow: 200000, estHigh: 300000, notes: 'Original tropical dial, full set' },
-  { house: 'Christie\'s Geneva', date: 'Nov 2024', lot: 'Patek Nautilus 5711/1A-018 Tiffany Blue', result: 326000, estLow: 280000, estHigh: 380000, notes: 'Tiffany & Co. exclusive dial' },
-  { house: 'Phillips Hong Kong', date: 'Oct 2024', lot: 'AP Royal Oak 15202ST Jumbo A-Series', result: 98000, estLow: 75000, estHigh: 95000, notes: 'Early 38mm "A-series" gen' },
-  { house: 'Christie\'s HK', date: 'Nov 2024', lot: 'Rolex Daytona 116500LN Panda', result: 36800, estLow: 30000, estHigh: 40000, notes: 'Full set, last-gen ceramic' },
-  { house: 'Phillips New York', date: 'Oct 2024', lot: 'F.P. Journe Tourbillon Souverain', result: 185000, estLow: 150000, estHigh: 200000, notes: 'Titanium case, exceptional mvt' }
+  {
+    house: 'Phillips Geneva',
+    date: '2025-11-09',
+    lot: 'Patek Philippe Ref. 1518 (Steel)',
+    result: 17631075,
+    notes: 'Hammer: CHF 14,190,000 (USD equivalent shown)',
+    sourceUrl: 'https://www.phillips.com/detail/patek-philippe/CH080125/23',
+    reference: '1518',
+  },
+  {
+    house: 'Phillips New York',
+    date: '2025-06-08',
+    lot: 'Patek Philippe Ref. 1518 (Yellow Gold)',
+    result: 1451500,
+    notes: 'Hammer price',
+    sourceUrl: 'https://www.phillips.com/detail/patek-philippe/NY080125/20',
+    reference: '1518',
+  },
+  {
+    house: "Christie's Geneva",
+    date: '2025-05-12',
+    lot: 'Richard Mille RM27-01 Rafael Nadal',
+    result: 1491942,
+    notes: 'Hammer: CHF 1,255,000 (USD equivalent shown)',
+    sourceUrl: 'https://www.christies.com/en/lot/lot-6468372',
+    reference: 'RM27-01',
+  },
+  {
+    house: "Christie's Geneva",
+    date: '2025-05-12',
+    lot: 'Rolex Ref. 6264 Paul Newman "John Player Special"',
+    result: 1198309,
+    notes: 'Hammer: CHF 1,008,000 (USD equivalent shown)',
+    sourceUrl: 'https://www.christies.com/en/lot/lot-6468370',
+    reference: '6264',
+  },
+  {
+    house: "Christie's Geneva",
+    date: '2025-05-12',
+    lot: 'Cartier Crash Ref. 4131 (Special Order)',
+    result: 898732,
+    notes: 'Hammer: CHF 736,000 (USD equivalent shown)',
+    sourceUrl: 'https://www.christies.com/en/lot/lot-6468371',
+    reference: '4131',
+  },
+  {
+    house: 'Phillips Geneva',
+    date: '2025-11-09',
+    lot: 'F.P. Journe Chronomètre à Résonance Souscription No. 2',
+    result: 3327000,
+    notes: 'Hammer: CHF 3,327,000',
+    sourceUrl: 'https://www.phillips.com/detail/fp-journe/CH080125/182',
+    reference: 'resonance',
+  },
 ]
 
-const AUCTION_SEARCH_TERMS = ['1518', '6241', '5711', '15202', '116500', 'tourbillon souverain']
+const AUCTION_SEARCH_TERMS = ['1518', '6264', '4131', 'rm27-01', 'resonance', 'tourbillon souverain']
 
 export function MarketModule({ watches }: MarketModuleProps) {
   const [priceAlerts, setPriceAlerts] = useKV<PriceAlert[]>("priceAlerts", [])
@@ -558,7 +606,7 @@ export function MarketModule({ watches }: MarketModuleProps) {
           <div>
             <CardTitle>Recent Auction Results</CardTitle>
             <p className="text-sm text-muted-foreground mt-1">
-              Phillips & Christie&apos;s · Filtered Grail References
+              Phillips & Christie&apos;s · Grail references sold in the last 12 months
               {isAuctionResultsLoading ? ' · Syncing live feed…' : ''}
             </p>
           </div>
@@ -613,7 +661,7 @@ export function MarketModule({ watches }: MarketModuleProps) {
           </div>
           <div className="text-xs text-muted-foreground mt-4 pt-4 border-t border-border">
             Sources: {auctionResultsDataSource === 'live' ? 'Live Phillips/Christie’s feeds' : 'Fallback cached data'}.
-            {' '}Results shown in reported currencies/converted USD where provided.
+            {' '}Each row includes a direct auction/result link when available.
             {auctionResultsUpdatedAt ? ` Last sync: ${new Date(auctionResultsUpdatedAt).toLocaleString()}.` : ''}
           </div>
         </CardContent>
