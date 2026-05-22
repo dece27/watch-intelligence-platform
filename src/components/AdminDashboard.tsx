@@ -128,7 +128,7 @@ export function AdminDashboard() {
       await window.spark.kv.set("all_feedback_ids", [])
 
       const deletedUserCount = userIds.length
-      toast.success(`Deleted all user data: ${deletedUserCount} account${deletedUserCount === 1 ? "" : "s"} removed.`)
+      toast.success(`Deleted all user data: ${deletedUserCount} accounts removed.`)
       await loadStats()
     } catch (error) {
       console.error("Error resetting environment:", error)
