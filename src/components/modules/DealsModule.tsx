@@ -369,7 +369,7 @@ Return every deal id exactly once.`
                 0,
                 Math.min(100, Math.round(((deal.dealScore || DEFAULT_FALLBACK_DEAL_SCORE) + blendedScore) / 2))
               ),
-            }, [preferences, watches])
+            }
           })
         }
       } catch {
@@ -386,7 +386,7 @@ Return every deal id exactly once.`
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [preferences, watches])
 
   useEffect(() => {
     if (!preferencesLoaded) return
