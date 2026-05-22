@@ -779,7 +779,7 @@ export function MarketModule({ watches }: MarketModuleProps) {
                           <a
                             href={auction.sourceUrl}
                             target="_blank"
-                            rel="noreferrer"
+                            rel="noopener noreferrer"
                             className="text-primary underline underline-offset-4 hover:text-primary/80"
                           >
                             {getAuctionSourceLabel(auction)}
