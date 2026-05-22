@@ -120,8 +120,6 @@ const getEndpointCandidates = () => {
   return [preferred, ...SEARCH_ENDPOINTS.filter((endpoint) => endpoint !== preferred)]
 }
 
-const toSnakeCase = (value: string) => value.replace(/[A-Z]/g, (char) => `_${char.toLowerCase()}`)
-
 const getRequestParams = (endpoint: string, params: Chrono24SearchParams) => {
   const requestParams = new URLSearchParams()
   const queryValue = params.query || [params.brand, params.model].filter(Boolean).join(" ").trim() || undefined
@@ -135,11 +133,12 @@ const getRequestParams = (endpoint: string, params: Chrono24SearchParams) => {
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== "") {
       append(key, value)
-      append(toSnakeCase(key), value)
     }
   })
 
   append("query", queryValue)
+  append("max_price", params.maxPrice)
+  append("min_price", params.minPrice)
 
   if (endpoint === "/search") {
     append("q", queryValue)
@@ -244,8 +243,18 @@ const mapChrono24Listing = (item: unknown, index: number): Deal | null => {
   const imageUrl = pickString(item, ["imageUrl", "image", "thumbnailUrl", "image_url"]) || FALLBACK_IMAGE
   const listedAt = pickString(item, ["listedAt", "listingDate", "createdAt", "publishedAt"])
   const sourceUrl = pickString(item, ["url", "listingUrl", "sourceUrl", "href", "link"])
+  let stableUrlIdentifier: string | null = null
+  if (sourceUrl) {
+    try {
+      const parsed = new URL(sourceUrl)
+      const pathSegment = parsed.pathname.split("/").filter(Boolean).pop() || null
+      stableUrlIdentifier = pathSegment || `${parsed.origin}${parsed.pathname}`
+    } catch {
+      stableUrlIdentifier = sourceUrl.split(/[?#]/)[0] || null
+    }
+  }
   const listingIdentifier = pickString(item, ["id", "listingId", "uuid"])
-    || sourceUrl
+    || stableUrlIdentifier
     || pickString(item, ["referenceNumber", "reference", "ref", "slug", "title"])
     || `listing-${index}-${price}`
 
