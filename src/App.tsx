@@ -16,6 +16,44 @@ import { FeedbackDashboard } from "@/components/FeedbackDashboard"
 import { Toaster } from "@/components/ui/sonner"
 import { MobileNav } from "@/components/MobileNav"
 
+const WATCH_PHOTO_KEY_PREFIX = "watch_photo_"
+const WATCH_PHOTO_REF_PREFIX = "kv-photo:"
+const MAX_DATA_IMAGE_URL_LENGTH = 800_000
+const MAX_REMOTE_IMAGE_URL_LENGTH = 2_048
+
+function getWatchPhotoKey(userId: string, watchId: string): string {
+  return `${WATCH_PHOTO_KEY_PREFIX}${userId}_${watchId}`
+}
+
+function toWatchPhotoRef(watchId: string): string {
+  return `${WATCH_PHOTO_REF_PREFIX}${watchId}`
+}
+
+function isWatchPhotoRef(imageUrl?: string): boolean {
+  return Boolean(imageUrl?.startsWith(WATCH_PHOTO_REF_PREFIX))
+}
+
+function sanitizeWatchImageUrl(imageUrl?: string): string | undefined {
+  if (!imageUrl) return undefined
+  const trimmed = imageUrl.trim()
+  if (!trimmed) return undefined
+
+  if (trimmed.startsWith("data:image/")) {
+    const isSafeDataImage = /^data:image\/(png|jpeg|jpg|webp|gif);base64,[a-z0-9+/=\s]+$/i.test(trimmed)
+    if (!isSafeDataImage || trimmed.length > MAX_DATA_IMAGE_URL_LENGTH) return undefined
+    return trimmed
+  }
+
+  try {
+    const parsed = new URL(trimmed)
+    if (parsed.protocol !== "https:") return undefined
+    if (trimmed.length > MAX_REMOTE_IMAGE_URL_LENGTH) return undefined
+    return parsed.toString()
+  } catch {
+    return undefined
+  }
+}
+
 function App() {
   const [persistedUser, setPersistedUser] = useKV<User | null>("currentUser", null)
   const [currentUser, setCurrentUser] = useState<User | null>(persistedUser)
@@ -62,8 +100,30 @@ function App() {
       if (currentUser?.id) {
         try {
           const watchesKey = `watches_${currentUser.id}`
-          const loadedWatches = await window.spark.kv.get<Watch[]>(watchesKey)
-          setWatches(loadedWatches || [])
+          const loadedWatches = await window.spark.kv.get<Watch[]>(watchesKey) || []
+          const hydratedWatches = await Promise.all(
+            loadedWatches.map(async (watch) => {
+              const rawImage = watch.imageUrl
+              if (!rawImage) {
+                return { ...watch, imageUrl: undefined }
+              }
+
+              if (isWatchPhotoRef(rawImage)) {
+                const storedPhoto = await window.spark.kv.get<string>(getWatchPhotoKey(currentUser.id, watch.id))
+                return {
+                  ...watch,
+                  imageUrl: sanitizeWatchImageUrl(storedPhoto),
+                }
+              }
+
+              return {
+                ...watch,
+                imageUrl: sanitizeWatchImageUrl(rawImage),
+              }
+            })
+          )
+
+          setWatches(hydratedWatches)
           setWatchesLoaded(true)
         } catch (error) {
           console.error('Error loading watches:', error)
@@ -121,11 +181,30 @@ function App() {
     try {
       const currentWatches = await window.spark.kv.get<Watch[]>(watchesKey) || []
       const updatedWatches = updater(currentWatches)
+      const watchesForStorage = await Promise.all(
+        updatedWatches.map(async (watch) => {
+          const sanitizedImageUrl = sanitizeWatchImageUrl(watch.imageUrl)
+
+          if (!sanitizedImageUrl) {
+            return { ...watch, imageUrl: undefined }
+          }
+
+          if (sanitizedImageUrl.startsWith("data:image/")) {
+            await window.spark.kv.set(getWatchPhotoKey(currentUser.id, watch.id), sanitizedImageUrl)
+            return { ...watch, imageUrl: toWatchPhotoRef(watch.id) }
+          }
+
+          return { ...watch, imageUrl: sanitizedImageUrl }
+        })
+      )
       
       console.log(`Saving ${updatedWatches.length} watches to key: ${watchesKey}`)
       
-      await window.spark.kv.set(watchesKey, updatedWatches)
-      setWatches(updatedWatches)
+      await window.spark.kv.set(watchesKey, watchesForStorage)
+      setWatches(updatedWatches.map((watch) => ({
+        ...watch,
+        imageUrl: sanitizeWatchImageUrl(watch.imageUrl),
+      })))
       console.log('Watches saved successfully')
     } catch (error) {
       console.error('Error saving watches:', error)
