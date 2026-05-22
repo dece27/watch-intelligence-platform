@@ -1,11 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import type { AuthRecord, User } from "@/lib/types"
+import { verifyPassword } from "@/lib/auth"
+
+const PROTECTED_ADMIN_USER_ID_KEY = "protected_admin_user_id"
 
 const ensureUserIndexedMock = vi.fn(async () => {})
 
-vi.mock("@/lib/adminAnalytics", () => ({
-  ensureUserIndexed: ensureUserIndexedMock,
-}))
+vi.mock("@/lib/adminAnalytics", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/adminAnalytics")>()
+  return {
+    ...actual,
+    ensureUserIndexed: ensureUserIndexedMock,
+  }
+})
 
 type KvStore = Map<string, unknown>
 
@@ -49,6 +56,44 @@ describe("ensureDefaultAccount", () => {
     const auth = store.get(`auth_${userId}`) as AuthRecord
     expect(auth.userId).toBe(userId)
     expect(auth.failedAttempts).toBe(0)
+    await expect(verifyPassword("WatchVault", auth)).resolves.toBe(true)
+    expect(store.get(PROTECTED_ADMIN_USER_ID_KEY)).toBe(userId)
     expect(ensureUserIndexedMock).toHaveBeenCalledWith(userId)
+  })
+
+  it("deletes legacy admin users during bootstrap", async () => {
+    const { ensureDefaultAccount, DEFAULT_ACCOUNT_EMAIL } = await import("@/lib/defaultAccount")
+    const legacyUserId = "legacy-admin-id"
+    const legacyUserEmail = "dec.davide@gmail.com"
+    const store: KvStore = new Map([
+      ["all_user_ids", [legacyUserId]],
+      [
+        `user_${legacyUserId}`,
+        {
+          id: legacyUserId,
+          name: "Legacy Admin",
+          email: legacyUserEmail,
+          vaultName: "Legacy Vault",
+          createdAt: "2025-01-01T00:00:00.000Z",
+        } satisfies User,
+      ],
+      [`user_email_${legacyUserEmail}`, legacyUserId],
+      [`auth_${legacyUserId}`, { userId: legacyUserId } satisfies Partial<AuthRecord>],
+      [`watches_${legacyUserId}`, []],
+      [`ai_usage_${legacyUserId}`, { userId: legacyUserId, aiTokensUsed: 0, aiRequestsCount: 0 }],
+      [`vaultMetadata_${legacyUserId}`, { userId: legacyUserId }],
+    ])
+    ;(globalThis as { window?: unknown }).window = createSparkWindow(store)
+
+    await ensureDefaultAccount()
+
+    const adminUserId = store.get(`user_email_${DEFAULT_ACCOUNT_EMAIL.toLowerCase()}`) as string
+    expect(adminUserId).toEqual(expect.any(String))
+    expect(store.has(`user_${legacyUserId}`)).toBe(false)
+    expect(store.has(`auth_${legacyUserId}`)).toBe(false)
+    expect(store.has(`watches_${legacyUserId}`)).toBe(false)
+    expect(store.has(`ai_usage_${legacyUserId}`)).toBe(false)
+    expect(store.has(`vaultMetadata_${legacyUserId}`)).toBe(false)
+    expect(store.has(`user_email_${legacyUserEmail}`)).toBe(false)
   })
 })

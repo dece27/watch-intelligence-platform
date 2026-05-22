@@ -14,7 +14,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { UserAIUsage, isAdminEmail } from "@/lib/adminAnalytics"
+import {
+  PROTECTED_ADMIN_USER_ID_KEY,
+  UserAIUsage,
+  isProtectedAdminUser,
+} from "@/lib/adminAnalytics"
 import { toast } from "sonner"
 
 interface AdminUserStats {
@@ -45,10 +49,16 @@ export function AdminDashboard() {
   const [showResetDialog, setShowResetDialog] = useState(false)
   const [isDeletingUserId, setIsDeletingUserId] = useState<string | null>(null)
   const [selectedUserForDeletion, setSelectedUserForDeletion] = useState<User | null>(null)
+  const [protectedAdminUserId, setProtectedAdminUserId] = useState<string | null>(null)
 
   const loadStats = async () => {
     setIsLoading(true)
-    const userIds = await window.spark.kv.get<string[]>("all_user_ids") || []
+    const [userIdsResult, protectedAdminId] = await Promise.all([
+      window.spark.kv.get<string[]>("all_user_ids"),
+      window.spark.kv.get<string>(PROTECTED_ADMIN_USER_ID_KEY),
+    ])
+    const userIds = userIdsResult || []
+    setProtectedAdminUserId(protectedAdminId || null)
     const rowsWithNulls = await Promise.all(userIds.map(async (userId) => {
       const [user, auth, watches, usage] = await Promise.all([
         window.spark.kv.get<User>(`user_${userId}`),
@@ -151,7 +161,7 @@ export function AdminDashboard() {
 
   const handleDeleteSingleUser = async () => {
     if (!selectedUserForDeletion) return
-    if (isAdminEmail(selectedUserForDeletion.email)) {
+    if (isProtectedAdminUser(selectedUserForDeletion, protectedAdminUserId)) {
       toast.error("Admin accounts cannot be deleted.")
       setSelectedUserForDeletion(null)
       return
@@ -183,7 +193,7 @@ export function AdminDashboard() {
         const user = await window.spark.kv.get<User>(`user_${userId}`)
 
         // Preserve the admin account so it remains accessible after reset
-        if (user?.email && isAdminEmail(user.email)) {
+        if (isProtectedAdminUser(user, protectedAdminUserId)) {
           preservedUserIds.push(userId)
           continue
         }
@@ -345,7 +355,7 @@ export function AdminDashboard() {
             <ScrollArea className="h-[600px] pr-4">
               <div className="space-y-4">
                 {stats.map((row, index) => {
-                  const isAdminUser = isAdminEmail(row.user.email)
+                  const isAdminUser = isProtectedAdminUser(row.user, protectedAdminUserId)
                   return (
                     <div key={row.user.id}>
                     <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-6 text-sm">
