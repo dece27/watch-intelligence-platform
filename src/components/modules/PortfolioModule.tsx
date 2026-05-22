@@ -7,9 +7,11 @@ import { PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, Tooltip, Responsive
 import { TrendUp, TrendDown } from "@phosphor-icons/react"
 import { WhatIfSellCalculator } from "@/components/WhatIfSellCalculator"
 import { watchChartsClient } from "@/lib/watchcharts-client"
+import { formatCurrency } from "@/lib/currency"
 
 interface PortfolioModuleProps {
   watches: Watch[]
+  preferredCurrency?: string
 }
 
 function getEstimatedMarketValue(watch: Watch): number {
@@ -99,7 +101,7 @@ function calculateHealthScore(watches: Watch[]): number {
   return Math.round(healthScore)
 }
 
-export function PortfolioModule({ watches }: PortfolioModuleProps) {
+export function PortfolioModule({ watches, preferredCurrency = "USD" }: PortfolioModuleProps) {
   const [sortField, setSortField] = useState<'brand' | 'roi' | 'value' | 'holdPeriod'>('roi')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
   const [liveMarketValues, setLiveMarketValues] = useState<Record<string, number>>({})
@@ -223,7 +225,7 @@ export function PortfolioModule({ watches }: PortfolioModuleProps) {
 
   const trendData = useMemo(() => {
     const months = 12
-    const data = []
+    const data: Array<{ month: string; value: number }> = []
     const now = new Date()
     
     for (let i = months - 1; i >= 0; i--) {
@@ -288,7 +290,7 @@ export function PortfolioModule({ watches }: PortfolioModuleProps) {
             <CardTitle className="text-sm font-medium text-muted-foreground">Total Collection Value</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-semibold tabular-nums text-primary">${totalValue.toLocaleString()}</div>
+            <div className="text-3xl font-semibold tabular-nums text-primary">{formatCurrency(totalValue, preferredCurrency)}</div>
             <p className="text-xs text-muted-foreground mt-1">{watches.length} {watches.length === 1 ? 'watch' : 'watches'}</p>
           </CardContent>
         </Card>
@@ -298,7 +300,7 @@ export function PortfolioModule({ watches }: PortfolioModuleProps) {
             <CardTitle className="text-sm font-medium text-muted-foreground">Total Cost Basis</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-semibold tabular-nums">${totalCost.toLocaleString()}</div>
+            <div className="text-3xl font-semibold tabular-nums">{formatCurrency(totalCost, preferredCurrency)}</div>
             <p className="text-xs text-muted-foreground mt-1">Original investment</p>
           </CardContent>
         </Card>
@@ -309,7 +311,7 @@ export function PortfolioModule({ watches }: PortfolioModuleProps) {
           </CardHeader>
           <CardContent>
             <div className={`text-3xl font-semibold tabular-nums ${totalReturn >= 0 ? 'text-success' : 'text-destructive'}`}>
-              {totalReturn >= 0 ? '+' : ''}${totalReturn.toLocaleString()}
+              {totalReturn >= 0 ? '+' : '-'}{formatCurrency(Math.abs(totalReturn), preferredCurrency)}
             </div>
             <p className={`text-xs mt-1 ${totalReturnPercent >= 0 ? 'text-success' : 'text-destructive'}`}>
               {totalReturnPercent >= 0 ? '+' : ''}{totalReturnPercent.toFixed(1)}%
@@ -353,7 +355,7 @@ export function PortfolioModule({ watches }: PortfolioModuleProps) {
                 </Pie>
                 <Tooltip 
                   contentStyle={{ backgroundColor: 'oklch(0.04 0 0)', border: '1px solid oklch(1 0 0 / 0.07)', borderRadius: '8px' }}
-                  formatter={(value: number) => `$${value.toLocaleString()}`}
+                  formatter={(value: number) => formatCurrency(value, preferredCurrency)}
                 />
               </PieChart>
             </ResponsiveContainer>
@@ -375,11 +377,11 @@ export function PortfolioModule({ watches }: PortfolioModuleProps) {
                 <YAxis 
                   stroke="oklch(0.65 0.025 240)" 
                   style={{ fontSize: '12px' }}
-                  tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
+                  tickFormatter={(value) => formatCurrency(value, preferredCurrency, { notation: "compact" })}
                 />
                 <Tooltip 
                   contentStyle={{ backgroundColor: 'oklch(0.04 0 0)', border: '1px solid oklch(1 0 0 / 0.07)', borderRadius: '8px' }}
-                  formatter={(value: number) => [`$${value.toLocaleString()}`, 'Portfolio Value']}
+                  formatter={(value: number) => [formatCurrency(value, preferredCurrency), 'Portfolio Value']}
                 />
                 <Line 
                   type="monotone" 
@@ -398,6 +400,7 @@ export function PortfolioModule({ watches }: PortfolioModuleProps) {
         watches={watches}
         getMockMarketValue={getMarketValue}
         calculateHealthScore={calculateHealthScore}
+        preferredCurrency={preferredCurrency}
       />
 
       <Card className="bg-card border-border">
@@ -438,8 +441,8 @@ export function PortfolioModule({ watches }: PortfolioModuleProps) {
                       <div className="font-medium">{watch.brand}</div>
                       <div className="text-sm text-muted-foreground">{watch.model}</div>
                     </TableCell>
-                    <TableCell className="tabular-nums">${watch.purchasePrice.toLocaleString()}</TableCell>
-                    <TableCell className="tabular-nums">${watch.marketValue.toLocaleString()}</TableCell>
+                    <TableCell className="tabular-nums">{formatCurrency(watch.purchasePrice, preferredCurrency)}</TableCell>
+                    <TableCell className="tabular-nums">{formatCurrency(watch.marketValue, preferredCurrency)}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
                         <Badge 
@@ -454,7 +457,7 @@ export function PortfolioModule({ watches }: PortfolioModuleProps) {
                           {watch.roi >= 0 ? '+' : ''}{watch.roi.toFixed(1)}%
                         </Badge>
                         <span className={`tabular-nums text-sm ${watch.roiDollar >= 0 ? 'text-success' : 'text-destructive'}`}>
-                          {watch.roiDollar >= 0 ? '+' : ''}${watch.roiDollar.toLocaleString()}
+                          {watch.roiDollar >= 0 ? '+' : '-'}{formatCurrency(Math.abs(watch.roiDollar), preferredCurrency)}
                         </span>
                       </div>
                     </TableCell>

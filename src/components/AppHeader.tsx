@@ -1,20 +1,21 @@
 import { User } from "@/lib/types"
 import { UserProfile } from "@/components/UserProfile"
+import { formatCurrency } from "@/lib/currency"
 
 interface AppHeaderProps {
   totalValue: number
   isMobile?: boolean
   user: User
   onLogout: () => void
+  preferredCurrency: string
+  onCurrencyChange: (currency: string) => void
 }
 
-export function AppHeader({ totalValue, isMobile, user, onLogout }: AppHeaderProps) {
-  const formattedValue = new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
+export function AppHeader({ totalValue, isMobile, user, onLogout, preferredCurrency, onCurrencyChange }: AppHeaderProps) {
+  const formattedValue = formatCurrency(totalValue, preferredCurrency, {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
-  }).format(totalValue)
+  })
 
   return (
     <div className="sticky top-0 h-14 md:h-16 border-b border-border bg-background/95 backdrop-blur-sm px-4 md:px-6 flex items-center justify-between z-40">
@@ -31,7 +32,12 @@ export function AppHeader({ totalValue, isMobile, user, onLogout }: AppHeaderPro
             {formattedValue}
           </span>
         </div>
-        <UserProfile user={user} onLogout={onLogout} />
+        <UserProfile
+          user={user}
+          onLogout={onLogout}
+          preferredCurrency={preferredCurrency}
+          onCurrencyChange={onCurrencyChange}
+        />
       </div>
     </div>
   )

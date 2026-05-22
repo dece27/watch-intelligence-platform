@@ -11,10 +11,12 @@ import { Sparkle, PaperPlaneTilt, Image as ImageIcon, Plus, Fire, Star, Shopping
 import { toast } from "sonner"
 import { callTrackedLlm } from "@/lib/adminAnalytics"
 import { hasChrono24Credentials, searchChrono24Deals } from "@/lib/chrono24-client"
+import { formatCurrency } from "@/lib/currency"
 
 interface AIAdvisorModuleProps {
   watches: Watch[]
   userId: string
+  preferredCurrency?: string
 }
 
 interface RebalanceAnalysis {
@@ -167,7 +169,7 @@ const STARTER_QUESTIONS = [
   "Should I sell any watches in my collection?"
 ]
 
-export function AIAdvisorModule({ watches, userId }: AIAdvisorModuleProps) {
+export function AIAdvisorModule({ watches, userId, preferredCurrency = "USD" }: AIAdvisorModuleProps) {
   const [chatInput, setChatInput] = useState('')
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -198,7 +200,7 @@ export function AIAdvisorModule({ watches, userId }: AIAdvisorModuleProps) {
 
       return {
         cacheKey,
-        dependencyHash: getDependencyHash(watches, preferences, vaultMetadata),
+        dependencyHash: getDependencyHash(watches, preferences ?? null, vaultMetadata ?? null),
         cache,
       }
     } catch {
@@ -254,8 +256,8 @@ export function AIAdvisorModule({ watches, userId }: AIAdvisorModuleProps) {
         const promptText = `You are a luxury watch investment advisor. Analyze this watch and provide a trading signal.
 
 Watch: ${watch.brand} ${watch.model}
-Purchase Price: $${watch.purchasePrice}
-Current Estimated Value: $${watch.currentValue || watch.purchasePrice}
+Purchase Price: ${formatCurrency(watch.purchasePrice, preferredCurrency)}
+Current Estimated Value: ${formatCurrency(watch.currentValue || watch.purchasePrice, preferredCurrency)}
 Condition: ${watch.condition}
 Year: ${watch.year || 'Unknown'}
 
@@ -311,7 +313,7 @@ Respond in valid JSON format:
     setIsLoading(true)
 
     try {
-      const collectionSummary = watches.map(w => `${w.brand} ${w.model} (${w.year || 'N/A'}, $${w.purchasePrice})`).join(', ')
+      const collectionSummary = watches.map(w => `${w.brand} ${w.model} (${w.year || 'N/A'}, ${formatCurrency(w.purchasePrice, preferredCurrency)})`).join(', ')
       
       const promptText = `You are an expert luxury watch investment advisor with deep knowledge of horology, market trends, and collecting strategies.
 
@@ -535,7 +537,7 @@ Respond in valid JSON format:
         return
       }
       
-      const assessmentPrompt = `In exactly 2 sentences, explain why this watch is today's best deal: ${topDeal.brand} ${topDeal.model} ${topDeal.referenceNumber || ''}, ${topDeal.year || 'unknown year'}, ${topDeal.condition}, asking $${topDeal.price.toLocaleString()} vs fair market value of $${topDeal.fairValue.toLocaleString()}. Be specific about what makes the price attractive and who should consider buying it.`
+      const assessmentPrompt = `In exactly 2 sentences, explain why this watch is today's best deal: ${topDeal.brand} ${topDeal.model} ${topDeal.referenceNumber || ''}, ${topDeal.year || 'unknown year'}, ${topDeal.condition}, asking ${formatCurrency(topDeal.price, preferredCurrency)} vs fair market value of ${formatCurrency(topDeal.fairValue || topDeal.price, preferredCurrency)}. Be specific about what makes the price attractive and who should consider buying it.`
       
       const assessment = await callTrackedLlm(assessmentPrompt, 'gpt-4o-mini')
       setDealAssessment(assessment)
@@ -597,7 +599,7 @@ Respond in valid JSON format:
       const promptText = `You are a luxury watch portfolio advisor. Analyze this collection and suggest a rebalancing strategy.
 
 Collection: ${JSON.stringify(watchSummary)}
-Total value: $${totalValue.toLocaleString()}. Brand breakdown: ${brandPcts}.
+Total value: ${formatCurrency(totalValue, preferredCurrency)}. Brand breakdown: ${brandPcts}.
 
 2025 market context: Rolex steel sports stable-to-recovering after correction, Patek Philippe +6% YTD, AP Royal Oak +4% YTD, Grand Seiko +12.8% YTD and fastest-growing, IWC/Omega flat.
 
@@ -684,13 +686,13 @@ Respond in valid JSON format:
                   <div>
                     <div className="text-sm text-muted-foreground">Asking Price</div>
                     <div className="text-2xl font-bold text-primary tabular-nums">
-                      ${dealOfDay.price.toLocaleString()}
+                      {formatCurrency(dealOfDay.price, preferredCurrency)}
                     </div>
                   </div>
                   <div>
                     <div className="text-sm text-muted-foreground">Fair Value</div>
                     <div className="text-xl font-medium text-muted-foreground line-through tabular-nums">
-                      ${(dealOfDay.fairValue || dealOfDay.price).toLocaleString()}
+                      {formatCurrency((dealOfDay.fairValue || dealOfDay.price), preferredCurrency)}
                     </div>
                   </div>
                 </div>
@@ -698,7 +700,7 @@ Respond in valid JSON format:
                 <div className="flex gap-3 flex-wrap">
                   <Badge className="bg-success text-success-foreground text-base px-4 py-2">
                     <TrendDown className="mr-2" size={18} />
-                    Save ${((dealOfDay.fairValue || dealOfDay.price) - dealOfDay.price).toLocaleString()} 
+                    Save {formatCurrency(((dealOfDay.fairValue || dealOfDay.price) - dealOfDay.price), preferredCurrency)} 
                     ({Math.round((((dealOfDay.fairValue || dealOfDay.price) - dealOfDay.price) / (dealOfDay.fairValue || dealOfDay.price)) * 100)}% below fair value)
                   </Badge>
                   
@@ -1043,7 +1045,7 @@ Respond in valid JSON format:
                     <div>
                       <div className="text-sm text-muted-foreground">Estimated Value</div>
                       <div className="text-xl font-semibold text-primary tabular-nums">
-                        ${identifiedWatch.value.toLocaleString()}
+                        {formatCurrency(identifiedWatch.value, preferredCurrency)}
                       </div>
                     </div>
                   )}

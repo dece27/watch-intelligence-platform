@@ -13,6 +13,7 @@ import { Plus, Pencil, Trash, MagnifyingGlass, X, ShareNetwork, FileArrowUp } fr
 import { toast } from "sonner"
 import { ShareCollectionModal } from "@/components/ShareCollectionModal"
 import { ImportCSVModal } from "@/components/ImportCSVModal"
+import { formatCurrency } from "@/lib/currency"
 
 interface CollectionModuleProps {
   watches: Watch[]
@@ -25,6 +26,7 @@ interface CollectionModuleProps {
   hidePurchasePrice?: boolean
   title?: string
   subtitle?: string
+  preferredCurrency?: string
 }
 
 const WATCH_BRANDS = [
@@ -53,6 +55,7 @@ export function CollectionModule({
   hidePurchasePrice = false,
   title = "Collection Vault",
   subtitle,
+  preferredCurrency = "USD",
 }: CollectionModuleProps) {
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [isDetailOpen, setIsDetailOpen] = useState(false)
@@ -302,13 +305,13 @@ export function CollectionModule({
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">{hidePurchasePrice ? "Price" : "Purchase Price"}</span>
                   <span className="font-medium tabular-nums">
-                    {hidePurchasePrice ? "Hidden" : `$${watch.purchasePrice.toLocaleString()}`}
+                  {hidePurchasePrice ? "Hidden" : formatCurrency(watch.purchasePrice, preferredCurrency)}
                   </span>
                 </div>
                 {watch.currentValue && (
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Est. Value</span>
-                    <span className="font-medium text-success tabular-nums">${watch.currentValue.toLocaleString()}</span>
+                  <span className="font-medium text-success tabular-nums">{formatCurrency(watch.currentValue, preferredCurrency)}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-sm">
@@ -418,7 +421,7 @@ export function CollectionModule({
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="purchasePrice">Purchase Price * ($)</Label>
+                <Label htmlFor="purchasePrice">Purchase Price * ({preferredCurrency})</Label>
                 <Input
                   id="purchasePrice"
                   type="number"
@@ -440,7 +443,7 @@ export function CollectionModule({
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="currentValue">Current Est. Value ($)</Label>
+                <Label htmlFor="currentValue">Current Est. Value ({preferredCurrency})</Label>
                 <Input
                   id="currentValue"
                   type="number"
@@ -730,7 +733,7 @@ export function CollectionModule({
                     <div>
                       <h3 className="text-sm font-medium text-muted-foreground mb-1">Purchase Price</h3>
                       <p className="text-lg font-semibold tabular-nums">
-                        {hidePurchasePrice ? "Hidden" : `$${detailWatch.purchasePrice.toLocaleString()}`}
+                      {hidePurchasePrice ? "Hidden" : formatCurrency(detailWatch.purchasePrice, preferredCurrency)}
                       </p>
                     </div>
                     {detailWatch.purchaseDate?.trim() && (
@@ -742,7 +745,7 @@ export function CollectionModule({
                     {detailWatch.currentValue && (
                       <div>
                         <h3 className="text-sm font-medium text-muted-foreground mb-1">Current Value</h3>
-                        <p className="text-lg font-semibold text-success tabular-nums">${detailWatch.currentValue.toLocaleString()}</p>
+                        <p className="text-lg font-semibold text-success tabular-nums">{formatCurrency(detailWatch.currentValue, preferredCurrency)}</p>
                       </div>
                     )}
                     {detailWatch.movement && (
@@ -817,6 +820,7 @@ export function CollectionModule({
             open={isImportOpen}
             onOpenChange={setIsImportOpen}
             onImport={handleImportWatches}
+            preferredCurrency={preferredCurrency}
           />
 
           <ShareCollectionModal

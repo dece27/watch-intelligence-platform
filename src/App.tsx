@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react"
 import { useKV } from "@github/spark/hooks"
 import { useIsMobile } from "@/hooks/use-mobile"
-import { SharedCollectionRecord, Watch, User } from "@/lib/types"
+import { SharedCollectionRecord, Watch, User, UserPreferences } from "@/lib/types"
+import { DEFAULT_CURRENCY, normalizeCurrency } from "@/lib/currency"
 import { AppSidebar } from "@/components/AppSidebar"
 import { AppHeader } from "@/components/AppHeader"
 import { WelcomeModal } from "@/components/WelcomeModal"
@@ -78,6 +79,7 @@ function App() {
   const [sharedCollection, setSharedCollection] = useState<SharedCollectionRecord | null>(null)
   const [sharedLoading, setSharedLoading] = useState(false)
   const [sharedError, setSharedError] = useState<string | null>(null)
+  const [preferredCurrency, setPreferredCurrency] = useState(DEFAULT_CURRENCY)
   const isMobile = useIsMobile()
 
   useEffect(() => {
@@ -138,6 +140,32 @@ function App() {
       setCurrentUser(null)
     }
   }, [persistedUser])
+
+  useEffect(() => {
+    let active = true
+
+    const loadPreferences = async () => {
+      if (!currentUser?.id) {
+        if (active) setPreferredCurrency(DEFAULT_CURRENCY)
+        return
+      }
+
+      try {
+        const key = `user_preferences_${currentUser.id}`
+        const stored = await window.spark.kv.get<UserPreferences>(key)
+        if (!active) return
+        setPreferredCurrency(normalizeCurrency(stored?.currency))
+      } catch {
+        if (!active) return
+        setPreferredCurrency(DEFAULT_CURRENCY)
+      }
+    }
+
+    void loadPreferences()
+    return () => {
+      active = false
+    }
+  }, [currentUser?.id])
 
   const watchList = watches || []
   const totalValue = watchList.reduce((sum, w) => sum + (w.currentValue || w.purchasePrice), 0)
@@ -220,6 +248,25 @@ function App() {
     setActiveModule('collection')
   }
 
+  const handleCurrencyChange = async (currency: string) => {
+    const normalizedCurrency = normalizeCurrency(currency)
+    setPreferredCurrency(normalizedCurrency)
+    if (!currentUser?.id) return
+
+    const key = `user_preferences_${currentUser.id}`
+    try {
+      const existing = await window.spark.kv.get<UserPreferences>(key)
+      await window.spark.kv.set(key, {
+        ...(existing || {}),
+        userId: currentUser.id,
+        currency: normalizedCurrency,
+        updatedAt: new Date().toISOString(),
+      } satisfies UserPreferences)
+    } catch {
+      // Silent persistence failure; UI remains functional.
+    }
+  }
+
   const handleAddFirstWatch = () => {
     setActiveModule('collection')
     setShowWelcome(false)
@@ -292,18 +339,19 @@ function App() {
             onTriggerComplete={() => setTriggerAddWatch(false)}
             currentUserId={currentUser?.id}
             vaultName={currentUser?.vaultName}
+            preferredCurrency={preferredCurrency}
           />
         )
       case 'portfolio':
-        return <PortfolioModule watches={watchList} />
+        return <PortfolioModule watches={watchList} preferredCurrency={preferredCurrency} />
       case 'market':
-        return <MarketModule watches={watchList} />
+        return <MarketModule watches={watchList} preferredCurrency={preferredCurrency} />
       case 'ai-advisor':
-        return <AIAdvisorModule watches={watchList} userId={currentUser?.id || ""} />
+        return <AIAdvisorModule watches={watchList} userId={currentUser?.id || ""} preferredCurrency={preferredCurrency} />
       case 'deals':
-        return <DealsModule watches={watchList} userId={currentUser?.id || ""} />
+        return <DealsModule watches={watchList} userId={currentUser?.id || ""} preferredCurrency={preferredCurrency} />
       case 'appraisal':
-        return <AppraisalModule watches={watchList} />
+        return <AppraisalModule watches={watchList} preferredCurrency={preferredCurrency} />
       case 'feedback':
         return isAdmin ? (
           <FeedbackDashboard />
@@ -313,6 +361,7 @@ function App() {
             onUpdate={handleUpdateWatches}
             currentUserId={currentUser?.id}
             vaultName={currentUser?.vaultName}
+            preferredCurrency={preferredCurrency}
           />
         )
       case 'admin-dashboard':
@@ -324,6 +373,7 @@ function App() {
             onUpdate={handleUpdateWatches}
             currentUserId={currentUser?.id}
             vaultName={currentUser?.vaultName}
+            preferredCurrency={preferredCurrency}
           />
         )
       default:
@@ -333,6 +383,7 @@ function App() {
             onUpdate={handleUpdateWatches}
             currentUserId={currentUser?.id}
             vaultName={currentUser?.vaultName}
+            preferredCurrency={preferredCurrency}
           />
         )
     }
@@ -370,6 +421,7 @@ function App() {
             onUpdate={() => {}}
             readOnly
             hidePurchasePrice
+            preferredCurrency={preferredCurrency}
             title={`${sharedCollection.ownerVaultName} — Shared Collection`}
             subtitle={`${sharedCollection.watches.length} ${sharedCollection.watches.length === 1 ? "watch" : "watches"} in this public view`}
           />
@@ -388,7 +440,14 @@ function App() {
       {!isMobile && <AppSidebar activeModule={activeModule} onModuleChange={setActiveModule} isAdmin={isAdmin} />}
       
       <div className="flex-1 flex flex-col overflow-hidden">
-        <AppHeader totalValue={totalValue} isMobile={isMobile} user={currentUser} onLogout={handleLogout} />
+        <AppHeader
+          totalValue={totalValue}
+          isMobile={isMobile}
+          user={currentUser}
+          onLogout={handleLogout}
+          preferredCurrency={preferredCurrency}
+          onCurrencyChange={handleCurrencyChange}
+        />
         
         <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-20 md:pb-6">
           <div className="max-w-7xl mx-auto">
