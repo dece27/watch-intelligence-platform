@@ -26,6 +26,8 @@ interface RebalanceAnalysis {
 }
 
 const DEFAULT_STRATEGIC_SCORE = 5
+const DEFAULT_NO_SELL_ACTION = 'No sell action needed — nothing should be done.'
+const DEFAULT_NO_BUY_ACTION = 'No buy action needed — nothing should be done.'
 
 const extractJsonPayload = (response: string) => {
   const trimmed = response.trim()
@@ -43,6 +45,18 @@ const pickStringValue = (source: Record<string, unknown>, keys: string[]) => {
   return ''
 }
 
+const normalizeRecommendation = (value: string, fallback: string) => {
+  const trimmed = value.trim()
+  if (!trimmed) return fallback
+
+  const noActionPattern = /\b(no action|do nothing|nothing should be done|no changes?|none needed|not needed)\b/i
+  if (noActionPattern.test(trimmed)) {
+    return trimmed.includes('nothing should be done') ? trimmed : `${trimmed} Nothing should be done.`
+  }
+
+  return trimmed
+}
+
 const parseRebalanceAnalysis = (response: string): RebalanceAnalysis => {
   try {
     const parsed = JSON.parse(extractJsonPayload(response)) as Record<string, unknown>
@@ -51,8 +65,14 @@ const parseRebalanceAnalysis = (response: string): RebalanceAnalysis => {
 
     return {
       concentrationRisk: pickStringValue(parsed, ['concentrationRisk', 'concentration_risk', 'concentration risk']),
-      sell: pickStringValue(parsed, ['sell', 'sellRecommendation', 'sell_recommendation', 'sell recommendation']),
-      buy: pickStringValue(parsed, ['buy', 'buyRecommendation', 'buy_recommendation', 'buy recommendation']),
+      sell: normalizeRecommendation(
+        pickStringValue(parsed, ['sell', 'sellRecommendation', 'sell_recommendation', 'sell recommendation']),
+        DEFAULT_NO_SELL_ACTION
+      ),
+      buy: normalizeRecommendation(
+        pickStringValue(parsed, ['buy', 'buyRecommendation', 'buy_recommendation', 'buy recommendation']),
+        DEFAULT_NO_BUY_ACTION
+      ),
       strategicScore: {
         score: Number.isFinite(parsedScore) ? parsedScore : DEFAULT_STRATEGIC_SCORE,
         explanation: pickStringValue(strategicScore, ['explanation', 'reasoning']) || 'No explanation provided.'
@@ -318,8 +338,8 @@ Total value: $${totalValue.toLocaleString()}. Brand breakdown: ${brandPcts}.
 
 Provide:
 1. CONCENTRATION RISK: Identify any brand >50% of portfolio value and flag the risk
-2. SELL RECOMMENDATION: Name 1 specific watch to consider selling (the one most overweight or most likely at peak), with reasoning
-3. BUY RECOMMENDATION: Suggest 1-2 specific references to add for better diversification, with approximate current market price and the investment thesis
+2. SELL RECOMMENDATION: Always provide this field. Name 1 specific watch to consider selling (the one most overweight or most likely at peak), with reasoning. If no sell action is needed, explicitly say: "No sell action needed — nothing should be done."
+3. BUY RECOMMENDATION: Always provide this field. Suggest 1-2 specific references to add for better diversification, with approximate current market price and the investment thesis. If no buy action is needed, explicitly say: "No buy action needed — nothing should be done."
 4. STRATEGIC SCORE: Rate the current portfolio balance 1-10 with a brief explanation
 
 Respond in valid JSON format:
