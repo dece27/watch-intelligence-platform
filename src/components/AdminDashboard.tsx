@@ -4,7 +4,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
-import { UserAIUsage } from "@/lib/adminAnalytics"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { UserAIUsage, ADMIN_EMAIL } from "@/lib/adminAnalytics"
+import { toast } from "sonner"
 
 interface AdminUserStats {
   user: User
@@ -16,9 +27,14 @@ interface AdminUserStats {
   createdAtTimestamp: number
 }
 
+const WATCH_PHOTO_KEY_PREFIX = "watch_photo_"
+const WATCH_PHOTO_REF_PREFIX = "kv-photo:"
+
 export function AdminDashboard() {
   const [isLoading, setIsLoading] = useState(true)
   const [stats, setStats] = useState<AdminUserStats[]>([])
+  const [isResetting, setIsResetting] = useState(false)
+  const [showResetDialog, setShowResetDialog] = useState(false)
 
   const loadStats = async () => {
     setIsLoading(true)
@@ -55,6 +71,75 @@ export function AdminDashboard() {
     loadStats()
   }, [])
 
+  const handleResetEnvironment = async () => {
+    setIsResetting(true)
+    try {
+      const userIds = await window.spark.kv.get<string[]>("all_user_ids") || []
+
+      const adminUserIds: string[] = []
+      for (const userId of userIds) {
+        const user = await window.spark.kv.get<User>(`user_${userId}`)
+        if (!user) continue
+
+        const isAdmin = user.email.trim().toLowerCase() === ADMIN_EMAIL
+
+        if (isAdmin) {
+          adminUserIds.push(userId)
+          continue
+        }
+
+        // Delete watch photos for this user
+        const watches = await window.spark.kv.get<Watch[]>(`watches_${userId}`) || []
+        await Promise.all(
+          watches
+            .filter((w) => w.imageUrl?.startsWith(WATCH_PHOTO_REF_PREFIX))
+            .map((w) => {
+              const watchId = w.imageUrl!.slice(WATCH_PHOTO_REF_PREFIX.length)
+              return window.spark.kv.delete(`${WATCH_PHOTO_KEY_PREFIX}${userId}_${watchId}`)
+            })
+        )
+
+        // Delete all user-specific keys
+        await Promise.all([
+          window.spark.kv.delete(`user_email_${user.email.trim().toLowerCase()}`),
+          window.spark.kv.delete(`user_${userId}`),
+          window.spark.kv.delete(`auth_${userId}`),
+          window.spark.kv.delete(`watches_${userId}`),
+          window.spark.kv.delete(`ai_usage_${userId}`),
+          window.spark.kv.delete(`vaultMetadata_${userId}`),
+        ])
+      }
+
+      // Update user index to only retain admin accounts
+      await window.spark.kv.set("all_user_ids", adminUserIds)
+
+      // Delete non-admin feedback
+      const feedbackIds = await window.spark.kv.get<string[]>("all_feedback_ids") || []
+      const remainingFeedbackIds: string[] = []
+      await Promise.all(
+        feedbackIds.map(async (feedbackId) => {
+          const item = await window.spark.kv.get<{ userEmail?: string }>(feedbackId)
+          if (item?.userEmail && item.userEmail.trim().toLowerCase() === ADMIN_EMAIL) {
+            remainingFeedbackIds.push(feedbackId)
+          } else {
+            await window.spark.kv.delete(feedbackId)
+          }
+        })
+      )
+      await window.spark.kv.set("all_feedback_ids", remainingFeedbackIds)
+
+      const deletedUserCount = userIds.length - adminUserIds.length
+      toast.success(`Environment reset: ${deletedUserCount} user account${deletedUserCount === 1 ? "" : "s"} removed.`)
+      await loadStats()
+    } catch (error) {
+      console.error("Error resetting environment:", error)
+      toast.error("Failed to reset environment. Please try again.")
+    } finally {
+      setIsResetting(false)
+      setShowResetDialog(false)
+    }
+  }
+
   const totals = useMemo(() => {
     const totalUsers = stats.length
     const totalWatches = stats.reduce((sum, row) => sum + row.watchCount, 0)
@@ -80,6 +165,13 @@ export function AdminDashboard() {
         </div>
         <Button onClick={loadStats} variant="outline">
           Refresh
+        </Button>
+        <Button
+          onClick={() => setShowResetDialog(true)}
+          variant="destructive"
+          disabled={isResetting}
+        >
+          {isResetting ? "Resetting…" : "Reset Environment"}
         </Button>
       </div>
 
@@ -188,6 +280,29 @@ export function AdminDashboard() {
           )}
         </CardContent>
       </Card>
+
+      <AlertDialog open={showResetDialog} onOpenChange={setShowResetDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset Environment?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete all user accounts, collections, watch photos, AI usage
+              records, and feedback — except for the admin account ({ADMIN_EMAIL}). This action
+              cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isResetting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleResetEnvironment}
+              disabled={isResetting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isResetting ? "Resetting…" : "Yes, Reset Everything"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
