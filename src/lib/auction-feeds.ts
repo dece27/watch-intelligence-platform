@@ -90,12 +90,12 @@ function getStringValue(record: UnknownRecord, keys: string[]): string {
   return typeof value === 'string' ? value.trim() : ''
 }
 
-function parseDateToIso(dateValue: string): string {
+function parseDateToTimestamp(dateValue: string): number | null {
   const parsed = new Date(dateValue)
   if (Number.isNaN(parsed.getTime())) {
-    return new Date(0).toISOString()
+    return null
   }
-  return parsed.toISOString()
+  return parsed.getTime()
 }
 
 function normalizeJsonItem(item: UnknownRecord, house: string): AuctionResult | null {
@@ -173,19 +173,34 @@ function normalizeXmlItems(rawXml: string, house: string): AuctionResult[] {
 async function fetchFeed(feed: FeedConfig): Promise<AuctionResult[]> {
   const response = await fetch(feed.url)
   if (!response.ok) {
-    throw new Error(`${feed.house} feed request failed`)
+    throw new Error(`${feed.house} feed request failed: ${response.status} from ${feed.url}`)
   }
 
   const contentType = response.headers.get('content-type') || ''
+  const extractItemsArray = (payload: unknown): unknown[] => {
+    if (Array.isArray(payload)) {
+      return payload
+    }
+
+    if (!payload || typeof payload !== 'object') {
+      return []
+    }
+
+    const record = payload as UnknownRecord
+    if (Array.isArray(record.items)) {
+      return record.items as unknown[]
+    }
+
+    if (Array.isArray(record.results)) {
+      return record.results as unknown[]
+    }
+
+    return []
+  }
+
   if (contentType.includes('application/json')) {
     const payload: unknown = await response.json()
-    const rawItems = Array.isArray(payload)
-      ? payload
-      : Array.isArray((payload as UnknownRecord).items)
-      ? ((payload as UnknownRecord).items as unknown[])
-      : Array.isArray((payload as UnknownRecord).results)
-      ? ((payload as UnknownRecord).results as unknown[])
-      : []
+    const rawItems = extractItemsArray(payload)
 
     return rawItems
       .filter((item): item is UnknownRecord => Boolean(item && typeof item === 'object'))
@@ -198,13 +213,7 @@ async function fetchFeed(feed: FeedConfig): Promise<AuctionResult[]> {
   if (body.trim().startsWith('{') || body.trim().startsWith('[')) {
     try {
       const payload = JSON.parse(body) as unknown
-      const rawItems = Array.isArray(payload)
-        ? payload
-        : Array.isArray((payload as UnknownRecord).items)
-        ? ((payload as UnknownRecord).items as unknown[])
-        : Array.isArray((payload as UnknownRecord).results)
-        ? ((payload as UnknownRecord).results as unknown[])
-        : []
+      const rawItems = extractItemsArray(payload)
 
       return rawItems
         .filter((item): item is UnknownRecord => Boolean(item && typeof item === 'object'))
@@ -230,7 +239,7 @@ function normalizeAndFilter(
       const searchableText = `${item.lot} ${item.notes} ${item.reference || ''}`.toLowerCase()
       return lowerCaseRefs.some((reference) => searchableText.includes(reference))
     })
-    .sort((a, b) => parseDateToIso(b.date).localeCompare(parseDateToIso(a.date)))
+    .sort((a, b) => (parseDateToTimestamp(b.date) ?? -1) - (parseDateToTimestamp(a.date) ?? -1))
     .slice(0, limit)
 }
 
