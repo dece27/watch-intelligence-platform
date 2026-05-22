@@ -202,6 +202,38 @@ export function MarketModule({ watches }: MarketModuleProps) {
     toast.success("Price alert removed")
   }
 
+  const getAuctionDetailUrl = (auction: AuctionResult) => {
+    const sourceUrl = auction.sourceUrl?.trim()
+    if (sourceUrl) {
+      try {
+        const parsed = new URL(sourceUrl)
+        if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+          return parsed.toString()
+        }
+      } catch {
+        // Fall back to search URL below.
+      }
+    }
+
+    const normalizeSearchText = (value: unknown) => {
+      if (typeof value !== 'string') {
+        return ''
+      }
+
+      return value
+        .replace(/[^a-zA-Z0-9\s'&./-]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 120)
+    }
+
+    const sanitizedHouse = normalizeSearchText(auction.house)
+    const sanitizedLot = normalizeSearchText(auction.lot)
+    const query = `${sanitizedHouse} ${sanitizedLot} auction result`.trim()
+
+    return `https://www.google.com/search?q=${encodeURIComponent(query)}`
+  }
+
   const priceHistoryData = searchReference ? [
     { month: 'Jan', price: 8500 },
     { month: 'Feb', price: 8700 },
@@ -521,6 +553,7 @@ export function MarketModule({ watches }: MarketModuleProps) {
                   <th className="text-right py-3 px-2 text-sm font-medium text-muted-foreground">Result</th>
                   <th className="text-right py-3 px-2 text-sm font-medium text-muted-foreground">Est.</th>
                   <th className="text-left py-3 px-2 text-sm font-medium text-muted-foreground">Notes</th>
+                  <th className="text-right py-3 px-2 text-sm font-medium text-muted-foreground">View</th>
                 </tr>
               </thead>
               <tbody>
@@ -544,6 +577,13 @@ export function MarketModule({ watches }: MarketModuleProps) {
                           : '—'}
                       </td>
                       <td className="py-3 px-2 text-sm text-muted-foreground">{auction.notes}</td>
+                      <td className="py-3 px-2 text-sm text-right">
+                        <Button asChild variant="link" size="sm" className="h-auto p-0">
+                          <a href={getAuctionDetailUrl(auction)} target="_blank" rel="noopener noreferrer">
+                            View
+                          </a>
+                        </Button>
+                      </td>
                     </tr>
                   )
                 })}
