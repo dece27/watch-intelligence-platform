@@ -27,8 +27,8 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
   const [error, setError] = useState("")
 
   useEffect(() => {
-    ensureDefaultAccount().catch(() => {
-      // noop
+    ensureDefaultAccount().catch((bootstrapError) => {
+      console.error("Failed to bootstrap default account:", bootstrapError)
     })
   }, [])
 

@@ -1,11 +1,14 @@
-import { hashPassword } from "@/lib/auth"
 import { ensureUserIndexed } from "@/lib/adminAnalytics"
 import { AuthRecord, User } from "@/lib/types"
 
 export const DEFAULT_ACCOUNT_EMAIL = "dec.davide@gmail.com"
-const DEFAULT_ACCOUNT_PASSWORD = "WatchVault"
 const DEFAULT_ACCOUNT_NAME = "Davide"
 const DEFAULT_ACCOUNT_VAULT_NAME = "WatchVault"
+const DEFAULT_ACCOUNT_AUTH = {
+  passwordHash: "weuoxzjRd14shhw7JHkha0V3vbQPpdqaBsvUA/7JoEA=",
+  salt: "5r4LcnEAK3QTXFynTrHWww==",
+  iterations: 210_000,
+} as const
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase()
@@ -34,10 +37,9 @@ export async function ensureDefaultAccount() {
   }
 
   const currentAuth = await window.spark.kv.get<AuthRecord>(`auth_${userId}`)
-  const passwordPayload = await hashPassword(DEFAULT_ACCOUNT_PASSWORD)
   await window.spark.kv.set(`auth_${userId}`, {
     userId,
-    ...passwordPayload,
+    ...DEFAULT_ACCOUNT_AUTH,
     failedAttempts: 0,
     loginCount: currentAuth?.loginCount || 0,
     lastLoginAt: currentAuth?.lastLoginAt,
