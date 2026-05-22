@@ -129,7 +129,7 @@ const getTrendChange = (trend: number[], months: number) => {
 
   if (!baseline) return 0
 
-  return Number((((current - baseline) / baseline) * 100).toFixed(1))
+  return ((current - baseline) / baseline) * 100
 }
 
 const formatTrend = (change: number) => `${change >= 0 ? '+' : ''}${change.toFixed(1)}%`
@@ -168,6 +168,10 @@ export function MarketModule({ watches }: MarketModuleProps) {
       return date.toLocaleString('en-US', { month: 'short' })
     })
   }, [])
+
+  const trendRangeLabel = last12MonthLabels.length > 0
+    ? `${last12MonthLabels[0]}–${last12MonthLabels[last12MonthLabels.length - 1]}`
+    : 'Last 12 months'
 
   const overallChange1m = useMemo(() => {
     const total = BRAND_INDICES.reduce((sum, b) => sum + getTrendChange(b.trend, 1), 0)
@@ -416,7 +420,7 @@ export function MarketModule({ watches }: MarketModuleProps) {
           const isOwned = userBrands.has(brandIndex.brand)
           const oneMonthChange = getTrendChange(brandIndex.trend, 1)
           const sixMonthChange = getTrendChange(brandIndex.trend, 6)
-          const twelveMonthChange = getTrendChange(brandIndex.trend, 12)
+          const twelveMonthChange = getTrendChange(brandIndex.trend, Math.min(11, brandIndex.trend.length - 1))
           const trendData = brandIndex.trend.map((value, index) => ({
             value,
             month: last12MonthLabels[index] ?? `M${index + 1}`
@@ -453,7 +457,7 @@ export function MarketModule({ watches }: MarketModuleProps) {
                   </ResponsiveContainer>
                 </div>
 
-                <div className="text-[11px] text-muted-foreground -mt-1">Trend · Last 12 months ({last12MonthLabels[0]}–{last12MonthLabels[last12MonthLabels.length - 1]})</div>
+                <div className="text-[11px] text-muted-foreground -mt-1">Trend · Last 12 months ({trendRangeLabel})</div>
 
                 <div className="grid grid-cols-3 gap-2 text-xs">
                   <div>
