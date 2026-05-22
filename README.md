@@ -102,7 +102,7 @@ When running the frontend on localhost, it also auto-falls back to
 ## GitHub Pages deployment
 
 This repository can be deployed to GitHub Pages with the included workflow at
-`/home/runner/work/watch-intelligence-platform/watch-intelligence-platform/.github/workflows/deploy-pages.yml`.
+`.github/workflows/deploy-pages.yml`.
 
 Before the first deployment:
 
