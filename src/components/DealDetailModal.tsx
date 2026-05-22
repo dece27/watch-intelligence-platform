@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import { Heart, Plus, Copy, Check } from "@phosphor-icons/react"
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer } from "recharts"
 import { useKV } from "@github/spark/hooks"
+import { callTrackedLlm } from "@/lib/adminAnalytics"
 
 interface Deal {
   id: string
@@ -66,7 +67,7 @@ Provide:
 - REASONING: 2-3 sentences on why this is or isn't a good deal
 - RISK: one sentence on the main risk factor`
 
-      const response = await window.spark.llm(promptText, "gpt-4o-mini")
+      const response = await callTrackedLlm(promptText, "gpt-4o-mini")
       
       const verdictMatch = response.match(/VERDICT:\s*(EXCELLENT DEAL|GOOD DEAL|FAIR DEAL|OVERPRICED)/i)
       const reasoningMatch = response.match(/REASONING:\s*([^\n]+(?:\n[^\n-]+)*)/i)

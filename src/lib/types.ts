@@ -88,6 +88,7 @@ export interface AuthRecord {
   salt: string
   iterations: number
   failedAttempts: number
+  loginCount?: number
   lockUntil?: string
   lastLoginAt?: string
   lastFailedAt?: string

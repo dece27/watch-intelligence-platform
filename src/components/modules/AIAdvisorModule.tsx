@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Sparkle, PaperPlaneTilt, Image as ImageIcon, Plus, Fire, Star, ShoppingCart, TrendUp, TrendDown } from "@phosphor-icons/react"
 import { toast } from "sonner"
+import { callTrackedLlm } from "@/lib/adminAnalytics"
 
 interface AIAdvisorModuleProps {
   watches: Watch[]
@@ -85,7 +86,7 @@ Respond in valid JSON format:
 }`
 
         try {
-          const response = await window.spark.llm(promptText, 'gpt-4o-mini', true)
+          const response = await callTrackedLlm(promptText, 'gpt-4o-mini', true)
           const parsed = JSON.parse(response)
           
           return {
@@ -134,7 +135,7 @@ User question: ${userMessage}
 
 Provide expert, concise advice (2-3 paragraphs max) about their collection, watch market trends, or collecting strategy. Be specific and reference their actual watches when relevant. Focus on actionable insights.`
 
-      const response = await window.spark.llm(promptText, 'gpt-4o-mini')
+      const response = await callTrackedLlm(promptText, 'gpt-4o-mini')
       
       setMessages(prev => [...prev, { role: 'assistant', content: response }])
     } catch (error) {
@@ -177,7 +178,7 @@ Respond in valid JSON format:
   "features": "2-3 sentences describing key identifying features"
 }`
 
-      const response = await window.spark.llm(promptText, 'gpt-4o-mini', true)
+      const response = await callTrackedLlm(promptText, 'gpt-4o-mini', true)
       const parsed = JSON.parse(response)
       
       setIdentifiedWatch({
@@ -226,7 +227,7 @@ Respond in valid JSON format:
       
       const assessmentPrompt = `In exactly 2 sentences, explain why this watch is today's best deal: ${topDeal.brand} ${topDeal.model} ${topDeal.referenceNumber || ''}, ${topDeal.year || 'unknown year'}, ${topDeal.condition}, asking $${topDeal.price.toLocaleString()} vs fair market value of $${topDeal.fairValue.toLocaleString()}. Be specific about what makes the price attractive and who should consider buying it.`
       
-      const assessment = await window.spark.llm(assessmentPrompt, 'gpt-4o-mini')
+      const assessment = await callTrackedLlm(assessmentPrompt, 'gpt-4o-mini')
       setDealAssessment(assessment)
     } catch (error) {
       console.error("Failed to load deal of day:", error)
@@ -294,7 +295,7 @@ Respond in valid JSON format:
   }
 }`
 
-      const response = await window.spark.llm(promptText, 'gpt-4o-mini', true)
+      const response = await callTrackedLlm(promptText, 'gpt-4o-mini', true)
       const parsed = JSON.parse(response)
       
       setRebalanceAnalysis(parsed)

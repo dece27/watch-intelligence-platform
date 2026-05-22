@@ -13,14 +13,15 @@ import { AIAdvisorModule } from "@/components/modules/AIAdvisorModule"
 import { DealsModule } from "@/components/modules/DealsModule"
 import { AppraisalModule } from "@/components/modules/AppraisalModule"
 import { FeedbackDashboard } from "@/components/FeedbackDashboard"
+import { AdminDashboard } from "@/components/AdminDashboard"
 import { Toaster } from "@/components/ui/sonner"
 import { MobileNav } from "@/components/MobileNav"
+import { isAdminEmail } from "@/lib/adminAnalytics"
 
 function App() {
   const [persistedUser, setPersistedUser] = useKV<User | null>("currentUser", null)
   const [currentUser, setCurrentUser] = useState<User | null>(persistedUser)
   const [activeModule, setActiveModule] = useState('collection')
-  const [isOwner, setIsOwner] = useState(false)
   const [showWelcome, setShowWelcome] = useState(true)
   const [triggerAddWatch, setTriggerAddWatch] = useState(false)
   const [watches, setWatches] = useState<Watch[]>([])
@@ -46,16 +47,6 @@ function App() {
   const watchList = watches || []
   const totalValue = watchList.reduce((sum, w) => sum + (w.currentValue || w.purchasePrice), 0)
   const uniqueBrands = [...new Set(watchList.map(w => w.brand))]
-
-  useEffect(() => {
-    const checkOwnership = async () => {
-      const userInfo = await window.spark.user()
-      if (userInfo) {
-        setIsOwner(userInfo.isOwner)
-      }
-    }
-    checkOwnership()
-  }, [])
 
   useEffect(() => {
     const loadWatches = async () => {
@@ -101,6 +92,7 @@ function App() {
         totalValue: totalValue
       })
     }
+
     await setPersistedUser(null)
     sessionStorage.removeItem("currentUserSession")
     setCurrentUser(null)
@@ -133,6 +125,8 @@ function App() {
     }
   }
 
+  const isAdmin = isAdminEmail(currentUser?.email)
+
   const renderModule = () => {
     switch (activeModule) {
       case 'collection':
@@ -148,7 +142,9 @@ function App() {
       case 'appraisal':
         return <AppraisalModule watches={watchList} />
       case 'feedback':
-        return isOwner ? <FeedbackDashboard /> : <CollectionModule watches={watchList} onUpdate={handleUpdateWatches} />
+        return isAdmin ? <FeedbackDashboard /> : <CollectionModule watches={watchList} onUpdate={handleUpdateWatches} />
+      case 'admin-dashboard':
+        return isAdmin ? <AdminDashboard /> : <CollectionModule watches={watchList} onUpdate={handleUpdateWatches} />
       default:
         return <CollectionModule watches={watchList} onUpdate={handleUpdateWatches} />
     }
@@ -160,7 +156,7 @@ function App() {
 
   return (
     <div className="flex h-screen bg-background text-foreground">
-      {!isMobile && <AppSidebar activeModule={activeModule} onModuleChange={setActiveModule} isOwner={isOwner} />}
+      {!isMobile && <AppSidebar activeModule={activeModule} onModuleChange={setActiveModule} isAdmin={isAdmin} />}
       
       <div className="flex-1 flex flex-col overflow-hidden">
         <AppHeader totalValue={totalValue} isMobile={isMobile} user={currentUser} onLogout={handleLogout} />
