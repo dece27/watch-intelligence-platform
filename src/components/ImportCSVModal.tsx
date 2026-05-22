@@ -151,7 +151,7 @@ export function ImportCSVModal({ open, onOpenChange, onImport, preferredCurrency
       setParsedWatches(watches)
       setSkippedRows(skipped)
       setError("")
-    } catch (err) {
+    } catch {
       setError("Could not parse file. Please use the CSV template.")
       setParsedWatches([])
     }

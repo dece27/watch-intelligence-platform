@@ -308,7 +308,7 @@ Respond in valid JSON format:
       const generatedSignals = await Promise.all(signalsPromises)
       setSignals(generatedSignals)
       await saveAiCache(cacheKey, dependencyHash, { signals: generatedSignals }, cache)
-    } catch (error) {
+    } catch {
       toast.error("Failed to generate signals")
     } finally {
       setIsLoadingSignals(false)
@@ -337,7 +337,7 @@ Provide expert, concise advice (2-3 paragraphs max) about their collection, watc
       const response = await callTrackedLlm(promptText, 'gpt-4o-mini')
       
       setMessages(prev => [...prev, { role: 'assistant', content: response }])
-    } catch (error) {
+    } catch {
       toast.error('Failed to get AI response')
       setMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, I encountered an error. Please try again.' }])
     } finally {
@@ -460,7 +460,7 @@ Respond in valid JSON format:
         ...parsed,
         imageUrl: safeIdentifierImage
       })
-    } catch (error) {
+    } catch {
       toast.error("Failed to identify watch")
       setIdentifiedWatch({
         brand: "Luxury Watch",

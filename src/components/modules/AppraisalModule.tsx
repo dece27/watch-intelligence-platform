@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { Watch } from "@/lib/types"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Printer } from "@phosphor-icons/react"
@@ -55,6 +55,8 @@ export function AppraisalModule({ watches, preferredCurrency = "USD" }: Appraisa
     window.print()
   }
 
+  const appraisalValue = marketValue ?? selectedWatch?.currentValue ?? selectedWatch?.purchasePrice ?? 0
+
   if (!selectedWatch) {
     return (
       <div className="space-y-6">
@@ -71,9 +73,6 @@ export function AppraisalModule({ watches, preferredCurrency = "USD" }: Appraisa
     )
   }
 
-  const appraisalValue = useMemo(() => {
-    return marketValue ?? selectedWatch.currentValue ?? selectedWatch.purchasePrice
-  }, [marketValue, selectedWatch.currentValue, selectedWatch.purchasePrice])
   const appraisalDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
 
   return (
