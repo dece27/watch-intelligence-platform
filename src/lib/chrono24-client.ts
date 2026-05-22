@@ -43,7 +43,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const canUseStorage = () => typeof window !== "undefined" && typeof window.localStorage !== "undefined"
 
 const delay = (ms: number) => new Promise<void>((resolve) => {
-  window.setTimeout(resolve, ms)
+  globalThis.setTimeout(resolve, ms)
 })
 
 const getSearchCacheKey = (params: Chrono24SearchParams) => {
@@ -59,10 +59,10 @@ const getSearchCacheKey = (params: Chrono24SearchParams) => {
 const readCachedDeals = (params: Chrono24SearchParams, allowExpired = false): Deal[] | null => {
   if (!canUseStorage()) return null
 
-  const raw = window.localStorage.getItem(getSearchCacheKey(params))
-  if (!raw) return null
-
   try {
+    const raw = window.localStorage.getItem(getSearchCacheKey(params))
+    if (!raw) return null
+
     const parsed = JSON.parse(raw) as CachedChrono24Deals
     if (!Array.isArray(parsed.deals)) return null
     if (!allowExpired && parsed.expiresAt < Date.now()) return null
@@ -75,23 +75,37 @@ const readCachedDeals = (params: Chrono24SearchParams, allowExpired = false): De
 const writeCachedDeals = (params: Chrono24SearchParams, deals: Deal[]) => {
   if (!canUseStorage()) return
 
-  const payload: CachedChrono24Deals = {
-    deals,
-    expiresAt: Date.now() + SEARCH_CACHE_TTL_MS,
-  }
+  try {
+    const payload: CachedChrono24Deals = {
+      deals,
+      expiresAt: Date.now() + SEARCH_CACHE_TTL_MS,
+    }
 
-  window.localStorage.setItem(getSearchCacheKey(params), JSON.stringify(payload))
+    window.localStorage.setItem(getSearchCacheKey(params), JSON.stringify(payload))
+  } catch {
+    // Ignore storage failures and continue with live fetch results.
+  }
 }
 
 const getPreferredEndpoint = () => {
   if (!canUseStorage()) return null
-  const stored = window.localStorage.getItem(PREFERRED_ENDPOINT_STORAGE_KEY)
-  return stored && SEARCH_ENDPOINTS.includes(stored) ? stored : null
+
+  try {
+    const stored = window.localStorage.getItem(PREFERRED_ENDPOINT_STORAGE_KEY)
+    return stored && SEARCH_ENDPOINTS.includes(stored) ? stored : null
+  } catch {
+    return null
+  }
 }
 
 const setPreferredEndpoint = (endpoint: string) => {
   if (!canUseStorage()) return
-  window.localStorage.setItem(PREFERRED_ENDPOINT_STORAGE_KEY, endpoint)
+
+  try {
+    window.localStorage.setItem(PREFERRED_ENDPOINT_STORAGE_KEY, endpoint)
+  } catch {
+    // Ignore storage failures and continue trying endpoints in memory order.
+  }
 }
 
 const getEndpointCandidates = () => {
