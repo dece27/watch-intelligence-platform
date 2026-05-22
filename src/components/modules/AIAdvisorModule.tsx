@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Sparkle, PaperPlaneTilt, Image as ImageIcon, Plus, Fire, Star, ShoppingCart, TrendUp, TrendDown, FileArrowUp } from "@phosphor-icons/react"
 import { toast } from "sonner"
 import { callTrackedLlm } from "@/lib/adminAnalytics"
-import { searchChrono24Deals } from "@/lib/chrono24-client"
+import { searchChrono24Deals, isChrono24WrapperConfigured } from "@/lib/chrono24-client"
 import { formatCurrency } from "@/lib/currency"
 import { FALLBACK_DEALS } from "@/lib/fallback-deals"
 
@@ -483,29 +483,31 @@ Respond in valid JSON format:
       let listings: Deal[] = []
       let usedLiveData = false
 
-      // Always attempt live data from Chrono24 regardless of whether a wrapper
-      // is configured – errors are caught per-brand and the module falls back.
+      // Attempt live data only when a wrapper URL is configured/resolved;
+      // otherwise skip directly to cached/static fallbacks.
       const portfolioBrands = Array.from(new Set(watches.map((watch) => watch.brand))).slice(0, MAX_DEAL_OF_DAY_BRANDS)
       const queryTargets = portfolioBrands.length > 0 ? portfolioBrands : DEAL_OF_DAY_FALLBACK_BRANDS
       const uniqueDealsMap = new Map<string, Deal>()
 
-      for (const brand of queryTargets) {
-        try {
-          const brandDeals = await searchChrono24Deals({
-            brand,
-            page: 1,
-            limit: DEAL_OF_DAY_QUERY_LIMIT,
-          })
+      if (isChrono24WrapperConfigured) {
+        for (const brand of queryTargets) {
+          try {
+            const brandDeals = await searchChrono24Deals({
+              brand,
+              page: 1,
+              limit: DEAL_OF_DAY_QUERY_LIMIT,
+            })
 
-          for (const deal of brandDeals) {
-            uniqueDealsMap.set(deal.id, deal)
-          }
+            for (const deal of brandDeals) {
+              uniqueDealsMap.set(deal.id, deal)
+            }
 
-          if (uniqueDealsMap.size >= DEAL_OF_DAY_QUERY_LIMIT) {
-            break
+            if (uniqueDealsMap.size >= DEAL_OF_DAY_QUERY_LIMIT) {
+              break
+            }
+          } catch {
+            // Keep iterating through the remaining brands before falling back.
           }
-        } catch {
-          // Keep iterating through the remaining brands before falling back.
         }
       }
 

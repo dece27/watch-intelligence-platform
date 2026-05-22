@@ -10,7 +10,7 @@ import { Switch } from "@/components/ui/switch"
 import { Heart, MapPin, ArrowsClockwise } from "@phosphor-icons/react"
 import { DealDetailModal } from "@/components/DealDetailModal"
 import { callTrackedLlm } from "@/lib/adminAnalytics"
-import { searchChrono24Deals, clearChrono24SearchCache } from "@/lib/chrono24-client"
+import { searchChrono24Deals, clearChrono24SearchCache, isChrono24WrapperConfigured } from "@/lib/chrono24-client"
 import { formatCurrency } from "@/lib/currency"
 import { FALLBACK_DEALS } from "@/lib/fallback-deals"
 
@@ -217,6 +217,13 @@ export function DealsModule({ watches, userId, preferredCurrency = "USD" }: Deal
     }
 
     try {
+      if (!isChrono24WrapperConfigured) {
+        throw new Error(
+          "Chrono24 API not configured. Start the chrono24-api server and set " +
+          "VITE_CHRONO24_WRAPPER_BASE_URL (or VITE_CHRONO24_API_HOST) to enable live deals."
+        )
+      }
+
       const portfolioBrands = Array.from(new Set(watches.map((watch) => watch.brand)))
       const brandsToQuery = (preferences.preferredBrands.length > 0 ? preferences.preferredBrands : portfolioBrands)
         .slice(0, MAX_BRANDS_TO_QUERY)
