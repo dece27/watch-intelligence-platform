@@ -134,10 +134,12 @@ const parseRetryAfterMs = (retryAfter: string | null) => {
 }
 
 const shouldTryAlternativeEndpoint = (status: number) =>
-  status === HTTP_NOT_FOUND ||
-  status === HTTP_METHOD_NOT_ALLOWED ||
-  status === HTTP_GONE ||
-  status >= HTTP_INTERNAL_SERVER_ERROR
+  status !== HTTP_TOO_MANY_REQUESTS && (
+    status === HTTP_NOT_FOUND ||
+    status === HTTP_METHOD_NOT_ALLOWED ||
+    status === HTTP_GONE ||
+    status >= HTTP_INTERNAL_SERVER_ERROR
+  )
 
 const toNumber = (value: unknown): number | null => {
   if (typeof value === "number" && Number.isFinite(value)) return value

@@ -301,7 +301,7 @@ export function DealsModule({ watches, userId }: DealsModuleProps) {
             brand,
             maxPrice: preferences.maxPrice > 0 ? preferences.maxPrice : undefined,
             page: 1,
-            limit: 24,
+            limit: TARGET_LIVE_DEAL_COUNT,
           })
 
           for (const deal of brandDeals) {
