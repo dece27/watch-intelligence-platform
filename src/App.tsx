@@ -39,7 +39,7 @@ function sanitizeWatchImageUrl(imageUrl?: string): string | undefined {
   if (!trimmed) return undefined
 
   if (trimmed.startsWith("data:image/")) {
-    const isSafeDataImage = /^data:image\/(png|jpeg|jpg|webp|gif);base64,[a-z0-9+/=\s]+$/i.test(trimmed)
+    const isSafeDataImage = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(trimmed)
     if (!isSafeDataImage || trimmed.length > MAX_DATA_IMAGE_URL_LENGTH) return undefined
     return trimmed
   }
@@ -109,10 +109,15 @@ function App() {
               }
 
               if (isWatchPhotoRef(rawImage)) {
-                const storedPhoto = await window.spark.kv.get<string>(getWatchPhotoKey(currentUser.id, watch.id))
+                let storedPhoto: string | null = null
+                try {
+                  storedPhoto = await window.spark.kv.get<string>(getWatchPhotoKey(currentUser.id, watch.id))
+                } catch (error) {
+                  console.error(`Error loading watch photo for ${watch.id}:`, error)
+                }
                 return {
                   ...watch,
-                  imageUrl: sanitizeWatchImageUrl(storedPhoto),
+                  imageUrl: sanitizeWatchImageUrl(storedPhoto || undefined),
                 }
               }
 
@@ -181,30 +186,44 @@ function App() {
     try {
       const currentWatches = await window.spark.kv.get<Watch[]>(watchesKey) || []
       const updatedWatches = updater(currentWatches)
-      const watchesForStorage = await Promise.all(
+      const preparedWatches = await Promise.all(
         updatedWatches.map(async (watch) => {
           const sanitizedImageUrl = sanitizeWatchImageUrl(watch.imageUrl)
 
           if (!sanitizedImageUrl) {
-            return { ...watch, imageUrl: undefined }
+            return {
+              watchForStorage: { ...watch, imageUrl: undefined },
+              watchForDisplay: { ...watch, imageUrl: undefined },
+            }
           }
 
           if (sanitizedImageUrl.startsWith("data:image/")) {
-            await window.spark.kv.set(getWatchPhotoKey(currentUser.id, watch.id), sanitizedImageUrl)
-            return { ...watch, imageUrl: toWatchPhotoRef(watch.id) }
+            let imageForStorage = sanitizedImageUrl
+            try {
+              await window.spark.kv.set(getWatchPhotoKey(currentUser.id, watch.id), sanitizedImageUrl)
+              imageForStorage = toWatchPhotoRef(watch.id)
+            } catch (error) {
+              console.error(`Error saving watch photo for ${watch.id}:`, error)
+            }
+            return {
+              watchForStorage: { ...watch, imageUrl: imageForStorage },
+              watchForDisplay: { ...watch, imageUrl: sanitizedImageUrl },
+            }
           }
 
-          return { ...watch, imageUrl: sanitizedImageUrl }
+          return {
+            watchForStorage: { ...watch, imageUrl: sanitizedImageUrl },
+            watchForDisplay: { ...watch, imageUrl: sanitizedImageUrl },
+          }
         })
       )
+      const watchesForStorage = preparedWatches.map((watch) => watch.watchForStorage)
+      const watchesForDisplay = preparedWatches.map((watch) => watch.watchForDisplay)
       
-      console.log(`Saving ${updatedWatches.length} watches to key: ${watchesKey}`)
+      console.log(`Saving ${watchesForStorage.length} watches to key: ${watchesKey}`)
       
       await window.spark.kv.set(watchesKey, watchesForStorage)
-      setWatches(updatedWatches.map((watch) => ({
-        ...watch,
-        imageUrl: sanitizeWatchImageUrl(watch.imageUrl),
-      })))
+      setWatches(watchesForDisplay)
       console.log('Watches saved successfully')
     } catch (error) {
       console.error('Error saving watches:', error)
