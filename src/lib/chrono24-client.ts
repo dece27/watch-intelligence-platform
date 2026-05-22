@@ -11,6 +11,11 @@ const SEARCH_CACHE_TTL_MS = 10 * 60 * 1000
 const MAX_RATE_LIMIT_RETRY_DELAY_MS = 1500
 const SEARCH_CACHE_PREFIX = "chrono24-search:"
 const PREFERRED_ENDPOINT_STORAGE_KEY = "chrono24-preferred-endpoint"
+const HTTP_NOT_FOUND = 404
+const HTTP_METHOD_NOT_ALLOWED = 405
+const HTTP_GONE = 410
+const HTTP_TOO_MANY_REQUESTS = 429
+const HTTP_INTERNAL_SERVER_ERROR = 500
 
 export interface Chrono24SearchParams {
   query?: string
@@ -40,7 +45,7 @@ class Chrono24HttpError extends Error {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null
 
-const canUseStorage = () => typeof window !== "undefined" && typeof window.localStorage !== "undefined"
+const canUseLocalStorage = () => typeof window !== "undefined" && typeof window.localStorage !== "undefined"
 
 const delay = (ms: number) => new Promise<void>((resolve) => {
   globalThis.setTimeout(resolve, ms)
@@ -56,8 +61,8 @@ const getSearchCacheKey = (params: Chrono24SearchParams) => {
   return `${SEARCH_CACHE_PREFIX}${serialized}`
 }
 
-const readCachedDeals = (params: Chrono24SearchParams, allowExpired = false): Deal[] | null => {
-  if (!canUseStorage()) return null
+const readCachedDeals = (params: Chrono24SearchParams, returnStale = false): Deal[] | null => {
+  if (!canUseLocalStorage()) return null
 
   try {
     const raw = window.localStorage.getItem(getSearchCacheKey(params))
@@ -65,7 +70,7 @@ const readCachedDeals = (params: Chrono24SearchParams, allowExpired = false): De
 
     const parsed = JSON.parse(raw) as CachedChrono24Deals
     if (!Array.isArray(parsed.deals)) return null
-    if (!allowExpired && parsed.expiresAt < Date.now()) return null
+    if (!returnStale && parsed.expiresAt < Date.now()) return null
     return parsed.deals
   } catch {
     return null
@@ -73,7 +78,7 @@ const readCachedDeals = (params: Chrono24SearchParams, allowExpired = false): De
 }
 
 const writeCachedDeals = (params: Chrono24SearchParams, deals: Deal[]) => {
-  if (!canUseStorage()) return
+  if (!canUseLocalStorage()) return
 
   try {
     const payload: CachedChrono24Deals = {
@@ -88,7 +93,7 @@ const writeCachedDeals = (params: Chrono24SearchParams, deals: Deal[]) => {
 }
 
 const getPreferredEndpoint = () => {
-  if (!canUseStorage()) return null
+  if (!canUseLocalStorage()) return null
 
   try {
     const stored = window.localStorage.getItem(PREFERRED_ENDPOINT_STORAGE_KEY)
@@ -99,7 +104,7 @@ const getPreferredEndpoint = () => {
 }
 
 const setPreferredEndpoint = (endpoint: string) => {
-  if (!canUseStorage()) return
+  if (!canUseLocalStorage()) return
 
   try {
     window.localStorage.setItem(PREFERRED_ENDPOINT_STORAGE_KEY, endpoint)
@@ -129,7 +134,10 @@ const parseRetryAfterMs = (retryAfter: string | null) => {
 }
 
 const shouldTryAlternativeEndpoint = (status: number) =>
-  status === 404 || status === 405 || status === 410 || status >= 500
+  status === HTTP_NOT_FOUND ||
+  status === HTTP_METHOD_NOT_ALLOWED ||
+  status === HTTP_GONE ||
+  status >= HTTP_INTERNAL_SERVER_ERROR
 
 const toNumber = (value: unknown): number | null => {
   if (typeof value === "number" && Number.isFinite(value)) return value
@@ -255,7 +263,7 @@ const requestEndpoint = async (
 
     const retryAfterMs = parseRetryAfterMs(response.headers.get("Retry-After"))
     if (
-      response.status === 429 &&
+      response.status === HTTP_TOO_MANY_REQUESTS &&
       !attemptedRetry &&
       retryAfterMs !== null &&
       retryAfterMs <= MAX_RATE_LIMIT_RETRY_DELAY_MS
@@ -298,7 +306,7 @@ export async function searchChrono24Deals(params: Chrono24SearchParams): Promise
       if (error instanceof Chrono24HttpError) {
         attemptedErrors.push(error.message)
 
-        if (error.status === 429) {
+        if (error.status === HTTP_TOO_MANY_REQUESTS) {
           rateLimited = true
           break
         }
@@ -315,6 +323,8 @@ export async function searchChrono24Deals(params: Chrono24SearchParams): Promise
   }
 
   if (rateLimited && staleCachedDeals && staleCachedDeals.length > 0) {
+    // When Chrono24 throttles requests, reuse the most recent cached response
+    // so the Deals page still shows data instead of failing hard.
     return staleCachedDeals
   }
 

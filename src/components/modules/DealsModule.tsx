@@ -319,7 +319,8 @@ export function DealsModule({ watches, userId }: DealsModuleProps) {
       const uniqueDeals = Array.from(uniqueDealsMap.values())
 
       if (uniqueDeals.length === 0) {
-        throw new Error(fetchErrors[0] || "No live deals returned")
+        const combinedError = fetchErrors.length > 0 ? fetchErrors.join("; ") : "No live deals returned"
+        throw new Error(`Failed to fetch Chrono24 deals for all queried brands: ${combinedError}`)
       }
 
       const heuristicScored = uniqueDeals.map((deal) => scoreHeuristically(deal, watches, preferences))
