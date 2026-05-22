@@ -22,20 +22,49 @@ interface FeedConfig {
 
 const DEFAULT_RESULT_LIMIT = 8
 
-const FEED_CONFIGS: FeedConfig[] = [
+// Optional env-var-configured custom feed URLs (take precedence over the built-in endpoints).
+const CUSTOM_FEED_CONFIGS: FeedConfig[] = [
   { house: 'Phillips', url: import.meta.env.VITE_PHILLIPS_AUCTION_FEED_URL?.trim() || '' },
-  { house: 'Christie\'s', url: import.meta.env.VITE_CHRISTIES_AUCTION_FEED_URL?.trim() || '' },
+  { house: "Christie's", url: import.meta.env.VITE_CHRISTIES_AUCTION_FEED_URL?.trim() || '' },
 ].filter((config) => config.url.length > 0)
+
+const CHRISTIES_BASE_URL = 'https://www.christies.com'
+const CHRISTIES_LOTCARDS_PATH = '/api/discoverywebsite/search/lotcards'
+
+const PHILLIPS_BASE_URL = 'https://www.phillips.com'
+const PHILLIPS_SEARCH_PATH = '/api/search'
 
 type UnknownRecord = Record<string, unknown>
 
-const VALUE_KEYS = ['result', 'hammerPrice', 'realizedPrice', 'price', 'soldPrice', 'amount']
+// Include Christie's-specific price field names alongside generic ones.
+const VALUE_KEYS = [
+  'result',
+  'hammerPrice',
+  'realizedPrice',
+  'price',
+  'soldPrice',
+  'amount',
+  'priceRealised_USD',
+  'priceRealised',
+  'price_realised',
+  'realised',
+]
 const EST_LOW_KEYS = ['estLow', 'estimateLow', 'lowEstimate', 'estimate_low']
 const EST_HIGH_KEYS = ['estHigh', 'estimateHigh', 'highEstimate', 'estimate_high']
-const DATE_KEYS = ['date', 'saleDate', 'auctionDate', 'publishedAt', 'pubDate', 'updatedAt']
+// Include Christie's sale_date_ISO / sale_date fields alongside generic ones.
+const DATE_KEYS = [
+  'date',
+  'saleDate',
+  'auctionDate',
+  'publishedAt',
+  'pubDate',
+  'updatedAt',
+  'sale_date_ISO',
+  'sale_date',
+]
 const LOT_KEYS = ['lot', 'title', 'name', 'lotTitle', 'reference']
 const NOTES_KEYS = ['notes', 'description', 'summary']
-const URL_KEYS = ['url', 'link', 'sourceUrl']
+const URL_KEYS = ['url', 'link', 'sourceUrl', 'detailUrl', 'lot_url', 'lotUrl']
 const REFERENCE_KEYS = ['reference', 'ref', 'referenceNumber']
 
 function extractNumber(value: unknown): number | undefined {
@@ -98,6 +127,32 @@ function parseDateToTimestamp(dateValue: string): number | null {
   return parsed.getTime()
 }
 
+/**
+ * Resolves a potentially-relative lot URL to an absolute URL using the known
+ * base URL of the auction house. Christie's and Phillips APIs return relative
+ * paths (e.g. "/en/lot/...") that must be combined with their origin.
+ */
+function resolveSourceUrl(rawUrl: string, house: string): string | undefined {
+  if (!rawUrl) return undefined
+  const trimmed = rawUrl.trim()
+
+  if (trimmed.startsWith('https://') || trimmed.startsWith('http://')) {
+    return trimmed
+  }
+
+  if (trimmed.startsWith('/')) {
+    const normalizedHouse = house.toLowerCase()
+    if (normalizedHouse.includes('christie')) {
+      return `${CHRISTIES_BASE_URL}${trimmed}`
+    }
+    if (normalizedHouse.includes('phillips')) {
+      return `${PHILLIPS_BASE_URL}${trimmed}`
+    }
+  }
+
+  return undefined
+}
+
 function normalizeJsonItem(item: UnknownRecord, house: string): AuctionResult | null {
   const lot = getStringValue(item, LOT_KEYS)
   if (!lot) {
@@ -107,7 +162,7 @@ function normalizeJsonItem(item: UnknownRecord, house: string): AuctionResult | 
   const notes = getStringValue(item, NOTES_KEYS)
   const dateString = getStringValue(item, DATE_KEYS)
   const reference = getStringValue(item, REFERENCE_KEYS)
-  const sourceUrl = getStringValue(item, URL_KEYS)
+  const sourceUrl = resolveSourceUrl(getStringValue(item, URL_KEYS), house)
 
   const result = extractNumber(getFirstValue(item, VALUE_KEYS)) ?? extractNumber(notes)
   if (result === undefined) {
@@ -170,6 +225,32 @@ function normalizeXmlItems(rawXml: string, house: string): AuctionResult[] {
     .filter((item): item is NonNullable<typeof item> => item !== null) as AuctionResult[]
 }
 
+function extractItemsArray(payload: unknown): unknown[] {
+  if (Array.isArray(payload)) {
+    return payload
+  }
+
+  if (!payload || typeof payload !== 'object') {
+    return []
+  }
+
+  const record = payload as UnknownRecord
+  // Christie's wraps results in a "lots" key; other feeds use "items" or "results".
+  if (Array.isArray(record.lots)) {
+    return record.lots as unknown[]
+  }
+
+  if (Array.isArray(record.results)) {
+    return record.results as unknown[]
+  }
+
+  if (Array.isArray(record.items)) {
+    return record.items as unknown[]
+  }
+
+  return []
+}
+
 async function fetchFeed(feed: FeedConfig): Promise<AuctionResult[]> {
   const response = await fetch(feed.url)
   if (!response.ok) {
@@ -177,26 +258,6 @@ async function fetchFeed(feed: FeedConfig): Promise<AuctionResult[]> {
   }
 
   const contentType = response.headers.get('content-type') || ''
-  const extractItemsArray = (payload: unknown): unknown[] => {
-    if (Array.isArray(payload)) {
-      return payload
-    }
-
-    if (!payload || typeof payload !== 'object') {
-      return []
-    }
-
-    const record = payload as UnknownRecord
-    if (Array.isArray(record.items)) {
-      return record.items as unknown[]
-    }
-
-    if (Array.isArray(record.results)) {
-      return record.results as unknown[]
-    }
-
-    return []
-  }
 
   if (contentType.includes('application/json')) {
     const payload: unknown = await response.json()
@@ -227,6 +288,58 @@ async function fetchFeed(feed: FeedConfig): Promise<AuctionResult[]> {
   return normalizeXmlItems(body, feed.house)
 }
 
+/**
+ * Fetches recent sold watch lots from the Christie's internal search API.
+ * Searches using the provided reference terms and maps each lot's relative
+ * URL to an absolute Christie's detail-page URL.
+ */
+async function fetchChristiesResults(references: string[]): Promise<AuctionResult[]> {
+  const url = new URL(`${CHRISTIES_BASE_URL}${CHRISTIES_LOTCARDS_PATH}`)
+  url.searchParams.set('keyword', references.join(' '))
+  url.searchParams.set('status', 'sold')
+  url.searchParams.set('page', '1')
+  url.searchParams.set('pageSize', '40')
+
+  const response = await fetch(url.toString())
+  if (!response.ok) {
+    throw new Error(`Christie's API request failed with status ${response.status}`)
+  }
+
+  const payload: unknown = await response.json()
+  const rawItems = extractItemsArray(payload)
+
+  return rawItems
+    .filter((item): item is UnknownRecord => Boolean(item && typeof item === 'object'))
+    .map((item) => normalizeJsonItem(item, "Christie's"))
+    .filter((item): item is AuctionResult => item !== null)
+}
+
+/**
+ * Fetches recent sold watch lots from the Phillips internal search API.
+ * Searches using the provided reference terms and maps each lot's relative
+ * URL to an absolute Phillips detail-page URL.
+ */
+async function fetchPhillipsResults(references: string[]): Promise<AuctionResult[]> {
+  const url = new URL(`${PHILLIPS_BASE_URL}${PHILLIPS_SEARCH_PATH}`)
+  url.searchParams.set('q', references.join(' '))
+  url.searchParams.set('status', 'sold')
+  url.searchParams.set('page', '1')
+  url.searchParams.set('pageSize', '40')
+
+  const response = await fetch(url.toString())
+  if (!response.ok) {
+    throw new Error(`Phillips API request failed with status ${response.status}`)
+  }
+
+  const payload: unknown = await response.json()
+  const rawItems = extractItemsArray(payload)
+
+  return rawItems
+    .filter((item): item is UnknownRecord => Boolean(item && typeof item === 'object'))
+    .map((item) => normalizeJsonItem(item, 'Phillips'))
+    .filter((item): item is AuctionResult => item !== null)
+}
+
 function normalizeAndFilter(
   items: AuctionResult[],
   references: string[],
@@ -254,11 +367,19 @@ export async function fetchRecentAuctionResults({
   references,
   limit = DEFAULT_RESULT_LIMIT,
 }: FetchAuctionResultsOptions): Promise<AuctionResult[]> {
-  if (FEED_CONFIGS.length === 0 || references.length === 0) {
+  if (references.length === 0) {
     return []
   }
 
-  const feedResults = await Promise.allSettled(FEED_CONFIGS.map((feed) => fetchFeed(feed)))
+  // Always attempt the Christie's and Phillips APIs directly. Any optional
+  // env-var-configured custom feeds are also included.
+  const fetchers: Array<() => Promise<AuctionResult[]>> = [
+    () => fetchChristiesResults(references),
+    () => fetchPhillipsResults(references),
+    ...CUSTOM_FEED_CONFIGS.map((feed) => () => fetchFeed(feed)),
+  ]
+
+  const feedResults = await Promise.allSettled(fetchers.map((fetcher) => fetcher()))
   const allItems = feedResults.flatMap((result) => (result.status === 'fulfilled' ? result.value : []))
 
   return normalizeAndFilter(allItems, references, limit)
