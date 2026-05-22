@@ -82,8 +82,8 @@ const mapChrono24Listing = (item: unknown, index: number): Deal | null => {
   if (price === null || price <= 0) return null
 
   const marketValue = pickNumber(item, ["marketValue", "estimatedMarketValue", "estimatedValue"])
-  const fairValue = pickNumber(item, ["fairValue", "estimatedFairValue"]) ?? marketValue ?? price
-  const discount = fairValue > 0 ? Math.max(0, Math.round(((fairValue - price) / fairValue) * 100)) : 0
+  const fairValue = pickNumber(item, ["fairValue", "estimatedFairValue"]) ?? marketValue ?? null
+  const discount = fairValue && fairValue > 0 ? Math.round(((fairValue - price) / fairValue) * 100) : 0
   const imageUrl = pickString(item, ["imageUrl", "image", "thumbnailUrl", "image_url"]) || FALLBACK_IMAGE
   const listedAt = pickString(item, ["listedAt", "listingDate", "createdAt", "publishedAt"])
   const sourceUrl = pickString(item, ["url", "listingUrl", "sourceUrl"])
@@ -95,8 +95,8 @@ const mapChrono24Listing = (item: unknown, index: number): Deal | null => {
     referenceNumber: pickString(item, ["referenceNumber", "reference", "ref"]),
     price,
     currency: pickString(item, ["currency", "currencyCode"]) || "USD",
-    marketValue: marketValue ?? fairValue,
-    fairValue,
+    marketValue: marketValue ?? undefined,
+    fairValue: fairValue ?? undefined,
     discount,
     condition: pickString(item, ["condition", "conditionText"]) || "Good",
     seller: pickString(item, ["seller", "dealerName", "merchant"]) || "Chrono24 Seller",

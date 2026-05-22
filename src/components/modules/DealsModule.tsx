@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type MouseEvent } from "react"
+import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react"
 import { Watch, Deal, DealsPreferences, UserPreferences } from "@/lib/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -92,6 +92,8 @@ const PREFERENCES_PERSIST_DEBOUNCE_MS = 350
 const AI_MATCH_BLEND_WEIGHT = 0.55
 const HEURISTIC_MATCH_BLEND_WEIGHT = 1 - AI_MATCH_BLEND_WEIGHT
 const DEFAULT_FALLBACK_DEAL_SCORE = 60
+const DEAL_SCORE_DIVISOR = 2
+const FALLBACK_QUERY_BRANDS = ["Rolex", "Omega"] as const
 
 const extractJsonPayload = (response: string) => {
   const trimmed = response.trim()
@@ -116,6 +118,18 @@ const toConditionLevel = (condition: string) => {
   return 0
 }
 
+const formatDealPrice = (amount: number, currency = "USD") => {
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency,
+      maximumFractionDigits: 0,
+    }).format(amount)
+  } catch {
+    return `$${amount.toLocaleString()}`
+  }
+}
+
 const scoreHeuristically = (deal: Deal, watches: Watch[], prefs: DealsPreferences): Deal => {
   const ownedBrands = new Set(watches.map((watch) => watch.brand.toLowerCase()))
   const preferredBrands = new Set(prefs.preferredBrands.map((brand) => brand.toLowerCase()))
@@ -136,7 +150,7 @@ const scoreHeuristically = (deal: Deal, watches: Watch[], prefs: DealsPreference
     0,
     Math.min(100, brandBoost + discountBoost + ratingBoost + conditionBoost + boxBoost + papersBoost + budgetPenalty)
   )
-  const dealScore = Math.max(0, Math.min(100, Math.round((matchScore + discountBoost + ratingBoost) / 3 * 1.5)))
+  const dealScore = Math.max(0, Math.min(100, Math.round((matchScore + discountBoost + ratingBoost) / DEAL_SCORE_DIVISOR)))
 
   return {
     ...deal,
@@ -266,7 +280,7 @@ export function DealsModule({ watches, userId }: DealsModuleProps) {
     }
   }, [preferences, preferencesLoaded, userId])
 
-  const fetchDeals = async () => {
+  const fetchDeals = useCallback(async () => {
     setIsLoading(true)
     setErrorMessage(null)
 
@@ -275,7 +289,7 @@ export function DealsModule({ watches, userId }: DealsModuleProps) {
       const brandsToQuery = (preferences.preferredBrands.length > 0 ? preferences.preferredBrands : portfolioBrands)
         .slice(0, 4)
 
-      const queryTargets = brandsToQuery.length > 0 ? brandsToQuery : ["Rolex", "Omega"]
+      const queryTargets = brandsToQuery.length > 0 ? brandsToQuery : [...FALLBACK_QUERY_BRANDS]
       const responses = await Promise.all(
         queryTargets.map((brand) =>
           searchChrono24Deals({
@@ -288,9 +302,7 @@ export function DealsModule({ watches, userId }: DealsModuleProps) {
       )
 
       const merged = responses.flat()
-      const uniqueDeals = Array.from(
-        new Map(merged.map((deal) => [`${deal.id}-${deal.sourceUrl || deal.brand}-${deal.model}`, deal])).values()
-      )
+      const uniqueDeals = Array.from(new Map(merged.map((deal) => [deal.id, deal])).values())
 
       if (uniqueDeals.length === 0) {
         throw new Error("No live deals returned")
@@ -347,7 +359,7 @@ Return every deal id exactly once.`
             if (!ranked) return deal
 
             const blendedScore = Math.round(
-              (deal.matchScore * HEURISTIC_MATCH_BLEND_WEIGHT) + (ranked.matchScore * AI_MATCH_BLEND_WEIGHT)
+              ((deal.matchScore * HEURISTIC_MATCH_BLEND_WEIGHT) + (ranked.matchScore * AI_MATCH_BLEND_WEIGHT))
             )
             return {
               ...deal,
@@ -357,7 +369,7 @@ Return every deal id exactly once.`
                 0,
                 Math.min(100, Math.round(((deal.dealScore || DEFAULT_FALLBACK_DEAL_SCORE) + blendedScore) / 2))
               ),
-            }
+            }, [preferences, watches])
           })
         }
       } catch {
@@ -379,8 +391,7 @@ Return every deal id exactly once.`
   useEffect(() => {
     if (!preferencesLoaded) return
     fetchDeals()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preferencesLoaded])
+  }, [preferencesLoaded, fetchDeals])
 
   const filteredDeals = useMemo(() => {
     const filtered = deals.filter((deal) => {
@@ -663,12 +674,12 @@ Return every deal id exactly once.`
               <div className="flex justify-between items-baseline">
                 <div>
                   <div className="text-sm text-muted-foreground">Price</div>
-                  <div className="text-2xl font-semibold text-primary">${deal.price.toLocaleString()}</div>
+                  <div className="text-2xl font-semibold text-primary">{formatDealPrice(deal.price, deal.currency)}</div>
                 </div>
                 <div className="text-right">
                   <div className="text-sm text-muted-foreground">Market</div>
                   <div className="text-lg font-medium line-through text-muted-foreground">
-                    ${(deal.marketValue || deal.fairValue || deal.price).toLocaleString()}
+                    {formatDealPrice(deal.marketValue || deal.fairValue || deal.price, deal.currency)}
                   </div>
                 </div>
               </div>
