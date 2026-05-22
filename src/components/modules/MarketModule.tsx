@@ -177,9 +177,9 @@ const getTrendMetricStyle = (isPositive: boolean) =>
   isPositive ? TREND_METRIC_STYLES.positive : TREND_METRIC_STYLES.negative
 
 const TREND_METRIC_CONFIGS = [
-  { key: 'oneMonth', label: '1M', description: 'vs last month', iconLabel: 'One month trend' },
-  { key: 'sixMonth', label: '6M', description: 'vs 6 months ago', iconLabel: 'Six month trend' },
-  { key: 'twelveMonth', label: '12M', description: 'vs 12 months ago', iconLabel: 'Twelve month trend' }
+  { key: 'oneMonth', label: '1M', description: 'vs last month' },
+  { key: 'sixMonth', label: '6M', description: 'vs 6 months ago' },
+  { key: 'twelveMonth', label: '12M', description: 'vs 12 months ago' }
 ] as const
 
 export function MarketModule({ watches }: MarketModuleProps) {
@@ -590,7 +590,6 @@ export function MarketModule({ watches }: MarketModuleProps) {
                     const metricChange = trendChanges[metric.key]
                     const isPositive = metricChange >= 0
                     const trendMetricStyle = getTrendMetricStyle(isPositive)
-                    const iconLabel = `${metric.iconLabel}: ${formatTrend(metricChange)} ${metric.description}`
                     return (
                       <div
                         key={metric.label}
@@ -601,9 +600,9 @@ export function MarketModule({ watches }: MarketModuleProps) {
                             {metric.label}
                           </div>
                           {isPositive ? (
-                            <TrendUp aria-label={iconLabel} className={trendMetricStyle.iconClassName} size={18} weight="bold" />
+                            <TrendUp aria-hidden="true" className={trendMetricStyle.iconClassName} size={18} weight="bold" />
                           ) : (
-                            <TrendDown aria-label={iconLabel} className={trendMetricStyle.iconClassName} size={18} weight="bold" />
+                            <TrendDown aria-hidden="true" className={trendMetricStyle.iconClassName} size={18} weight="bold" />
                           )}
                         </div>
                         <div className={`mt-3 text-2xl font-semibold tabular-nums ${trendMetricStyle.valueClassName}`}>
