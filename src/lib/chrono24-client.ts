@@ -136,7 +136,7 @@ const getEndpointCandidates = () => {
   return [preferred, ...SEARCH_ENDPOINTS.filter((endpoint) => endpoint !== preferred)]
 }
 
-const getRequestParams = (endpoint: string, params: Chrono24SearchParams) => {
+const getRequestParams = (params: Chrono24SearchParams) => {
   const requestParams = new URLSearchParams()
   const queryValue = params.query || [params.brand, params.model].filter(Boolean).join(" ").trim() || undefined
 
@@ -147,33 +147,12 @@ const getRequestParams = (endpoint: string, params: Chrono24SearchParams) => {
   }
 
   append("query", queryValue)
-  append("q", queryValue)
-  append("search", queryValue)
   append("brand", params.brand)
   append("model", params.model)
-  append("minPrice", params.minPrice)
-  append("maxPrice", params.maxPrice)
-  append("priceMin", params.minPrice)
-  append("priceMax", params.maxPrice)
-  append("page", params.page)
-  append("showPage", params.page)
-  append("limit", params.limit)
-  append("pageSize", params.limit)
-  append("per_page", params.limit)
-  append("max_price", params.maxPrice)
   append("min_price", params.minPrice)
-
-  if (endpoint === "/search") {
-    append("q", queryValue)
-    append("per_page", params.limit)
-  }
-
-  if (endpoint === "/api/search") {
-    append("q", queryValue)
-    append("pageSize", params.limit)
-    append("priceMax", params.maxPrice)
-    append("priceMin", params.minPrice)
-  }
+  append("max_price", params.maxPrice)
+  append("page", params.page)
+  append("limit", params.limit)
 
   return requestParams
 }
@@ -280,6 +259,9 @@ const mapChrono24Listing = (item: unknown, index: number): Deal | null => {
     || FALLBACK_IMAGE
   const listedAt = pickString(item, ["listedAt", "listingDate", "createdAt", "publishedAt", "created_at"])
   const sourceUrl = pickString(item, ["url", "listingUrl", "sourceUrl", "href", "link"])
+  const scopeOfDelivery = pickString(item, ["scope_of_delivery"])?.toLowerCase() || ""
+  const hasBoxFromScope = /\bbox\b/.test(scopeOfDelivery)
+  const hasPapersFromScope = /\bpapers?\b/.test(scopeOfDelivery)
   let stableUrlIdentifier: string | null = null
   if (sourceUrl) {
     try {
@@ -298,7 +280,7 @@ const mapChrono24Listing = (item: unknown, index: number): Deal | null => {
   return {
     id: `chrono24-${listingIdentifier}`,
     brand: pickString(item, ["brand", "manufacturer", "brand_name"]) || "Unknown",
-    model: pickString(item, ["model", "name", "title", "description"]) || "Unknown Model",
+    model: pickString(item, ["model", "name", "title"]) || "Unknown Model",
     referenceNumber: pickString(item, ["referenceNumber", "reference", "ref", "reference_number"]) || undefined,
     price,
     currency: pickString(item, ["currency", "currencyCode"]) || "USD",
@@ -316,8 +298,8 @@ const mapChrono24Listing = (item: unknown, index: number): Deal | null => {
     dealScore: DEFAULT_UNRANKED_SCORE,
     daysListed: pickNumber(item, ["daysListed", "listingAgeDays"]) || undefined,
     sellerRating: pickNumber(item, ["sellerRating", "dealerRating", "merchant_rating"]) || undefined,
-    hasBox: Boolean(item.hasBox ?? item.box) || (pickString(item, ["scope_of_delivery"])?.toLowerCase().includes("box") ?? false),
-    hasPapers: Boolean(item.hasPapers ?? item.papers) || (pickString(item, ["scope_of_delivery"])?.toLowerCase().includes("paper") ?? false),
+    hasBox: Boolean(item.hasBox ?? item.box) || hasBoxFromScope,
+    hasPapers: Boolean(item.hasPapers ?? item.papers) || hasPapersFromScope,
     year: pickNumber(item, ["year", "productionYear", "year_of_production"]) || undefined,
   }
 }
@@ -327,12 +309,14 @@ const requestEndpoint = async (
   params: Chrono24SearchParams
 ): Promise<unknown> => {
   if (!CHRONO24_WRAPPER_BASE_URL) {
-    throw new Error("Chrono24 wrapper base URL missing. Set VITE_CHRONO24_WRAPPER_BASE_URL.")
+    throw new Error(
+      "Chrono24 wrapper base URL missing. Set VITE_CHRONO24_WRAPPER_BASE_URL (or legacy VITE_CHRONO24_API_BASE_URL)."
+    )
   }
 
   const baseUrl = ensureTrailingSlash(CHRONO24_WRAPPER_BASE_URL)
   const url = new URL(normalizeEndpointPath(endpoint), baseUrl)
-  const requestParams = getRequestParams(endpoint, params)
+  const requestParams = getRequestParams(params)
   requestParams.forEach((value, key) => {
     url.searchParams.set(key, value)
   })
