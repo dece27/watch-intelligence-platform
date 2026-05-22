@@ -2,6 +2,7 @@ const AUTH_ALGORITHM = "PBKDF2"
 const HASH_ALGORITHM = "SHA-256"
 const ITERATIONS = 210_000
 const KEY_LENGTH = 256
+const SALT_LENGTH = 16
 
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = ""
@@ -60,7 +61,7 @@ export interface PasswordHashPayload {
 }
 
 export async function hashPassword(passphrase: string): Promise<PasswordHashPayload> {
-  const salt = crypto.getRandomValues(new Uint8Array(16))
+  const salt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH))
   const passwordHash = await deriveHash(passphrase, salt, ITERATIONS)
 
   return {
