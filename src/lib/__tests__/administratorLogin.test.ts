@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { ADMIN_EMAIL } from "@/lib/adminAnalytics"
 import { verifyPassword } from "@/lib/auth"
+import { shouldShowAccountCreationFields } from "@/components/LoginScreen"
 import type { AuthRecord, User } from "@/lib/types"
 
 const ensureUserIndexedMock = vi.hoisted(() => vi.fn(async () => {}))
@@ -50,6 +51,17 @@ describe("Administrator login flow", () => {
   describe("login identifier validation", () => {
     it('accepts "Administrator" (capital A) as a valid identifier', () => {
       expect(isValidLoginIdentifier("Administrator")).toBe(true)
+    })
+
+    describe("account creation field visibility", () => {
+      it("does not show account-creation fields for administrator even before account lookup resolves", () => {
+        expect(shouldShowAccountCreationFields("administrator", false)).toBe(false)
+        expect(shouldShowAccountCreationFields("Administrator", false)).toBe(false)
+      })
+
+      it("shows account-creation fields for new non-admin identifiers", () => {
+        expect(shouldShowAccountCreationFields("new.user@example.com", false)).toBe(true)
+      })
     })
 
     it('accepts "administrator" (all lowercase) as a valid identifier', () => {

@@ -22,6 +22,11 @@ function isValidLoginIdentifier(value: string): boolean {
   return normalized === ADMIN_LOGIN_IDENTIFIER || EMAIL_REGEX.test(normalized)
 }
 
+export function shouldShowAccountCreationFields(loginIdentifier: string, isReturningUser: boolean): boolean {
+  const normalized = loginIdentifier.trim().toLowerCase()
+  return !isReturningUser && normalized !== ADMIN_LOGIN_IDENTIFIER
+}
+
 export function LoginScreen({ onLogin }: LoginScreenProps) {
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
@@ -257,7 +262,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
               )}
             </div>
 
-            {!isReturningUser && !isAdministratorLogin && (
+            {shouldShowAccountCreationFields(email, isReturningUser) && (
               <>
                 <div className="space-y-2">
                   <Label htmlFor="name">Your Name</Label>
@@ -318,7 +323,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
               />
             </div>
 
-            {!isReturningUser && !isAdministratorLogin && (
+            {shouldShowAccountCreationFields(email, isReturningUser) && (
               <div className="space-y-2">
                 <Label htmlFor="confirmPassword">Confirm Passphrase</Label>
                 <Input
