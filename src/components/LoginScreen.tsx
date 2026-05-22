@@ -35,6 +35,8 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const [isBootstrapped, setIsBootstrapped] = useState(false)
+  const normalizedLoginIdentifier = email.trim().toLowerCase()
+  const isAdministratorLogin = normalizedLoginIdentifier === ADMIN_LOGIN_IDENTIFIER
 
   useEffect(() => {
     ensureDefaultAccount()
@@ -169,6 +171,11 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
         return
       }
 
+      if (trimmedEmail === ADMIN_LOGIN_IDENTIFIER) {
+        setError("Administrator account could not be loaded. Please refresh and try again.")
+        return
+      }
+
       if (!trimmedName || !trimmedVaultName) {
         setError("Name and vault name are required for new accounts.")
         return
@@ -250,7 +257,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
               )}
             </div>
 
-            {!isReturningUser && (
+            {!isReturningUser && !isAdministratorLogin && (
               <>
                 <div className="space-y-2">
                   <Label htmlFor="name">Your Name</Label>
@@ -304,14 +311,14 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
               <Input
                 id="password"
                 type={showPassword ? "text" : "password"}
-                placeholder={isReturningUser ? "Enter your passphrase" : "Create a secure passphrase"}
+                placeholder={isReturningUser || isAdministratorLogin ? "Enter your passphrase" : "Create a secure passphrase"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
               />
             </div>
 
-            {!isReturningUser && (
+            {!isReturningUser && !isAdministratorLogin && (
               <div className="space-y-2">
                 <Label htmlFor="confirmPassword">Confirm Passphrase</Label>
                 <Input
@@ -344,7 +351,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
               size="lg"
               disabled={isLoading}
             >
-              {isLoading ? "Verifying..." : isReturningUser ? "Unlock Vault" : "Create Vault"}
+              {isLoading ? "Verifying..." : isReturningUser || isAdministratorLogin ? "Unlock Vault" : "Create Vault"}
             </Button>
           </form>
 
