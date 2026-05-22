@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { useKV } from "@github/spark/hooks"
-import { Watch, MarketSignal, ChatMessage, Deal } from "@/lib/types"
+import { Watch, MarketSignal, ChatMessage, Deal, UserPreferences, VaultMetadata } from "@/lib/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -14,6 +14,7 @@ import { hasChrono24Credentials, searchChrono24Deals } from "@/lib/chrono24-clie
 
 interface AIAdvisorModuleProps {
   watches: Watch[]
+  userId: string
 }
 
 interface RebalanceAnalysis {
@@ -37,6 +38,57 @@ const IDENTIFIER_MAX_DIMENSION = 800
 const IDENTIFIER_MAX_OUTPUT_KB = 500
 const IDENTIFIER_COMPRESSION_QUALITY = 0.75
 const IDENTIFIER_ALLOWED_DATA_URL_PATTERN = /^data:image\/(?:jpeg|jpg|png|webp|gif);base64,[a-z0-9+/]+=*$/i
+const USER_PREFERENCES_PREFIX = "user_preferences_"
+const VAULT_METADATA_PREFIX = "vaultMetadata_"
+const AI_SIGNAL_ENGINE_CACHE_PREFIX = "ai_signal_engine_cache_"
+
+interface AiSignalEngineCache {
+  dependencyHash: string
+  signals?: MarketSignal[]
+  rebalanceAnalysis?: RebalanceAnalysis
+  dealAssessments?: Record<string, string>
+  updatedAt: string
+}
+
+const getUserPreferencesKey = (userId: string) => `${USER_PREFERENCES_PREFIX}${userId}`
+const getVaultMetadataKey = (userId: string) => `${VAULT_METADATA_PREFIX}${userId}`
+const getAiSignalEngineCacheKey = (userId: string) => `${AI_SIGNAL_ENGINE_CACHE_PREFIX}${userId || "anonymous"}`
+
+const getNormalizedWatchesForDependency = (watches: Watch[]) =>
+  [...watches]
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map((watch) => ({
+      id: watch.id,
+      brand: watch.brand,
+      model: watch.model,
+      referenceNumber: watch.referenceNumber || "",
+      year: watch.year || null,
+      purchasePrice: watch.purchasePrice,
+      currentValue: watch.currentValue || watch.purchasePrice,
+      condition: watch.condition,
+      category: watch.category,
+      hasBox: watch.hasBox ?? null,
+      hasPapers: watch.hasPapers ?? null,
+    }))
+
+const getDependencyHash = (
+  watches: Watch[],
+  preferences: UserPreferences | null,
+  vaultMetadata: VaultMetadata | null
+) => {
+  const derivedTotalValue = watches.reduce((sum, watch) => sum + (watch.currentValue || watch.purchasePrice), 0)
+  return JSON.stringify({
+    watches: getNormalizedWatchesForDependency(watches),
+    dealsPreferences: preferences?.deals || null,
+    vault: {
+      watchCount: watches.length,
+      totalValue: derivedTotalValue,
+      vaultName: vaultMetadata?.vaultName || "",
+      metadataWatchCount: vaultMetadata?.watchCount ?? null,
+      metadataTotalValue: vaultMetadata?.totalValue ?? null,
+    },
+  })
+}
 
 const extractJsonPayload = (response: string) => {
   const trimmed = response.trim()
@@ -115,7 +167,7 @@ const STARTER_QUESTIONS = [
   "Should I sell any watches in my collection?"
 ]
 
-export function AIAdvisorModule({ watches }: AIAdvisorModuleProps) {
+export function AIAdvisorModule({ watches, userId }: AIAdvisorModuleProps) {
   const [chatInput, setChatInput] = useState('')
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -135,6 +187,47 @@ export function AIAdvisorModule({ watches }: AIAdvisorModuleProps) {
   const identifierInputValue = IDENTIFIER_ALLOWED_DATA_URL_PATTERN.test(identifierImage) ? '' : identifierImage
   const identifierPreviewImage = IDENTIFIER_ALLOWED_DATA_URL_PATTERN.test(safeIdentifierImage) ? safeIdentifierImage : ''
 
+  const getAiCacheContext = async () => {
+    const cacheKey = getAiSignalEngineCacheKey(userId)
+    try {
+      const [preferences, vaultMetadata, cache] = await Promise.all([
+        userId ? window.spark.kv.get<UserPreferences>(getUserPreferencesKey(userId)) : Promise.resolve(null),
+        userId ? window.spark.kv.get<VaultMetadata>(getVaultMetadataKey(userId)) : Promise.resolve(null),
+        window.spark.kv.get<AiSignalEngineCache>(cacheKey),
+      ])
+
+      return {
+        cacheKey,
+        dependencyHash: getDependencyHash(watches, preferences, vaultMetadata),
+        cache,
+      }
+    } catch {
+      return {
+        cacheKey,
+        dependencyHash: getDependencyHash(watches, null, null),
+        cache: null,
+      }
+    }
+  }
+
+  const saveAiCache = async (
+    cacheKey: string,
+    dependencyHash: string,
+    updates: Partial<AiSignalEngineCache>,
+    existingCache?: AiSignalEngineCache | null
+  ) => {
+    try {
+      await window.spark.kv.set(cacheKey, {
+        ...(existingCache || {}),
+        ...updates,
+        dependencyHash,
+        updatedAt: new Date().toISOString(),
+      } satisfies AiSignalEngineCache)
+    } catch {
+      // Silent cache write failure; module remains functional.
+    }
+  }
+
   useEffect(() => {
     if (watches.length > 0 && signals.length === 0) {
       generateSignals()
@@ -151,6 +244,12 @@ export function AIAdvisorModule({ watches }: AIAdvisorModuleProps) {
     
     setIsLoadingSignals(true)
     try {
+      const { cacheKey, dependencyHash, cache } = await getAiCacheContext()
+      if (cache?.dependencyHash === dependencyHash && cache.signals?.length) {
+        setSignals(cache.signals)
+        return
+      }
+
       const signalsPromises = watches.slice(0, 5).map(async (watch) => {
         const promptText = `You are a luxury watch investment advisor. Analyze this watch and provide a trading signal.
 
@@ -195,6 +294,7 @@ Respond in valid JSON format:
 
       const generatedSignals = await Promise.all(signalsPromises)
       setSignals(generatedSignals)
+      await saveAiCache(cacheKey, dependencyHash, { signals: generatedSignals }, cache)
     } catch (error) {
       toast.error("Failed to generate signals")
     } finally {
@@ -427,11 +527,24 @@ Respond in valid JSON format:
       listingsWithScores.sort((a, b) => b.dealScore - a.dealScore)
       const topDeal = listingsWithScores[0]
       setDealOfDay(topDeal)
+
+      const { cacheKey, dependencyHash, cache } = await getAiCacheContext()
+      const cachedAssessment = cache?.dependencyHash === dependencyHash ? cache.dealAssessments?.[topDeal.id] : undefined
+      if (cachedAssessment) {
+        setDealAssessment(cachedAssessment)
+        return
+      }
       
       const assessmentPrompt = `In exactly 2 sentences, explain why this watch is today's best deal: ${topDeal.brand} ${topDeal.model} ${topDeal.referenceNumber || ''}, ${topDeal.year || 'unknown year'}, ${topDeal.condition}, asking $${topDeal.price.toLocaleString()} vs fair market value of $${topDeal.fairValue.toLocaleString()}. Be specific about what makes the price attractive and who should consider buying it.`
       
       const assessment = await callTrackedLlm(assessmentPrompt, 'gpt-4o-mini')
       setDealAssessment(assessment)
+      await saveAiCache(cacheKey, dependencyHash, {
+        dealAssessments: {
+          ...(cache?.dealAssessments || {}),
+          [topDeal.id]: assessment,
+        },
+      }, cache)
     } catch (error) {
       console.error("Failed to load deal of day:", error)
       setIsLiveDealData(false)
@@ -455,6 +568,12 @@ Respond in valid JSON format:
     
     setIsLoadingRebalance(true)
     try {
+      const { cacheKey, dependencyHash, cache } = await getAiCacheContext()
+      if (cache?.dependencyHash === dependencyHash && cache.rebalanceAnalysis) {
+        setRebalanceAnalysis(cache.rebalanceAnalysis)
+        return
+      }
+
       const totalValue = watches.reduce((sum, w) => sum + (w.currentValue || w.purchasePrice), 0)
       
       const brandBreakdown: Record<string, number> = {}
@@ -500,7 +619,9 @@ Respond in valid JSON format:
 }`
 
       const response = await callTrackedLlm(promptText, 'gpt-4o-mini', true)
-      setRebalanceAnalysis(parseRebalanceAnalysis(response))
+      const parsedAnalysis = parseRebalanceAnalysis(response)
+      setRebalanceAnalysis(parsedAnalysis)
+      await saveAiCache(cacheKey, dependencyHash, { rebalanceAnalysis: parsedAnalysis }, cache)
     } catch (error) {
       toast.error("Failed to generate rebalancing analysis")
       console.error(error)
