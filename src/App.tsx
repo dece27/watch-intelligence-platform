@@ -64,7 +64,7 @@ function App() {
   const [triggerAddWatch, setTriggerAddWatch] = useState(false)
   const [watches, setWatches] = useState<Watch[]>([])
   const [watchesLoaded, setWatchesLoaded] = useState(false)
-  const [isOwner, setIsOwner] = useState(false)
+  const [isSparkOwner, setIsSparkOwner] = useState(false)
   const isMobile = useIsMobile()
 
   useEffect(() => {
@@ -140,18 +140,24 @@ function App() {
 
     const resolveOwnerAccess = async () => {
       if (!currentUser) {
-        setIsOwner(false)
+        setIsSparkOwner(false)
+        return
+      }
+
+      if (typeof window.spark?.user !== "function") {
+        setIsSparkOwner(false)
         return
       }
 
       try {
         const sparkUser = await window.spark.user()
         if (!isCancelled) {
-          setIsOwner(Boolean(sparkUser?.isOwner))
+          setIsSparkOwner(Boolean(sparkUser?.isOwner))
         }
-      } catch {
+      } catch (error) {
+        console.error("Failed to resolve owner access:", error)
         if (!isCancelled) {
-          setIsOwner(false)
+          setIsSparkOwner(false)
         }
       }
     }
@@ -252,7 +258,7 @@ function App() {
     }
   }
 
-  const isAdmin = isAdminEmail(currentUser?.email) || isOwner
+  const isAdmin = isAdminEmail(currentUser?.email) || isSparkOwner
 
   const renderModule = () => {
     switch (activeModule) {
