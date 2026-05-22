@@ -299,7 +299,7 @@ function App() {
       case 'market':
         return <MarketModule watches={watchList} />
       case 'ai-advisor':
-        return <AIAdvisorModule watches={watchList} />
+        return <AIAdvisorModule watches={watchList} userId={currentUser?.id || ""} />
       case 'deals':
         return <DealsModule watches={watchList} userId={currentUser?.id || ""} />
       case 'appraisal':
