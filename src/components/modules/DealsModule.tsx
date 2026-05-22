@@ -14,7 +14,6 @@ import {
   searchChrono24Deals,
   clearChrono24SearchCache,
   isChrono24WrapperConfigured,
-  CHRONO24_CONFIG_ERROR_MESSAGE,
 } from "@/lib/chrono24-client"
 import { convertCurrency, formatCurrency, normalizeCurrency } from "@/lib/currency"
 import { FALLBACK_DEALS } from "@/lib/fallback-deals"
@@ -240,11 +239,17 @@ export function DealsModule({ watches, userId, preferredCurrency = "USD" }: Deal
       clearChrono24SearchCache()
     }
 
-    try {
-      if (!isChrono24WrapperConfigured) {
-        throw new Error(CHRONO24_CONFIG_ERROR_MESSAGE)
-      }
+    // When no Chrono24 wrapper is configured, silently fall back to static deals
+    // without showing any error banner (matches AIAdvisorModule pattern).
+    if (!isChrono24WrapperConfigured) {
+      const fallbackDeals = FALLBACK_DEALS.map((deal) => scoreHeuristically(deal, watches, preferences))
+      setDeals(fallbackDeals)
+      setIsLiveData(false)
+      setIsLoading(false)
+      return
+    }
 
+    try {
       const portfolioBrands = Array.from(new Set(watches.map((watch) => watch.brand)))
       const brandsToQuery = (preferences.preferredBrands.length > 0 ? preferences.preferredBrands : portfolioBrands)
         .slice(0, MAX_BRANDS_TO_QUERY)
