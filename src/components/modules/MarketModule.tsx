@@ -162,13 +162,11 @@ const getTrendChange = (trend: number[], months: number) => {
 const formatTrend = (change: number) => `${change >= 0 ? '+' : ''}${change.toFixed(1)}%`
 const TREND_METRIC_STYLES = {
   positive: {
-    iconLabelSuffix: 'positive trend',
     iconClassName: 'text-success',
     valueClassName: 'text-success',
     cardClassName: 'border-success/20 bg-success/5'
   },
   negative: {
-    iconLabelSuffix: 'negative trend',
     iconClassName: 'text-destructive',
     valueClassName: 'text-destructive',
     cardClassName: 'border-destructive/20 bg-destructive/5'
@@ -178,11 +176,11 @@ const TREND_METRIC_STYLES = {
 const getTrendMetricStyle = (isPositive: boolean) =>
   isPositive ? TREND_METRIC_STYLES.positive : TREND_METRIC_STYLES.negative
 
-const getTrendMetrics = (oneMonthChange: number, sixMonthChange: number, twelveMonthChange: number) => [
-  { label: '1M', change: oneMonthChange, description: 'vs last month' },
-  { label: '6M', change: sixMonthChange, description: 'vs 6 months ago' },
-  { label: '12M', change: twelveMonthChange, description: 'vs 12 months ago' }
-]
+const TREND_METRIC_CONFIGS = [
+  { key: 'oneMonth', label: '1M', description: 'vs last month', iconLabel: 'One month trend' },
+  { key: 'sixMonth', label: '6M', description: 'vs 6 months ago', iconLabel: 'Six month trend' },
+  { key: 'twelveMonth', label: '12M', description: 'vs 12 months ago', iconLabel: 'Twelve month trend' }
+] as const
 
 export function MarketModule({ watches }: MarketModuleProps) {
   const [priceAlerts, setPriceAlerts] = useKV<PriceAlert[]>("priceAlerts", [])
@@ -563,7 +561,11 @@ export function MarketModule({ watches }: MarketModuleProps) {
           const oneMonthChange = getTrendChange(brandIndex.trend, 1)
           const sixMonthChange = getTrendChange(brandIndex.trend, 6)
           const twelveMonthChange = getTrendChange(brandIndex.trend, brandIndex.trend.length - 1)
-          const trendMetrics = getTrendMetrics(oneMonthChange, sixMonthChange, twelveMonthChange)
+          const trendChanges = {
+            oneMonth: oneMonthChange,
+            sixMonth: sixMonthChange,
+            twelveMonth: twelveMonthChange
+          }
 
           return (
             <Card key={brandIndex.brand} className={`bg-card border-border ${isOwned ? 'ring-2 ring-primary/30' : ''}`}>
@@ -584,9 +586,11 @@ export function MarketModule({ watches }: MarketModuleProps) {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {trendMetrics.map((metric) => {
-                    const isPositive = metric.change >= 0
+                  {TREND_METRIC_CONFIGS.map((metric) => {
+                    const metricChange = trendChanges[metric.key]
+                    const isPositive = metricChange >= 0
                     const trendMetricStyle = getTrendMetricStyle(isPositive)
+                    const iconLabel = `${metric.iconLabel} showing ${isPositive ? 'positive' : 'negative'} movement`
                     return (
                       <div
                         key={metric.label}
@@ -597,13 +601,13 @@ export function MarketModule({ watches }: MarketModuleProps) {
                             {metric.label}
                           </div>
                           {isPositive ? (
-                            <TrendUp aria-label={`${metric.label} ${trendMetricStyle.iconLabelSuffix}`} className={trendMetricStyle.iconClassName} size={18} weight="bold" />
+                            <TrendUp aria-label={iconLabel} className={trendMetricStyle.iconClassName} size={18} weight="bold" />
                           ) : (
-                            <TrendDown aria-label={`${metric.label} ${trendMetricStyle.iconLabelSuffix}`} className={trendMetricStyle.iconClassName} size={18} weight="bold" />
+                            <TrendDown aria-label={iconLabel} className={trendMetricStyle.iconClassName} size={18} weight="bold" />
                           )}
                         </div>
                         <div className={`mt-3 text-2xl font-semibold tabular-nums ${trendMetricStyle.valueClassName}`}>
-                          {formatTrend(metric.change)}
+                          {formatTrend(metricChange)}
                         </div>
                         <div className="mt-1 text-xs text-muted-foreground">
                           {metric.description}
