@@ -215,12 +215,17 @@ export function MarketModule({ watches }: MarketModuleProps) {
       }
     }
 
-    const normalizeSearchText = (value: string) =>
-      value
-        .replace(/[^a-zA-Z0-9\s'’&./-]/g, ' ')
+    const normalizeSearchText = (value: unknown) => {
+      if (typeof value !== 'string') {
+        return ''
+      }
+
+      return value
+        .replace(/[^a-zA-Z0-9\s'&./-]/g, ' ')
         .replace(/\s+/g, ' ')
         .trim()
         .slice(0, 120)
+    }
 
     const sanitizedHouse = normalizeSearchText(auction.house)
     const sanitizedLot = normalizeSearchText(auction.lot)
