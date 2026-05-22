@@ -94,9 +94,6 @@ export interface PriceAlert {
 export interface BrandIndex {
   brand: string
   currentIndex: number
-  change30d: number
-  change90d: number
-  change180d: number
   trend: number[]
 }
 

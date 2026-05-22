@@ -21,49 +21,31 @@ const BRAND_INDICES: BrandIndex[] = [
   {
     brand: 'Rolex',
     currentIndex: 127.5,
-    change30d: -0.8,
-    change90d: 5.7,
-    change180d: 8.2,
     trend: [120, 122, 121, 123, 125, 124, 126, 127, 128, 127, 128, 127.5]
   },
   {
     brand: 'Patek Philippe',
     currentIndex: 142.8,
-    change30d: 0.5,
-    change90d: 7.2,
-    change180d: 12.5,
     trend: [128, 130, 132, 135, 137, 138, 140, 141, 142, 143, 142, 142.8]
   },
   {
     brand: 'Audemars Piguet',
     currentIndex: 135.2,
-    change30d: 0.8,
-    change90d: 4.3,
-    change180d: 9.8,
     trend: [123, 125, 127, 128, 130, 131, 132, 133, 134, 135, 136, 135.2]
   },
   {
     brand: 'IWC',
     currentIndex: 112.7,
-    change30d: -1.1,
-    change90d: 2.8,
-    change180d: 5.5,
     trend: [107, 108, 109, 109, 110, 111, 111, 112, 112, 113, 113, 112.7]
   },
   {
     brand: 'Omega',
     currentIndex: 108.4,
-    change30d: -0.4,
-    change90d: 1.5,
-    change180d: 3.2,
     trend: [105, 105, 106, 106, 107, 107, 108, 108, 108, 109, 108, 108.4]
   },
   {
     brand: 'Grand Seiko',
     currentIndex: 115.9,
-    change30d: 1.3,
-    change90d: 4.6,
-    change180d: 7.3,
     trend: [108, 109, 110, 111, 112, 113, 114, 114, 115, 116, 116, 115.9]
   }
 ]
@@ -165,6 +147,20 @@ const getEstimatePerformanceLabel = (hasEstimate: boolean, aboveEstimate: boolea
   return 'Below estimate'
 }
 
+const getTrendChange = (trend: number[], months: number) => {
+  if (trend.length < 2) return 0
+
+  const current = trend[trend.length - 1]
+  const startIndex = Math.max(0, trend.length - 1 - months)
+  const baseline = trend[startIndex]
+
+  if (!baseline) return 0
+
+  return ((current - baseline) / baseline) * 100
+}
+
+const formatTrend = (change: number) => `${change >= 0 ? '+' : ''}${change.toFixed(1)}%`
+
 export function MarketModule({ watches }: MarketModuleProps) {
   const [priceAlerts, setPriceAlerts] = useKV<PriceAlert[]>("priceAlerts", [])
   const [isAlertDialogOpen, setIsAlertDialogOpen] = useState(false)
@@ -192,20 +188,30 @@ export function MarketModule({ watches }: MarketModuleProps) {
     return (total / BRAND_INDICES.length).toFixed(1)
   }, [])
 
-  const overallChange30d = useMemo(() => {
-    const total = BRAND_INDICES.reduce((sum, b) => sum + b.change30d, 0)
-    return (total / BRAND_INDICES.length).toFixed(1)
+  const last12MonthLabels = useMemo(() => {
+    return Array.from({ length: 12 }, (_, idx) => {
+      const date = new Date()
+      date.setMonth(date.getMonth() - (11 - idx))
+      return date.toLocaleString('en-US', { month: 'short' })
+    })
+  }, [])
+
+  const trendRangeLabel = `${last12MonthLabels[0]}–${last12MonthLabels[last12MonthLabels.length - 1]}`
+
+  const overallChange1m = useMemo(() => {
+    const total = BRAND_INDICES.reduce((sum, b) => sum + getTrendChange(b.trend, 1), 0)
+    return Number((total / BRAND_INDICES.length).toFixed(1))
   }, [])
 
   const marketSentiment = useMemo(() => {
-    const positiveCount = BRAND_INDICES.filter(b => b.change30d > 0).length
+    const positiveCount = BRAND_INDICES.filter(b => getTrendChange(b.trend, 1) > 0).length
     if (positiveCount >= 5) return { type: 'bull', color: '#5E8C6A', label: 'BULL 🐂' }
     if (positiveCount >= 3) return { type: 'neutral', color: '#C9A84C', label: 'NEUTRAL —' }
     return { type: 'bear', color: '#A0785A', label: 'BEAR 🐻' }
   }, [])
 
   const positiveBrandsCount = useMemo(() => {
-    return BRAND_INDICES.filter(b => b.change30d > 0).length
+    return BRAND_INDICES.filter(b => getTrendChange(b.trend, 1) > 0).length
   }, [])
 
   const sentimentMonthLabels = useMemo(() => {
@@ -426,7 +432,7 @@ export function MarketModule({ watches }: MarketModuleProps) {
               </div>
             </div>
             <div className="text-right">
-              <div className="text-xs text-muted-foreground">30d Trend</div>
+              <div className="text-xs text-muted-foreground">1m Trend</div>
               <div className="text-sm font-medium">{positiveBrandsCount}/{BRAND_INDICES.length} brands positive</div>
             </div>
           </div>
@@ -492,8 +498,8 @@ export function MarketModule({ watches }: MarketModuleProps) {
           <CardContent>
             <div className="text-3xl font-semibold tabular-nums text-primary">{overallIndex}</div>
             <div className="flex items-center gap-1 mt-1">
-              <TrendUp className="text-success" size={14} />
-              <span className="text-xs text-success">+{overallChange30d}% (30d)</span>
+              {overallChange1m >= 0 ? <TrendUp className="text-success" size={14} /> : <TrendDown className="text-destructive" size={14} />}
+              <span className={overallChange1m >= 0 ? 'text-xs text-success' : 'text-xs text-destructive'}>{formatTrend(overallChange1m)} (1m)</span>
             </div>
           </CardContent>
         </Card>
@@ -505,8 +511,8 @@ export function MarketModule({ watches }: MarketModuleProps) {
           <CardContent>
             <div className="text-3xl font-semibold tabular-nums">{BRAND_INDICES[0].currentIndex}</div>
             <div className="flex items-center gap-1 mt-1">
-              <TrendUp className="text-success" size={14} />
-              <span className="text-xs text-success">+{BRAND_INDICES[0].change30d}% (30d)</span>
+              {getTrendChange(BRAND_INDICES[0].trend, 1) >= 0 ? <TrendUp className="text-success" size={14} /> : <TrendDown className="text-destructive" size={14} />}
+              <span className={getTrendChange(BRAND_INDICES[0].trend, 1) >= 0 ? 'text-xs text-success' : 'text-xs text-destructive'}>{formatTrend(getTrendChange(BRAND_INDICES[0].trend, 1))} (1m)</span>
             </div>
           </CardContent>
         </Card>
@@ -518,8 +524,8 @@ export function MarketModule({ watches }: MarketModuleProps) {
           <CardContent>
             <div className="text-3xl font-semibold tabular-nums">{BRAND_INDICES[1].currentIndex}</div>
             <div className="flex items-center gap-1 mt-1">
-              <TrendUp className="text-success" size={14} />
-              <span className="text-xs text-success">+{BRAND_INDICES[1].change30d}% (30d)</span>
+              {getTrendChange(BRAND_INDICES[1].trend, 1) >= 0 ? <TrendUp className="text-success" size={14} /> : <TrendDown className="text-destructive" size={14} />}
+              <span className={getTrendChange(BRAND_INDICES[1].trend, 1) >= 0 ? 'text-xs text-success' : 'text-xs text-destructive'}>{formatTrend(getTrendChange(BRAND_INDICES[1].trend, 1))} (1m)</span>
             </div>
           </CardContent>
         </Card>
@@ -531,8 +537,8 @@ export function MarketModule({ watches }: MarketModuleProps) {
           <CardContent>
             <div className="text-3xl font-semibold tabular-nums">{BRAND_INDICES[2].currentIndex}</div>
             <div className="flex items-center gap-1 mt-1">
-              <TrendUp className="text-success" size={14} />
-              <span className="text-xs text-success">+{BRAND_INDICES[2].change30d}% (30d)</span>
+              {getTrendChange(BRAND_INDICES[2].trend, 1) >= 0 ? <TrendUp className="text-success" size={14} /> : <TrendDown className="text-destructive" size={14} />}
+              <span className={getTrendChange(BRAND_INDICES[2].trend, 1) >= 0 ? 'text-xs text-success' : 'text-xs text-destructive'}>{formatTrend(getTrendChange(BRAND_INDICES[2].trend, 1))} (1m)</span>
             </div>
           </CardContent>
         </Card>
@@ -541,6 +547,13 @@ export function MarketModule({ watches }: MarketModuleProps) {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {BRAND_INDICES.map((brandIndex) => {
           const isOwned = userBrands.has(brandIndex.brand)
+          const oneMonthChange = getTrendChange(brandIndex.trend, 1)
+          const sixMonthChange = getTrendChange(brandIndex.trend, 6)
+          const twelveMonthChange = getTrendChange(brandIndex.trend, brandIndex.trend.length - 1)
+          const trendData = brandIndex.trend.map((value, index) => ({
+            value,
+            month: last12MonthLabels[index] ?? `M${index + 1}`
+          }))
           return (
             <Card key={brandIndex.brand} className={`bg-card border-border ${isOwned ? 'ring-2 ring-primary/30' : ''}`}>
               <CardHeader className="pb-3">
@@ -561,7 +574,7 @@ export function MarketModule({ watches }: MarketModuleProps) {
 
                 <div className="h-16">
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={brandIndex.trend.map((val, idx) => ({ value: val, index: idx }))}>
+                    <LineChart data={trendData}>
                       <Line 
                         type="monotone" 
                         dataKey="value" 
@@ -573,23 +586,25 @@ export function MarketModule({ watches }: MarketModuleProps) {
                   </ResponsiveContainer>
                 </div>
 
+                <div className="text-[11px] text-muted-foreground -mt-1">Trend · Last 12 months ({trendRangeLabel})</div>
+
                 <div className="grid grid-cols-3 gap-2 text-xs">
                   <div>
-                    <div className="text-muted-foreground">30d</div>
-                    <div className={brandIndex.change30d >= 0 ? 'text-success' : 'text-destructive'}>
-                      {brandIndex.change30d >= 0 ? '+' : ''}{brandIndex.change30d}%
+                    <div className="text-muted-foreground">1m</div>
+                    <div className={oneMonthChange >= 0 ? 'text-success' : 'text-destructive'}>
+                      {formatTrend(oneMonthChange)}
                     </div>
                   </div>
                   <div>
-                    <div className="text-muted-foreground">90d</div>
-                    <div className={brandIndex.change90d >= 0 ? 'text-success' : 'text-destructive'}>
-                      {brandIndex.change90d >= 0 ? '+' : ''}{brandIndex.change90d}%
+                    <div className="text-muted-foreground">6m</div>
+                    <div className={sixMonthChange >= 0 ? 'text-success' : 'text-destructive'}>
+                      {formatTrend(sixMonthChange)}
                     </div>
                   </div>
                   <div>
-                    <div className="text-muted-foreground">180d</div>
-                    <div className={brandIndex.change180d >= 0 ? 'text-success' : 'text-destructive'}>
-                      {brandIndex.change180d >= 0 ? '+' : ''}{brandIndex.change180d}%
+                    <div className="text-muted-foreground">12m</div>
+                    <div className={twelveMonthChange >= 0 ? 'text-success' : 'text-destructive'}>
+                      {formatTrend(twelveMonthChange)}
                     </div>
                   </div>
                 </div>
