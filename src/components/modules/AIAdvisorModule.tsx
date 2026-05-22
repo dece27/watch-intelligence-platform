@@ -35,8 +35,8 @@ const DEAL_OF_DAY_FALLBACK_BRANDS = ["Rolex", "Omega", "Patek Philippe", "Audema
 const IDENTIFIER_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 const IDENTIFIER_MAX_DIMENSION = 800
 const IDENTIFIER_MAX_OUTPUT_KB = 500
-const IDENTIFIER_DATA_URL_PREFIX = 'data:image/'
 const IDENTIFIER_COMPRESSION_QUALITY = 0.75
+const IDENTIFIER_ALLOWED_DATA_URL_PATTERN = /^data:image\/(?:jpeg|jpg|png|webp|gif);base64,[a-z0-9+/]+=*$/i
 
 const extractJsonPayload = (response: string) => {
   const trimmed = response.trim()
@@ -96,7 +96,7 @@ const getSafeIdentifierImageSource = (value: string) => {
   const trimmed = value.trim()
   if (!trimmed) return ''
 
-  if (trimmed.startsWith(IDENTIFIER_DATA_URL_PREFIX)) {
+  if (IDENTIFIER_ALLOWED_DATA_URL_PATTERN.test(trimmed)) {
     return trimmed
   }
 
@@ -132,6 +132,8 @@ export function AIAdvisorModule({ watches }: AIAdvisorModuleProps) {
   const [mockListings, setMockListings] = useKV<Deal[]>("mockListings", [])
   const [isLiveDealData, setIsLiveDealData] = useState(false)
   const safeIdentifierImage = getSafeIdentifierImageSource(identifierImage)
+  const identifierInputValue = IDENTIFIER_ALLOWED_DATA_URL_PATTERN.test(identifierImage) ? '' : identifierImage
+  const identifierPreviewImage = IDENTIFIER_ALLOWED_DATA_URL_PATTERN.test(safeIdentifierImage) ? safeIdentifierImage : ''
 
   useEffect(() => {
     if (watches.length > 0 && signals.length === 0) {
@@ -275,7 +277,7 @@ Provide expert, concise advice (2-3 paragraphs max) about their collection, watc
 
         const ctx = canvas.getContext('2d')
         if (!ctx) {
-          toast.error("Failed to process image")
+          toast.error("Unable to create canvas context for image processing")
           return
         }
 
@@ -283,6 +285,7 @@ Provide expert, concise advice (2-3 paragraphs max) about their collection, watc
 
         const compressedDataUrl = canvas.toDataURL('image/jpeg', IDENTIFIER_COMPRESSION_QUALITY)
         const base64Payload = compressedDataUrl.split(',')[1] || ''
+        // base64 stores 3 bytes in 4 chars, so this approximates original byte size.
         const sizeInKB = Math.round((base64Payload.length * 3) / 4 / 1024)
 
         if (sizeInKB > IDENTIFIER_MAX_OUTPUT_KB) {
@@ -842,7 +845,7 @@ Respond in valid JSON format:
                   <div className="flex gap-2">
                     <Input
                       id="watch-image"
-                      value={identifierImage.startsWith(IDENTIFIER_DATA_URL_PREFIX) ? '' : identifierImage}
+                      value={identifierInputValue}
                       onChange={(e) => setIdentifierImage(e.target.value)}
                       placeholder="Paste image URL or upload a photo..."
                     />
@@ -864,10 +867,10 @@ Respond in valid JSON format:
                       Upload
                     </Button>
                   </div>
-                  {safeIdentifierImage && (
+                  {identifierPreviewImage && (
                     <div className="mt-2">
                       <img 
-                        src={safeIdentifierImage} 
+                        src={identifierPreviewImage} 
                         alt="Watch to identify" 
                         className="w-full h-48 object-cover rounded border border-border"
                         onError={(e) => {
