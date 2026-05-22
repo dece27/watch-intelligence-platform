@@ -95,17 +95,10 @@ export function AdminDashboard() {
           continue
         }
 
-        // Delete watch photos for this user
-        const watches = await window.spark.kv.get<Watch[]>(`watches_${userId}`) || []
-        await Promise.all(
-          watches
-            .filter((w) => w.imageUrl?.startsWith(WATCH_PHOTO_REF_PREFIX))
-            .map((w) => {
-              const watchId = w.imageUrl!.slice(WATCH_PHOTO_REF_PREFIX.length)
-              return window.spark.kv.delete(getWatchPhotoKey(userId, watchId))
-            })
-        )
-
+        // If the user profile no longer exists we still clean up any remaining
+        // auth / watches / usage keys that may be orphaned for this userId.
+        // Watch-photo deletion and email-key deletion require the user's email
+        // and are only performed when the profile is available.
         const userDeletionTasks = [
           window.spark.kv.delete(`user_${userId}`),
           window.spark.kv.delete(`auth_${userId}`),
@@ -115,6 +108,17 @@ export function AdminDashboard() {
         ]
 
         if (user?.email) {
+          // Delete watch photos for this user
+          const watches = await window.spark.kv.get<Watch[]>(`watches_${userId}`) || []
+          await Promise.all(
+            watches
+              .filter((w) => w.imageUrl?.startsWith(WATCH_PHOTO_REF_PREFIX))
+              .map((w) => {
+                const watchId = w.imageUrl!.slice(WATCH_PHOTO_REF_PREFIX.length)
+                return window.spark.kv.delete(getWatchPhotoKey(userId, watchId))
+              })
+          )
+
           userDeletionTasks.push(window.spark.kv.delete(`user_email_${normalizeEmail(user.email)}`))
         }
 

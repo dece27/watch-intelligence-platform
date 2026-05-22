@@ -49,7 +49,8 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
         const existingUserId = await window.spark.kv.get<string>(emailKey)
         if (!isCancelled) {
           if (existingUserId) {
-            // Verify the user profile actually exists (guards against stale keys after admin reset)
+            // Verify the user profile actually exists; guards against stale keys
+            // from partial registration failures or incomplete admin resets
             const userProfile = await window.spark.kv.get<User>(`user_${existingUserId}`)
             if (!userProfile) {
               await window.spark.kv.delete(emailKey)
