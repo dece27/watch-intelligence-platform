@@ -15,6 +15,9 @@ const basePath = process.env.VITE_BASE_PATH || "/"
 export default defineConfig({
   base: basePath.endsWith("/") ? basePath : `${basePath}/`,
   envPrefix: ["VITE_", "CHRONO24_"],
+  build: {
+    chunkSizeWarningLimit: 1500,
+  },
   plugins: [
     react(),
     tailwindcss(),
