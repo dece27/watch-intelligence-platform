@@ -310,7 +310,7 @@ const requestEndpoint = async (
 ): Promise<unknown> => {
   if (!CHRONO24_WRAPPER_BASE_URL) {
     throw new Error(
-      "Chrono24 API not configured. Start the packages/chrono24-api server and set " +
+      "Chrono24 API not configured. Start the chrono24-api server and set " +
       "VITE_CHRONO24_WRAPPER_BASE_URL to enable live deals."
     )
   }
@@ -408,7 +408,7 @@ export async function searchChrono24Deals(params: Chrono24SearchParams): Promise
   // once per endpoint candidate.
   if (!CHRONO24_WRAPPER_BASE_URL) {
     throw new Error(
-      "Chrono24 API not configured. Start the packages/chrono24-api server and set " +
+      "Chrono24 API not configured. Start the chrono24-api server and set " +
       "VITE_CHRONO24_WRAPPER_BASE_URL to enable live deals."
     )
   }
