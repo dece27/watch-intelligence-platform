@@ -239,6 +239,9 @@ export function AIAdvisorModule({ watches, userId }: AIAdvisorModuleProps) {
     // Load (or reload) the Deal of the Day whenever the watch portfolio changes.
     // The function always attempts live data and falls back to cached or static
     // deals, so we no longer need to gate on `hasChrono24Credentials`.
+    // `mockListings` is intentionally excluded from the dependency array:
+    // loadDealOfDay() itself writes to mockListings when it fetches live data,
+    // so including it here would cause an infinite update loop.
     loadDealOfDay()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [watches])

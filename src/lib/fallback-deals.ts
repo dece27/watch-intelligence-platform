@@ -4,6 +4,9 @@ import { Deal } from "@/lib/types"
  * Static fallback deals shown when the Chrono24 live API is unreachable.
  * These represent realistic market listings and are used for UI demonstration
  * and as a last-resort data source for the Deal of the Day feature.
+ *
+ * The `discount` values are rounded integers derived from
+ * Math.round(((fairValue - price) / fairValue) * 100).
  */
 export const FALLBACK_DEALS: Deal[] = [
   {
