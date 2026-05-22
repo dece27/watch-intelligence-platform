@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { TrendUp, TrendDown, Bell, X, MagnifyingGlass } from "@phosphor-icons/react"
-import { LineChart, Line, ResponsiveContainer } from 'recharts'
+import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend, CartesianGrid } from 'recharts'
 import { toast } from "sonner"
 
 interface MarketModuleProps {
@@ -137,6 +137,9 @@ const FALLBACK_AUCTION_RESULTS: AuctionResult[] = [
 ]
 
 const AUCTION_SEARCH_TERMS = ['1518', '6264', '4131', 'rm27-01', 'resonance', 'tourbillon souverain']
+const SENTIMENT_LINE_COLORS = ['#5E8C6A', '#4A7C90', '#C9A84C', '#A0785A', '#6A5ACD', '#3B9D9D']
+const GOLDEN_ANGLE_DEGREES = 137.508
+const SENTIMENT_Y_AXIS_PADDING = 2
 
 const formatAuctionDate = (dateValue: string) => {
   const parsed = new Date(dateValue)
@@ -204,6 +207,59 @@ export function MarketModule({ watches }: MarketModuleProps) {
   const positiveBrandsCount = useMemo(() => {
     return BRAND_INDICES.filter(b => b.change30d > 0).length
   }, [])
+
+  const sentimentMonthLabels = useMemo(() => {
+    const formatter = new Intl.DateTimeFormat('en-US', { month: 'short' })
+    const now = new Date()
+
+    return Array.from({ length: 12 }, (_, index) => {
+      const date = new Date(now)
+      date.setMonth(now.getMonth() - (11 - index))
+      return formatter.format(date)
+    })
+  }, [])
+
+  const brandSentimentSeries = useMemo(() => {
+    const getLineColor = (index: number) => {
+      if (index < SENTIMENT_LINE_COLORS.length) {
+        return SENTIMENT_LINE_COLORS[index]
+      }
+
+      const hue = Math.round((index * GOLDEN_ANGLE_DEGREES) % 360)
+      return `hsl(${hue}, 52%, 46%)`
+    }
+
+    return BRAND_INDICES.map((brandIndex, index) => ({
+      key: `brand-${index}`,
+      brand: brandIndex.brand,
+      trend: brandIndex.trend,
+      color: getLineColor(index),
+    }))
+  }, [])
+
+  const [visibleSentimentBrands, setVisibleSentimentBrands] = useState<string[]>(() =>
+    BRAND_INDICES.map((_, index) => `brand-${index}`)
+  )
+
+  const overallSentimentChartData = useMemo(() => {
+    return sentimentMonthLabels.map((month, monthIndex) => {
+      const point: { month: string; [key: string]: number | string | null } = { month }
+      brandSentimentSeries.forEach((series) => {
+        point[series.key] = series.trend[monthIndex] ?? null
+      })
+      return point
+    })
+  }, [brandSentimentSeries, sentimentMonthLabels])
+
+  const toggleSentimentBrandVisibility = (seriesKey: string) => {
+    setVisibleSentimentBrands((current) => {
+      if (current.includes(seriesKey)) {
+        if (current.length === 1) return current
+        return current.filter((key) => key !== seriesKey)
+      }
+      return [...current, seriesKey]
+    })
+  }
 
   useEffect(() => {
     let isMounted = true
@@ -351,7 +407,7 @@ export function MarketModule({ watches }: MarketModuleProps) {
 
       <Card className="bg-card border-border">
         <CardContent className="py-4">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 mb-4">
             <div className="flex items-center gap-3 flex-1">
               <div className="text-sm font-medium text-muted-foreground whitespace-nowrap">Market Sentiment:</div>
               <div 
@@ -372,6 +428,57 @@ export function MarketModule({ watches }: MarketModuleProps) {
             <div className="text-right">
               <div className="text-xs text-muted-foreground">30d Trend</div>
               <div className="text-sm font-medium">{positiveBrandsCount}/{BRAND_INDICES.length} brands positive</div>
+            </div>
+          </div>
+          <div className="space-y-3">
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={overallSentimentChartData}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+                  <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                  <YAxis
+                    tick={{ fontSize: 12 }}
+                    domain={[
+                      `dataMin - ${SENTIMENT_Y_AXIS_PADDING}`,
+                      `dataMax + ${SENTIMENT_Y_AXIS_PADDING}`,
+                    ]}
+                    width={40}
+                  />
+                  <Tooltip />
+                  <Legend />
+                  {brandSentimentSeries
+                    .filter((series) => visibleSentimentBrands.includes(series.key))
+                    .map((series) => (
+                      <Line
+                        key={series.key}
+                        type="monotone"
+                        dataKey={series.key}
+                        name={series.brand}
+                        stroke={series.color}
+                        strokeWidth={2}
+                        dot={false}
+                      />
+                    ))}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {brandSentimentSeries.map((series) => {
+                const isVisible = visibleSentimentBrands.includes(series.key)
+                return (
+                  <Button
+                    key={series.key}
+                    type="button"
+                    variant={isVisible ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => toggleSentimentBrandVisibility(series.key)}
+                    className="h-8"
+                  >
+                    <span className="inline-block w-2 h-2 rounded-full mr-2" style={{ backgroundColor: series.color }} />
+                    {series.brand}
+                  </Button>
+                )
+              })}
             </div>
           </div>
         </CardContent>
