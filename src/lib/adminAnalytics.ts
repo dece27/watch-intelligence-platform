@@ -1,7 +1,8 @@
 import { User } from "@/lib/types"
 
-const configuredAdminEmail = import.meta.env.VITE_ADMIN_EMAIL?.trim().toLowerCase()
-export const ADMIN_EMAIL = configuredAdminEmail || "dec.davide@gmail.com"
+export const ADMIN_EMAIL = "administrator"
+export const LEGACY_ADMIN_EMAILS = ["dec.davide@gmail.com"]
+export const PROTECTED_ADMIN_USER_ID_KEY = "protected_admin_user_id"
 const ALL_USER_IDS_KEY = "all_user_ids"
 
 export interface UserAIUsage {
@@ -13,6 +14,15 @@ export interface UserAIUsage {
 
 export const isAdminEmail = (email?: string) =>
   Boolean(email && email.trim().toLowerCase() === ADMIN_EMAIL)
+
+export const isProtectedAdminUser = (
+  user: Pick<User, "id" | "email"> | null | undefined,
+  protectedAdminUserId?: string | null
+) => {
+  if (!user) return false
+  if (protectedAdminUserId && user.id === protectedAdminUserId) return true
+  return isAdminEmail(user.email)
+}
 
 export async function ensureUserIndexed(userId: string) {
   const ids = await window.spark.kv.get<string[]>(ALL_USER_IDS_KEY)

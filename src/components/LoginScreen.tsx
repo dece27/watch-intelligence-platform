@@ -38,7 +38,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
     let isCancelled = false
     const normalizedEmail = email.trim().toLowerCase()
 
-    if (!normalizedEmail || !normalizedEmail.includes("@")) {
+    if (!normalizedEmail) {
       setIsReturningUser(false)
       return
     }
@@ -215,8 +215,8 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
               <Label htmlFor="email">Email Address</Label>
               <Input
                 id="email"
-                type="email"
-                placeholder="your.email@example.com"
+                type="text"
+                placeholder="Enter your account email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
