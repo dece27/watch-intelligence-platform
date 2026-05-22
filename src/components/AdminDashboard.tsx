@@ -30,6 +30,14 @@ interface AdminUserStats {
 const WATCH_PHOTO_KEY_PREFIX = "watch_photo_"
 const WATCH_PHOTO_REF_PREFIX = "kv-photo:"
 
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase()
+}
+
+function getWatchPhotoKey(userId: string, watchId: string): string {
+  return `${WATCH_PHOTO_KEY_PREFIX}${userId}_${watchId}`
+}
+
 export function AdminDashboard() {
   const [isLoading, setIsLoading] = useState(true)
   const [stats, setStats] = useState<AdminUserStats[]>([])
@@ -81,7 +89,7 @@ export function AdminDashboard() {
         const user = await window.spark.kv.get<User>(`user_${userId}`)
         if (!user) continue
 
-        const isAdmin = user.email.trim().toLowerCase() === ADMIN_EMAIL
+        const isAdmin = normalizeEmail(user.email) === ADMIN_EMAIL
 
         if (isAdmin) {
           adminUserIds.push(userId)
@@ -95,13 +103,13 @@ export function AdminDashboard() {
             .filter((w) => w.imageUrl?.startsWith(WATCH_PHOTO_REF_PREFIX))
             .map((w) => {
               const watchId = w.imageUrl!.slice(WATCH_PHOTO_REF_PREFIX.length)
-              return window.spark.kv.delete(`${WATCH_PHOTO_KEY_PREFIX}${userId}_${watchId}`)
+              return window.spark.kv.delete(getWatchPhotoKey(userId, watchId))
             })
         )
 
         // Delete all user-specific keys
         await Promise.all([
-          window.spark.kv.delete(`user_email_${user.email.trim().toLowerCase()}`),
+          window.spark.kv.delete(`user_email_${normalizeEmail(user.email)}`),
           window.spark.kv.delete(`user_${userId}`),
           window.spark.kv.delete(`auth_${userId}`),
           window.spark.kv.delete(`watches_${userId}`),
@@ -119,7 +127,7 @@ export function AdminDashboard() {
       await Promise.all(
         feedbackIds.map(async (feedbackId) => {
           const item = await window.spark.kv.get<{ userEmail?: string }>(feedbackId)
-          if (item?.userEmail && item.userEmail.trim().toLowerCase() === ADMIN_EMAIL) {
+          if (item?.userEmail && normalizeEmail(item.userEmail) === ADMIN_EMAIL) {
             remainingFeedbackIds.push(feedbackId)
           } else {
             await window.spark.kv.delete(feedbackId)
