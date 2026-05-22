@@ -22,7 +22,7 @@ export async function ensureUserIndexed(userId: string) {
   }
 }
 
-const estimateTokenCount = (text: string) => Math.ceil(text.length / 4)
+const estimateTokenCount = (text: string) => Math.ceil(new TextEncoder().encode(text).length / 4)
 
 const resolveCurrentUserId = async (): Promise<string | null> => {
   try {

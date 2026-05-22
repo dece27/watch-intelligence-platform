@@ -13,6 +13,7 @@ interface AdminUserStats {
   aiTokensUsed: number
   aiRequestsCount: number
   lastLoginAt?: string
+  createdAtTimestamp: number
 }
 
 export function AdminDashboard() {
@@ -39,12 +40,13 @@ export function AdminDashboard() {
         aiTokensUsed: usage?.aiTokensUsed || 0,
         aiRequestsCount: usage?.aiRequestsCount || 0,
         lastLoginAt: auth?.lastLoginAt,
+        createdAtTimestamp: new Date(user.createdAt).getTime(),
       } satisfies AdminUserStats
     }))
 
     const rows = rowsWithNulls.filter((row): row is AdminUserStats => row !== null)
 
-    rows.sort((a, b) => new Date(b.user.createdAt).getTime() - new Date(a.user.createdAt).getTime())
+    rows.sort((a, b) => b.createdAtTimestamp - a.createdAtTimestamp)
     setStats(rows)
     setIsLoading(false)
   }
