@@ -1,13 +1,47 @@
 import { Deal } from "@/lib/types"
 
-const CHRONO24_WRAPPER_BASE_URL = import.meta.env.VITE_CHRONO24_WRAPPER_BASE_URL?.trim()
-  || import.meta.env.VITE_CHRONO24_API_BASE_URL?.trim()
-const CHRONO24_WRAPPER_API_KEY = import.meta.env.VITE_CHRONO24_WRAPPER_API_KEY?.trim()
-  || import.meta.env.VITE_CHRONO24_API_KEY?.trim()
-const CHRONO24_WRAPPER_AUTH_HEADER = import.meta.env.VITE_CHRONO24_WRAPPER_AUTH_HEADER?.trim() || "Authorization"
-const CHRONO24_WRAPPER_AUTH_SCHEME = import.meta.env.VITE_CHRONO24_WRAPPER_AUTH_SCHEME?.trim() || "Bearer"
-const CHRONO24_WRAPPER_ENDPOINT = import.meta.env.VITE_CHRONO24_WRAPPER_SEARCH_ENDPOINT?.trim()
-const CHRONO24_WRAPPER_ENDPOINTS = import.meta.env.VITE_CHRONO24_WRAPPER_SEARCH_ENDPOINTS
+export const CHRONO24_CONFIG_ERROR_MESSAGE =
+  "Chrono24 API not configured. Start the chrono24-api server and set " +
+  "VITE_CHRONO24_WRAPPER_BASE_URL (or VITE_CHRONO24_API_HOST) to enable live deals."
+
+const trimEnv = (value?: string) => value?.trim() || undefined
+
+const isLocalDevHost = () => {
+  if (typeof window === "undefined") return false
+  const host = window.location.hostname
+  return host === "localhost" || host === "127.0.0.1" || host === "[::1]"
+}
+
+const resolveChrono24WrapperBaseUrl = () =>
+  trimEnv(import.meta.env.VITE_CHRONO24_WRAPPER_BASE_URL)
+  || trimEnv(import.meta.env.VITE_CHRONO24_API_BASE_URL)
+  || trimEnv(import.meta.env.VITE_CHRONO24_API_HOST)
+  || trimEnv(import.meta.env.CHRONO24_WRAPPER_BASE_URL)
+  || trimEnv(import.meta.env.CHRONO24_API_BASE_URL)
+  || trimEnv(import.meta.env.CHRONO24_API_HOST)
+  || (import.meta.env.DEV && isLocalDevHost() ? "http://localhost:8000" : undefined)
+
+const CHRONO24_WRAPPER_BASE_URL = resolveChrono24WrapperBaseUrl()
+const CHRONO24_WRAPPER_API_KEY = trimEnv(import.meta.env.VITE_CHRONO24_WRAPPER_API_KEY)
+  || trimEnv(import.meta.env.VITE_CHRONO24_API_KEY)
+  || trimEnv(import.meta.env.CHRONO24_WRAPPER_API_KEY)
+  || trimEnv(import.meta.env.CHRONO24_API_KEY)
+const CHRONO24_WRAPPER_AUTH_HEADER = trimEnv(import.meta.env.VITE_CHRONO24_WRAPPER_AUTH_HEADER)
+  || trimEnv(import.meta.env.VITE_CHRONO24_API_AUTH_HEADER)
+  || trimEnv(import.meta.env.CHRONO24_WRAPPER_AUTH_HEADER)
+  || trimEnv(import.meta.env.CHRONO24_API_AUTH_HEADER)
+  || "Authorization"
+const CHRONO24_WRAPPER_AUTH_SCHEME = trimEnv(import.meta.env.VITE_CHRONO24_WRAPPER_AUTH_SCHEME)
+  || trimEnv(import.meta.env.VITE_CHRONO24_API_AUTH_SCHEME)
+  || trimEnv(import.meta.env.CHRONO24_WRAPPER_AUTH_SCHEME)
+  || trimEnv(import.meta.env.CHRONO24_API_AUTH_SCHEME)
+  || "Bearer"
+const CHRONO24_WRAPPER_ENDPOINT = trimEnv(import.meta.env.VITE_CHRONO24_WRAPPER_SEARCH_ENDPOINT)
+  || trimEnv(import.meta.env.CHRONO24_WRAPPER_SEARCH_ENDPOINT)
+const CHRONO24_WRAPPER_ENDPOINTS = (
+  trimEnv(import.meta.env.VITE_CHRONO24_WRAPPER_SEARCH_ENDPOINTS)
+  || trimEnv(import.meta.env.CHRONO24_WRAPPER_SEARCH_ENDPOINTS)
+)
   ?.split(",")
   .map((endpoint) => endpoint.trim())
   .filter(Boolean)
@@ -39,6 +73,14 @@ export interface Chrono24SearchParams {
   maxPrice?: number
   page?: number
   limit?: number
+}
+
+export const isChrono24WrapperConfigured = Boolean(CHRONO24_WRAPPER_BASE_URL)
+
+function assertChrono24Configured(baseUrl: string | undefined): asserts baseUrl is string {
+  if (!baseUrl) {
+    throw new Error(CHRONO24_CONFIG_ERROR_MESSAGE)
+  }
 }
 
 interface CachedChrono24Deals {
@@ -308,12 +350,7 @@ const requestEndpoint = async (
   endpoint: string,
   params: Chrono24SearchParams
 ): Promise<unknown> => {
-  if (!CHRONO24_WRAPPER_BASE_URL) {
-    throw new Error(
-      "Chrono24 API not configured. Start the chrono24-api server and set " +
-      "VITE_CHRONO24_WRAPPER_BASE_URL to enable live deals."
-    )
-  }
+  assertChrono24Configured(CHRONO24_WRAPPER_BASE_URL)
 
   const baseUrl = ensureTrailingSlash(CHRONO24_WRAPPER_BASE_URL)
   const url = new URL(normalizeEndpointPath(endpoint), baseUrl)
@@ -406,12 +443,7 @@ export async function searchChrono24Deals(params: Chrono24SearchParams): Promise
   // Fast-fail with a clear message when no API wrapper is configured so the
   // error shown in the UI is concise rather than the same message repeated
   // once per endpoint candidate.
-  if (!CHRONO24_WRAPPER_BASE_URL) {
-    throw new Error(
-      "Chrono24 API not configured. Start the chrono24-api server and set " +
-      "VITE_CHRONO24_WRAPPER_BASE_URL to enable live deals."
-    )
-  }
+  assertChrono24Configured(CHRONO24_WRAPPER_BASE_URL)
 
   const cachedDeals = readCachedDeals(params)
   if (cachedDeals && cachedDeals.length > 0) {

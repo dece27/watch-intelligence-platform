@@ -10,6 +10,7 @@ const projectRoot = process.env.PROJECT_ROOT || import.meta.dirname
 
 // https://vite.dev/config/
 export default defineConfig({
+  envPrefix: ["VITE_", "CHRONO24_"],
   plugins: [
     react(),
     tailwindcss(),

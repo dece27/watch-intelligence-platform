@@ -10,7 +10,12 @@ import { Switch } from "@/components/ui/switch"
 import { Heart, MapPin, ArrowsClockwise } from "@phosphor-icons/react"
 import { DealDetailModal } from "@/components/DealDetailModal"
 import { callTrackedLlm } from "@/lib/adminAnalytics"
-import { searchChrono24Deals, clearChrono24SearchCache } from "@/lib/chrono24-client"
+import {
+  searchChrono24Deals,
+  clearChrono24SearchCache,
+  isChrono24WrapperConfigured,
+  CHRONO24_CONFIG_ERROR_MESSAGE,
+} from "@/lib/chrono24-client"
 import { convertCurrency, formatCurrency, normalizeCurrency } from "@/lib/currency"
 import { FALLBACK_DEALS } from "@/lib/fallback-deals"
 
@@ -236,6 +241,10 @@ export function DealsModule({ watches, userId, preferredCurrency = "USD" }: Deal
     }
 
     try {
+      if (!isChrono24WrapperConfigured) {
+        throw new Error(CHRONO24_CONFIG_ERROR_MESSAGE)
+      }
+
       const portfolioBrands = Array.from(new Set(watches.map((watch) => watch.brand)))
       const brandsToQuery = (preferences.preferredBrands.length > 0 ? preferences.preferredBrands : portfolioBrands)
         .slice(0, MAX_BRANDS_TO_QUERY)

@@ -22,11 +22,22 @@ Set the environment variable before starting the React dev server:
 VITE_CHRONO24_WRAPPER_BASE_URL=http://localhost:8000 npm run dev
 ```
 
+Alternative supported names:
+
+```bash
+VITE_CHRONO24_API_HOST=http://localhost:8000 npm run dev
+# or (when exposed via Vite envPrefix)
+CHRONO24_WRAPPER_BASE_URL=http://localhost:8000 npm run dev
+```
+
 Or add it to a `.env.local` file in the project root:
 
 ```
 VITE_CHRONO24_WRAPPER_BASE_URL=http://localhost:8000
 ```
+
+In local development on `localhost`, the frontend now defaults to
+`http://localhost:8000` automatically when no Chrono24 base URL env is set.
 
 ## Endpoints
 

@@ -78,6 +78,27 @@ Available scripts:
 - `npm run build` — run TypeScript build and Vite production build
 - `npm run preview` — preview production build
 
+### Chrono24 live deals setup (optional)
+
+Start the local wrapper API:
+
+```bash
+cd chrono24-api
+pip install -r requirements.txt
+python server.py
+```
+
+Then point the frontend to it with one of:
+
+```bash
+VITE_CHRONO24_WRAPPER_BASE_URL=http://localhost:8000 npm run dev
+# or
+VITE_CHRONO24_API_HOST=http://localhost:8000 npm run dev
+```
+
+When running the frontend on localhost, it also auto-falls back to
+`http://localhost:8000` if no Chrono24 base URL env is provided.
+
 ## License
 
 This repository is licensed under the MIT License.
