@@ -7,14 +7,16 @@ import { Slider } from "@/components/ui/slider"
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table"
 import { CaretDown, CaretUp, Lightbulb } from "@phosphor-icons/react"
 import { callTrackedLlm } from "@/lib/adminAnalytics"
+import { formatCurrency } from "@/lib/currency"
 
 interface WhatIfSellCalculatorProps {
   watches: Watch[]
   getMockMarketValue: (watch: Watch) => number
   calculateHealthScore: (watches: Watch[]) => number
+  preferredCurrency?: string
 }
 
-export function WhatIfSellCalculator({ watches, getMockMarketValue, calculateHealthScore }: WhatIfSellCalculatorProps) {
+export function WhatIfSellCalculator({ watches, getMockMarketValue, calculateHealthScore, preferredCurrency = "USD" }: WhatIfSellCalculatorProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [selectedWatchId, setSelectedWatchId] = useState<string>("")
   const [salePrice, setSalePrice] = useState<number>(0)
@@ -125,7 +127,7 @@ export function WhatIfSellCalculator({ watches, getMockMarketValue, calculateHea
         ? remainingWatches.map(w => `${w.brand} ${w.model}`).join(', ')
         : 'empty (no remaining watches)'
 
-      const promptText = `You are a luxury watch investment advisor. The user is selling a ${selectedWatch.brand} ${selectedWatch.model} and will receive approximately $${netProceeds.netAfterTax.toLocaleString()} in net proceeds after tax. Their remaining collection after the sale: ${collectionSummary}. In 3-4 sentences, suggest how they might redeploy these proceeds within the watch market to improve diversification, returns, or collection quality. Be specific about watch categories or references worth considering. Do not give generic advice.`
+      const promptText = `You are a luxury watch investment advisor. The user is selling a ${selectedWatch.brand} ${selectedWatch.model} and will receive approximately ${formatCurrency(netProceeds.netAfterTax, preferredCurrency)} in net proceeds after tax. Their remaining collection after the sale: ${collectionSummary}. In 3-4 sentences, suggest how they might redeploy these proceeds within the watch market to improve diversification, returns, or collection quality. Be specific about watch categories or references worth considering. Do not give generic advice.`
 
       const response = await callTrackedLlm(promptText, "gpt-4o-mini")
       setLlmSuggestion(response)
@@ -149,10 +151,10 @@ export function WhatIfSellCalculator({ watches, getMockMarketValue, calculateHea
 
   const formatChange = (current: number, after: number, isPercent: boolean = false, isDollar: boolean = false) => {
     const change = after - current
-    const sign = change > 0 ? '+' : ''
+    const sign = change > 0 ? '+' : change < 0 ? '-' : ''
     
     if (isDollar) {
-      return `${sign}$${Math.abs(change).toLocaleString()}`
+      return `${sign}${formatCurrency(Math.abs(change), preferredCurrency)}`
     }
     if (isPercent) {
       return `${sign}${change.toFixed(1)}pp`
@@ -201,7 +203,7 @@ export function WhatIfSellCalculator({ watches, getMockMarketValue, calculateHea
                 const marketValue = getMockMarketValue(watch)
                 return (
                   <SelectItem key={watch.id} value={watch.id}>
-                    {watch.brand} {watch.model} — {watch.referenceNumber || 'N/A'} (Current: ${marketValue.toLocaleString()})
+                    {watch.brand} {watch.model} — {watch.referenceNumber || 'N/A'} (Current: {formatCurrency(marketValue, preferredCurrency)})
                   </SelectItem>
                 )
               })}
@@ -227,16 +229,16 @@ export function WhatIfSellCalculator({ watches, getMockMarketValue, calculateHea
                   <TableBody>
                     <TableRow>
                       <TableCell className="font-medium">Total Portfolio Value</TableCell>
-                      <TableCell className="text-right tabular-nums">${currentMetrics.totalValue.toLocaleString()}</TableCell>
-                      <TableCell className="text-right tabular-nums">${afterSaleMetrics.totalValue.toLocaleString()}</TableCell>
+                      <TableCell className="text-right tabular-nums">{formatCurrency(currentMetrics.totalValue, preferredCurrency)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{formatCurrency(afterSaleMetrics.totalValue, preferredCurrency)}</TableCell>
                       <TableCell className={`text-right tabular-nums ${getChangeColor(currentMetrics.totalValue, afterSaleMetrics.totalValue)}`}>
                         {formatChange(currentMetrics.totalValue, afterSaleMetrics.totalValue, false, true)}
                       </TableCell>
                     </TableRow>
                     <TableRow>
                       <TableCell className="font-medium">Total Cost Basis</TableCell>
-                      <TableCell className="text-right tabular-nums">${currentMetrics.totalCost.toLocaleString()}</TableCell>
-                      <TableCell className="text-right tabular-nums">${afterSaleMetrics.totalCost.toLocaleString()}</TableCell>
+                      <TableCell className="text-right tabular-nums">{formatCurrency(currentMetrics.totalCost, preferredCurrency)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{formatCurrency(afterSaleMetrics.totalCost, preferredCurrency)}</TableCell>
                       <TableCell className={`text-right tabular-nums ${getChangeColor(currentMetrics.totalCost, afterSaleMetrics.totalCost, false)}`}>
                         {formatChange(currentMetrics.totalCost, afterSaleMetrics.totalCost, false, true)}
                       </TableCell>
@@ -278,7 +280,7 @@ export function WhatIfSellCalculator({ watches, getMockMarketValue, calculateHea
                     Expected Sale Price
                   </label>
                   <div className="text-4xl font-bold text-primary tabular-nums text-center mb-4">
-                    ${salePrice.toLocaleString()}
+                    {formatCurrency(salePrice, preferredCurrency)}
                   </div>
                   <Slider
                     value={[salePrice]}
@@ -289,9 +291,9 @@ export function WhatIfSellCalculator({ watches, getMockMarketValue, calculateHea
                     className="mb-2"
                   />
                   <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>Distressed: ${sliderMin.toLocaleString()}</span>
-                    <span>Market: ${currentMarketValue.toLocaleString()}</span>
-                    <span>Premium: ${sliderMax.toLocaleString()}</span>
+                    <span>Distressed: {formatCurrency(sliderMin, preferredCurrency)}</span>
+                    <span>Market: {formatCurrency(currentMarketValue, preferredCurrency)}</span>
+                    <span>Premium: {formatCurrency(sliderMax, preferredCurrency)}</span>
                   </div>
                 </div>
               </div>
@@ -303,27 +305,27 @@ export function WhatIfSellCalculator({ watches, getMockMarketValue, calculateHea
                 <div className="bg-muted/30 border border-border rounded-lg p-4 space-y-2">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Sale Price</span>
-                    <span className="font-semibold tabular-nums">${netProceeds.salePrice.toLocaleString()}</span>
+                    <span className="font-semibold tabular-nums">{formatCurrency(netProceeds.salePrice, preferredCurrency)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Original Purchase Price</span>
-                    <span className="font-semibold tabular-nums text-destructive">-${netProceeds.purchasePrice.toLocaleString()}</span>
+                    <span className="font-semibold tabular-nums text-destructive">-{formatCurrency(netProceeds.purchasePrice, preferredCurrency)}</span>
                   </div>
                   <div className="border-t border-border pt-2 flex justify-between">
                     <span className="text-muted-foreground">Estimated Capital Gain/Loss</span>
                     <span className={`font-semibold tabular-nums ${netProceeds.gain >= 0 ? 'text-success' : 'text-destructive'}`}>
-                      {netProceeds.gain >= 0 ? '+' : ''}${netProceeds.gain.toLocaleString()}
+                      {netProceeds.gain >= 0 ? '+' : '-'}{formatCurrency(Math.abs(netProceeds.gain), preferredCurrency)}
                     </span>
                   </div>
                   {netProceeds.tax > 0 && (
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Estimated Tax (28% collectibles rate)</span>
-                      <span className="font-semibold tabular-nums text-destructive">-${netProceeds.tax.toLocaleString()}</span>
+                      <span className="font-semibold tabular-nums text-destructive">-{formatCurrency(netProceeds.tax, preferredCurrency)}</span>
                     </div>
                   )}
                   <div className="border-t border-border pt-2 flex justify-between">
                     <span className="font-semibold">Net After-Tax Proceeds</span>
-                    <span className="font-bold text-lg tabular-nums text-primary">${netProceeds.netAfterTax.toLocaleString()}</span>
+                    <span className="font-bold text-lg tabular-nums text-primary">{formatCurrency(netProceeds.netAfterTax, preferredCurrency)}</span>
                   </div>
                   <p className="text-xs text-muted-foreground italic mt-3">
                     Note: US collectibles long-term CGT rate (28%) applied. Consult your tax advisor.

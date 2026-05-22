@@ -12,9 +12,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { TrendUp, TrendDown, Bell, X, MagnifyingGlass } from "@phosphor-icons/react"
 import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend, CartesianGrid } from 'recharts'
 import { toast } from "sonner"
+import { formatCurrency } from "@/lib/currency"
 
 interface MarketModuleProps {
   watches: Watch[]
+  preferredCurrency?: string
 }
 
 const BRAND_INDICES: BrandIndex[] = [
@@ -227,7 +229,7 @@ const TREND_METRIC_CONFIGS = [
   { key: 'twelveMonthChange', label: '12M', description: 'vs 12 months ago' }
 ] as const
 
-export function MarketModule({ watches }: MarketModuleProps) {
+export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModuleProps) {
   const [priceAlerts, setPriceAlerts] = useKV<PriceAlert[]>("priceAlerts", [])
   const [isAlertDialogOpen, setIsAlertDialogOpen] = useState(false)
   const [auctionResults, setAuctionResults] = useState<AuctionResult[]>(FALLBACK_AUCTION_RESULTS)
@@ -636,7 +638,7 @@ export function MarketModule({ watches }: MarketModuleProps) {
                 </div>
                 <div className="flex items-center gap-4">
                   <div className="text-right">
-                    <div className="font-semibold tabular-nums">${mover.currentPrice.toLocaleString()}</div>
+                    <div className="font-semibold tabular-nums">{formatCurrency(mover.currentPrice, preferredCurrency)}</div>
                   </div>
                   <Badge 
                     variant="outline"
@@ -678,7 +680,7 @@ export function MarketModule({ watches }: MarketModuleProps) {
               <div className="space-y-3">
                 <div className="p-4 border border-border rounded-lg bg-muted/10">
                   <div className="font-medium mb-1">Rolex Submariner {searchReference}</div>
-                  <div className="text-2xl font-semibold text-primary mb-2 tabular-nums">$10,500</div>
+                  <div className="text-2xl font-semibold text-primary mb-2 tabular-nums">{formatCurrency(10500, preferredCurrency)}</div>
                   <div className="text-sm text-muted-foreground">Last updated: 2 hours ago</div>
                 </div>
 
@@ -726,7 +728,7 @@ export function MarketModule({ watches }: MarketModuleProps) {
                     <div className="flex-1">
                       <div className="font-medium">{alert.brand} {alert.model}</div>
                       <div className="text-sm text-muted-foreground mt-1">
-                        Alert when price goes {alert.condition} <span className="font-semibold tabular-nums">${alert.targetPrice.toLocaleString()}</span>
+                        Alert when price goes {alert.condition} <span className="font-semibold tabular-nums">{formatCurrency(alert.targetPrice, preferredCurrency)}</span>
                       </div>
                       <div className="text-xs text-muted-foreground mt-1">
                         Created {new Date(alert.createdAt).toLocaleDateString()}
@@ -784,7 +786,7 @@ export function MarketModule({ watches }: MarketModuleProps) {
                       <td className="py-3 px-2 text-sm">{model}</td>
                       <td className="py-3 px-2 text-sm text-muted-foreground">{auction.reference || '—'}</td>
                       <td className="py-3 px-2 text-sm text-right font-bold tabular-nums">
-                        ${auction.result.toLocaleString()}
+                        {formatCurrency(auction.result, preferredCurrency)}
                       </td>
                       <td className="py-3 px-2 text-sm">
                         {auction.sourceUrl ? (
@@ -868,7 +870,7 @@ export function MarketModule({ watches }: MarketModuleProps) {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="alert-price">Target Price ($)</Label>
+                <Label htmlFor="alert-price">Target Price ({preferredCurrency})</Label>
                 <Input
                   id="alert-price"
                   type="number"

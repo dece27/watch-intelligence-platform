@@ -127,6 +127,7 @@ export interface DealsPreferences {
 export interface UserPreferences {
   userId: string
   deals?: DealsPreferences
+  currency?: string
   updatedAt: string
 }
 

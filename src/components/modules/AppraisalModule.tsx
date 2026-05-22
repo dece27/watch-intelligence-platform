@@ -5,12 +5,14 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Printer } from "@phosphor-icons/react"
 import { watchChartsClient } from "@/lib/watchcharts-client"
+import { formatCurrency } from "@/lib/currency"
 
 interface AppraisalModuleProps {
   watches: Watch[]
+  preferredCurrency?: string
 }
 
-export function AppraisalModule({ watches }: AppraisalModuleProps) {
+export function AppraisalModule({ watches, preferredCurrency = "USD" }: AppraisalModuleProps) {
   const [selectedWatchId, setSelectedWatchId] = useState<string>(watches[0]?.id || '')
   const [marketValue, setMarketValue] = useState<number | null>(null)
 
@@ -187,7 +189,7 @@ export function AppraisalModule({ watches }: AppraisalModuleProps) {
                 </div>
                 <div>
                   <dt className="text-sm text-muted-foreground print:text-gray-600">Original Purchase Price</dt>
-                  <dd className="font-medium print:text-black">${selectedWatch.purchasePrice.toLocaleString()}</dd>
+                  <dd className="font-medium print:text-black">{formatCurrency(selectedWatch.purchasePrice, preferredCurrency)}</dd>
                 </div>
               </dl>
             </div>
@@ -205,7 +207,7 @@ export function AppraisalModule({ watches }: AppraisalModuleProps) {
             <div className="bg-primary/10 print:bg-gray-100 p-6 rounded-lg">
               <div className="text-sm text-muted-foreground print:text-gray-600 mb-2">Current Market Value</div>
               <div className="text-4xl font-bold text-primary print:text-black tabular-nums">
-                ${appraisalValue.toLocaleString()}
+                {formatCurrency(appraisalValue, preferredCurrency)}
               </div>
               <div className="text-sm text-muted-foreground print:text-gray-600 mt-3">
                 Based on current market conditions, condition assessment, and comparable sales data

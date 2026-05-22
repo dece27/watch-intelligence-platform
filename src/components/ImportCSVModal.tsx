@@ -7,11 +7,13 @@ import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { FileArrowDown, Upload, WarningCircle } from "@phosphor-icons/react"
 import { toast } from "sonner"
+import { formatCurrency } from "@/lib/currency"
 
 interface ImportCSVModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onImport: (watches: Watch[]) => void
+  preferredCurrency?: string
 }
 
 const WATCH_BRANDS: { [key: string]: string } = {
@@ -44,7 +46,7 @@ const CONDITIONS: { [key: string]: Watch['condition'] } = {
   'fair': 'fair',
 }
 
-export function ImportCSVModal({ open, onOpenChange, onImport }: ImportCSVModalProps) {
+export function ImportCSVModal({ open, onOpenChange, onImport, preferredCurrency = "USD" }: ImportCSVModalProps) {
   const [parsedWatches, setParsedWatches] = useState<Watch[]>([])
   const [skippedRows, setSkippedRows] = useState(0)
   const [error, setError] = useState("")
@@ -274,7 +276,7 @@ export function ImportCSVModal({ open, onOpenChange, onImport }: ImportCSVModalP
                         <TableCell className="font-mono text-xs">{watch.referenceNumber}</TableCell>
                         <TableCell>{watch.year || '—'}</TableCell>
                         <TableCell className="capitalize">{watch.condition}</TableCell>
-                        <TableCell className="text-right tabular-nums">${watch.purchasePrice.toLocaleString()}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatCurrency(watch.purchasePrice, preferredCurrency)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
