@@ -43,6 +43,8 @@ export function AdminDashboard() {
   const [stats, setStats] = useState<AdminUserStats[]>([])
   const [isResetting, setIsResetting] = useState(false)
   const [showResetDialog, setShowResetDialog] = useState(false)
+  const [isDeletingUserId, setIsDeletingUserId] = useState<string | null>(null)
+  const [selectedUserForDeletion, setSelectedUserForDeletion] = useState<User | null>(null)
 
   const loadStats = async () => {
     setIsLoading(true)
@@ -78,6 +80,90 @@ export function AdminDashboard() {
   useEffect(() => {
     loadStats()
   }, [])
+
+  const deleteSingleUserData = async (userId: string, userEmail?: string) => {
+    const watches = await window.spark.kv.get<Watch[]>(`watches_${userId}`) || []
+    await Promise.all(
+      watches
+        .filter((w) => w.imageUrl?.startsWith(WATCH_PHOTO_REF_PREFIX))
+        .map((w) => {
+          const watchId = w.imageUrl!.slice(WATCH_PHOTO_REF_PREFIX.length)
+          return window.spark.kv.delete(getWatchPhotoKey(userId, watchId))
+        })
+    )
+
+    const userDeletionTasks = [
+      window.spark.kv.delete(`user_${userId}`),
+      window.spark.kv.delete(`auth_${userId}`),
+      window.spark.kv.delete(`watches_${userId}`),
+      window.spark.kv.delete(`ai_usage_${userId}`),
+      window.spark.kv.delete(`vaultMetadata_${userId}`),
+    ]
+
+    if (userEmail) {
+      userDeletionTasks.push(window.spark.kv.delete(`user_email_${normalizeEmail(userEmail)}`))
+    }
+
+    await Promise.all(userDeletionTasks)
+
+    const userIds = await window.spark.kv.get<string[]>("all_user_ids") || []
+    await window.spark.kv.set("all_user_ids", userIds.filter((id) => id !== userId))
+
+    if (userEmail) {
+      const normalizedUserEmail = normalizeEmail(userEmail)
+      const feedbackIds = await window.spark.kv.get<string[]>("all_feedback_ids") || []
+      const keptFeedbackIds: string[] = []
+
+      for (const feedbackId of feedbackIds) {
+        const lookupKeys = Array.from(new Set([feedbackId, `feedback_${feedbackId}`]))
+        let feedbackOwnerEmail: string | undefined
+        let resolvedFeedbackKey: string | null = null
+
+        for (const lookupKey of lookupKeys) {
+          const feedback = await window.spark.kv.get<{ userEmail?: string }>(lookupKey)
+          if (feedback) {
+            feedbackOwnerEmail = feedback.userEmail
+            resolvedFeedbackKey = lookupKey
+            break
+          }
+        }
+
+        if (feedbackOwnerEmail && normalizeEmail(feedbackOwnerEmail) === normalizedUserEmail) {
+          if (resolvedFeedbackKey) {
+            await window.spark.kv.delete(resolvedFeedbackKey)
+          }
+          continue
+        }
+
+        keptFeedbackIds.push(feedbackId)
+      }
+
+      await window.spark.kv.set("all_feedback_ids", keptFeedbackIds)
+    }
+  }
+
+  const handleDeleteSingleUser = async () => {
+    if (!selectedUserForDeletion) return
+    if (isAdminEmail(selectedUserForDeletion.email)) {
+      toast.error("Admin account cannot be deleted here.")
+      setSelectedUserForDeletion(null)
+      return
+    }
+
+    setIsDeletingUserId(selectedUserForDeletion.id)
+
+    try {
+      await deleteSingleUserData(selectedUserForDeletion.id, selectedUserForDeletion.email)
+      toast.success(`Deleted all data for ${selectedUserForDeletion.email}.`)
+      await loadStats()
+    } catch (error) {
+      console.error("Error deleting single user data:", error)
+      toast.error("Failed to delete user data. Please try again.")
+    } finally {
+      setIsDeletingUserId(null)
+      setSelectedUserForDeletion(null)
+    }
+  }
 
   const handleResetEnvironment = async () => {
     setIsResetting(true)
@@ -173,16 +259,18 @@ export function AdminDashboard() {
           <h2 className="text-3xl font-bold">Admin Dashboard</h2>
           <p className="text-muted-foreground mt-1">Platform-level user and usage analytics</p>
         </div>
-        <Button onClick={loadStats} variant="outline">
-          Refresh
-        </Button>
-        <Button
-          onClick={() => setShowResetDialog(true)}
-          variant="destructive"
-          disabled={isResetting}
-        >
-          {isResetting ? "Resetting…" : "Reset Environment"}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={loadStats} variant="outline">
+            Refresh
+          </Button>
+          <Button
+            onClick={() => setShowResetDialog(true)}
+            variant="destructive"
+            disabled={isResetting || Boolean(isDeletingUserId)}
+          >
+            {isResetting ? "Resetting…" : "Reset Environment"}
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
@@ -249,8 +337,10 @@ export function AdminDashboard() {
           ) : (
             <ScrollArea className="h-[600px] pr-4">
               <div className="space-y-4">
-                {stats.map((row, index) => (
-                  <div key={row.user.id}>
+                {stats.map((row, index) => {
+                  const isAdminUser = isAdminEmail(row.user.email)
+                  return (
+                    <div key={row.user.id}>
                     <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-6 text-sm">
                       <div>
                         <p className="text-xs text-muted-foreground">User</p>
@@ -282,9 +372,20 @@ export function AdminDashboard() {
                         Last login: {new Date(row.lastLoginAt).toLocaleString()}
                       </p>
                     )}
+                    <div className="mt-3 flex justify-end">
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        disabled={isResetting || Boolean(isDeletingUserId) || isAdminUser}
+                        onClick={() => setSelectedUserForDeletion(row.user)}
+                      >
+                        {isDeletingUserId === row.user.id ? "Deleting…" : isAdminUser ? "Admin Protected" : "Delete User Data"}
+                      </Button>
+                    </div>
                     {index < stats.length - 1 && <Separator className="mt-4" />}
-                  </div>
-                ))}
+                    </div>
+                  )
+                })}
               </div>
             </ScrollArea>
           )}
@@ -308,6 +409,37 @@ export function AdminDashboard() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {isResetting ? "Resetting…" : "Yes, Reset Everything"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={Boolean(selectedUserForDeletion)}
+        onOpenChange={(open) => {
+          if (!open && !isDeletingUserId) {
+            setSelectedUserForDeletion(null)
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete user data?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete all data for{" "}
+              <span className="font-medium">{selectedUserForDeletion?.email}</span>, including account,
+              auth, watches, watch photos, vault metadata, AI usage, and submitted feedback. This action
+              cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={Boolean(isDeletingUserId)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteSingleUser}
+              disabled={Boolean(isDeletingUserId)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeletingUserId ? "Deleting…" : "Yes, Delete User Data"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
