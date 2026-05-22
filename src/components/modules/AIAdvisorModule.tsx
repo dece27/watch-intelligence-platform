@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Sparkle, PaperPlaneTilt, Image as ImageIcon, Plus, Fire, Star, ShoppingCart, TrendUp, TrendDown } from "@phosphor-icons/react"
+import { Sparkle, PaperPlaneTilt, Image as ImageIcon, Plus, Fire, Star, ShoppingCart, TrendUp, TrendDown, FileArrowUp } from "@phosphor-icons/react"
 import { toast } from "sonner"
 import { callTrackedLlm } from "@/lib/adminAnalytics"
 import { hasChrono24Credentials, searchChrono24Deals } from "@/lib/chrono24-client"
@@ -32,6 +32,9 @@ const DEFAULT_NO_BUY_ACTION = 'No buy action needed — nothing should be done.'
 const DEAL_OF_DAY_QUERY_LIMIT = 20
 const MAX_DEAL_OF_DAY_BRANDS = 4
 const DEAL_OF_DAY_FALLBACK_BRANDS = ["Rolex", "Omega", "Patek Philippe", "Audemars Piguet"]
+const IDENTIFIER_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+const IDENTIFIER_MAX_DIMENSION = 800
+const IDENTIFIER_MAX_OUTPUT_KB = 500
 
 const extractJsonPayload = (response: string) => {
   const trimmed = response.trim()
@@ -212,9 +215,83 @@ Provide expert, concise advice (2-3 paragraphs max) about their collection, watc
     setChatInput(question)
   }
 
+  const handleIdentifierFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    if (!file.type.startsWith('image/')) {
+      toast.error("Please upload an image file")
+      return
+    }
+
+    if (file.size > IDENTIFIER_MAX_UPLOAD_BYTES) {
+      toast.error("Image must be less than 10MB")
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = (readerEvent) => {
+      const dataUrl = readerEvent.target?.result
+      if (typeof dataUrl !== 'string') {
+        toast.error("Failed to read image file")
+        return
+      }
+
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        let width = img.width
+        let height = img.height
+
+        if (width > height && width > IDENTIFIER_MAX_DIMENSION) {
+          height = (height * IDENTIFIER_MAX_DIMENSION) / width
+          width = IDENTIFIER_MAX_DIMENSION
+        } else if (height > IDENTIFIER_MAX_DIMENSION) {
+          width = (width * IDENTIFIER_MAX_DIMENSION) / height
+          height = IDENTIFIER_MAX_DIMENSION
+        }
+
+        canvas.width = width
+        canvas.height = height
+
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          toast.error("Failed to process image")
+          return
+        }
+
+        ctx.drawImage(img, 0, 0, width, height)
+
+        const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.75)
+        const sizeInKB = Math.round((compressedDataUrl.length * 3) / 4 / 1024)
+
+        if (sizeInKB > IDENTIFIER_MAX_OUTPUT_KB) {
+          toast.error(`Image too large (${sizeInKB}KB). Please use a smaller photo.`)
+          return
+        }
+
+        setIdentifierImage(compressedDataUrl)
+        toast.success(`Photo uploaded (${sizeInKB}KB)`)
+      }
+
+      img.onerror = () => {
+        toast.error("Failed to process image")
+      }
+
+      img.src = dataUrl
+    }
+
+    reader.onerror = () => {
+      toast.error("Failed to read image file")
+    }
+
+    reader.readAsDataURL(file)
+    event.target.value = ''
+  }
+
   const handleIdentifyWatch = async () => {
     if (!identifierImage) {
-      toast.error("Please enter an image URL")
+      toast.error("Please upload a photo or enter an image URL")
       return
     }
 
@@ -222,7 +299,7 @@ Provide expert, concise advice (2-3 paragraphs max) about their collection, watc
     try {
       const promptText = `You are a luxury watch expert. Analyze this watch image and identify it.
 
-Image URL: ${identifierImage}
+Image source (URL or base64-encoded photo): ${identifierImage}
 
 Based on the image, identify:
 - Brand
@@ -741,13 +818,32 @@ Respond in valid JSON format:
             {!identifiedWatch ? (
               <>
                 <div className="space-y-2">
-                  <Label htmlFor="watch-image">Watch Image URL</Label>
-                  <Input
-                    id="watch-image"
-                    value={identifierImage}
-                    onChange={(e) => setIdentifierImage(e.target.value)}
-                    placeholder="https://example.com/watch-image.jpg"
-                  />
+                  <Label htmlFor="watch-image">Watch Photo</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="watch-image"
+                      value={identifierImage.startsWith('data:image/') ? '' : identifierImage}
+                      onChange={(e) => setIdentifierImage(e.target.value)}
+                      placeholder="Paste image URL or upload a photo..."
+                    />
+                    <input
+                      type="file"
+                      id="watch-identifier-image-upload"
+                      accept="image/*"
+                      capture="environment"
+                      className="hidden"
+                      onChange={handleIdentifierFileUpload}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => document.getElementById('watch-identifier-image-upload')?.click()}
+                      className="whitespace-nowrap"
+                    >
+                      <FileArrowUp className="mr-2" size={16} />
+                      Upload
+                    </Button>
+                  </div>
                   {identifierImage && (
                     <div className="mt-2">
                       <img 
