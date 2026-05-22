@@ -54,6 +54,19 @@ export async function ensureDefaultAccount() {
   let userId = await window.spark.kv.get<string>(emailKey)
   let existingUser = userId ? await window.spark.kv.get<User>(`user_${userId}`) : null
 
+  if (userId && existingUser) {
+    const existingAuth = await window.spark.kv.get<AuthRecord>(`auth_${userId}`)
+    if (existingAuth) {
+      // Account is fully set up — do the minimum required work and return early.
+      // Skipping hashPassword (210,000 PBKDF2 iterations) on every page load
+      // eliminates the performance hit that caused intermittent bootstrap failures.
+      await window.spark.kv.set(PROTECTED_ADMIN_USER_ID_KEY, userId)
+      await ensureUserIndexed(userId)
+      return
+    }
+  }
+
+  // Account is new or incomplete — perform full initialisation.
   if (!userId || !existingUser) {
     userId = userId || crypto.randomUUID()
     existingUser = {
@@ -87,6 +100,8 @@ export async function ensureDefaultAccount() {
   await window.spark.kv.set(PROTECTED_ADMIN_USER_ID_KEY, userId)
   await ensureUserIndexed(userId)
 
+  // Legacy cleanup only runs during first-time setup / account repair,
+  // not on every page load.
   const legacyAdminEmails = new Set(
     LEGACY_ADMIN_EMAILS.map(normalizeEmail).filter((email) => email && email !== normalizedEmail)
   )

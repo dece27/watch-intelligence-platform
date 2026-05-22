@@ -43,7 +43,8 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
       })
       .catch((bootstrapError) => {
         console.error("Failed to bootstrap default account:", bootstrapError)
-        setError("Account initialization failed. Please refresh and try again.")
+        // Allow the form to proceed; handleSubmit will retry ensureDefaultAccount.
+        setIsBootstrapped(true)
       })
   }, [])
 
@@ -115,7 +116,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
     }
 
     if (!isValidLoginIdentifier(trimmedEmail)) {
-      setError("Enter a valid email address or use Administrator.")
+      setError("Enter a valid email address.")
       return
     }
 
@@ -238,7 +239,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                 type="text"
                 inputMode="email"
                 autoComplete="email"
-                placeholder="your.email@example.com or Administrator"
+                placeholder="your.email@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
