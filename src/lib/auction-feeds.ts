@@ -37,6 +37,11 @@ const PHILLIPS_SEARCH_PATH = '/api/search'
 
 type UnknownRecord = Record<string, unknown>
 
+function isTrustedHost(hostname: string, trustedDomain: string): boolean {
+  const normalizedHost = hostname.toLowerCase()
+  return normalizedHost === trustedDomain || normalizedHost.endsWith(`.${trustedDomain}`)
+}
+
 // Include Christie's-specific price field names alongside generic ones.
 const VALUE_KEYS = [
   'result',
@@ -183,7 +188,7 @@ function resolveSourceUrl(rawUrl: string, house: string): string | undefined {
     if (normalizedHouse.includes('christie')) {
       try {
         const parsed = new URL(normalizedPath)
-        if (parsed.hostname.toLowerCase().includes('christies.com')) {
+        if (isTrustedHost(parsed.hostname, 'christies.com')) {
           parsed.pathname = withChristiesLocalePath(parsed.pathname)
           return parsed.toString()
         }
