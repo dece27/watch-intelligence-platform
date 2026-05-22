@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react"
 import { Watch, Deal, DealsPreferences, UserPreferences } from "@/lib/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -11,7 +11,7 @@ import { Heart, MapPin, ArrowsClockwise } from "@phosphor-icons/react"
 import { DealDetailModal } from "@/components/DealDetailModal"
 import { callTrackedLlm } from "@/lib/adminAnalytics"
 import { searchChrono24Deals, clearChrono24SearchCache } from "@/lib/chrono24-client"
-import { formatCurrency } from "@/lib/currency"
+import { convertCurrency, formatCurrency, normalizeCurrency } from "@/lib/currency"
 import { FALLBACK_DEALS } from "@/lib/fallback-deals"
 
 interface DealsModuleProps {
@@ -54,7 +54,8 @@ const toConditionLevel = (condition: string) => {
   return 0
 }
 
-const formatDealPrice = (amount: number, currency = "USD") => formatCurrency(amount, currency, { maximumFractionDigits: 0 })
+const formatDealPrice = (amount: number, currency = "USD", sourceCurrency = "USD") =>
+  formatCurrency(amount, currency, { maximumFractionDigits: 0, sourceCurrency })
 
 const scoreHeuristically = (deal: Deal, watches: Watch[], prefs: DealsPreferences): Deal => {
   const ownedBrands = new Set(watches.map((watch) => watch.brand.toLowerCase()))
@@ -142,6 +143,7 @@ export function DealsModule({ watches, userId, preferredCurrency = "USD" }: Deal
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [preferencesLoaded, setPreferencesLoaded] = useState(false)
   const [preferences, setPreferences] = useState<DealsPreferences>(() => getDefaultPreferences(watches))
+  const previousCurrencyRef = useRef(normalizeCurrency(preferredCurrency))
 
   const availableBrands = useMemo(() => {
     const dealBrands = deals.map((deal) => deal.brand)
@@ -205,6 +207,22 @@ export function DealsModule({ watches, userId, preferredCurrency = "USD" }: Deal
       window.clearTimeout(timeout)
     }
   }, [preferences, preferencesLoaded, userId])
+
+  useEffect(() => {
+    const currentCurrency = normalizeCurrency(preferredCurrency)
+    const previousCurrency = previousCurrencyRef.current
+    if (currentCurrency === previousCurrency) return
+
+    setPreferences((current) => ({
+      ...current,
+      maxPrice: Math.max(0, Math.round(convertCurrency(current.maxPrice, previousCurrency, currentCurrency))),
+    }))
+    previousCurrencyRef.current = currentCurrency
+  }, [preferredCurrency])
+
+  const toPreferredCurrencyAmount = useCallback((amount: number, sourceCurrency?: string) => {
+    return convertCurrency(amount, sourceCurrency || "USD", preferredCurrency)
+  }, [preferredCurrency])
 
   const fetchDeals = useCallback(async (forced = false) => {
     setIsLoading(true)
@@ -342,7 +360,7 @@ Return every deal id exactly once.`
     const filtered = deals.filter((deal) => {
       if (preferences.selectedBrand !== "all" && deal.brand !== preferences.selectedBrand) return false
       if (preferences.condition !== "all" && toTitleCase(deal.condition) !== preferences.condition) return false
-      if (preferences.maxPrice > 0 && deal.price > preferences.maxPrice) return false
+      if (preferences.maxPrice > 0 && toPreferredCurrencyAmount(deal.price, deal.currency) > preferences.maxPrice) return false
       if (deal.discount < preferences.minDiscount) return false
       if ((deal.sellerRating || 0) < preferences.minSellerRating) return false
       if (preferences.requireBox && !deal.hasBox) return false
@@ -353,8 +371,12 @@ Return every deal id exactly once.`
 
     const sorted = [...filtered]
     if (preferences.sortBy === "discount") sorted.sort((a, b) => b.discount - a.discount)
-    if (preferences.sortBy === "price-asc") sorted.sort((a, b) => a.price - b.price)
-    if (preferences.sortBy === "price-desc") sorted.sort((a, b) => b.price - a.price)
+    if (preferences.sortBy === "price-asc") {
+      sorted.sort((a, b) => toPreferredCurrencyAmount(a.price, a.currency) - toPreferredCurrencyAmount(b.price, b.currency))
+    }
+    if (preferences.sortBy === "price-desc") {
+      sorted.sort((a, b) => toPreferredCurrencyAmount(b.price, b.currency) - toPreferredCurrencyAmount(a.price, a.currency))
+    }
     if (preferences.sortBy === "newest") {
       sorted.sort((a, b) => {
         const dateA = a.listedAt ? new Date(a.listedAt).getTime() : 0
@@ -365,7 +387,7 @@ Return every deal id exactly once.`
     if (preferences.sortBy === "ai-match") sorted.sort((a, b) => b.matchScore - a.matchScore)
 
     return sorted
-  }, [deals, preferences])
+  }, [deals, preferences, toPreferredCurrencyAmount])
 
   const updatePreference = <K extends keyof DealsPreferences>(key: K, value: DealsPreferences[K]) => {
     setPreferences((current) => ({ ...current, [key]: value }))
@@ -624,12 +646,12 @@ Return every deal id exactly once.`
               <div className="flex justify-between items-baseline">
                 <div>
                   <div className="text-sm text-muted-foreground">Price</div>
-                  <div className="text-2xl font-semibold text-primary">{formatDealPrice(deal.price, preferredCurrency)}</div>
+                  <div className="text-2xl font-semibold text-primary">{formatDealPrice(deal.price, preferredCurrency, deal.currency)}</div>
                 </div>
                 <div className="text-right">
                   <div className="text-sm text-muted-foreground">Market</div>
                   <div className="text-lg font-medium line-through text-muted-foreground">
-                    {formatDealPrice(deal.marketValue || deal.fairValue || deal.price, preferredCurrency)}
+                    {formatDealPrice(deal.marketValue || deal.fairValue || deal.price, preferredCurrency, deal.currency)}
                   </div>
                 </div>
               </div>

@@ -77,12 +77,14 @@ const getNormalizedWatchesForDependency = (watches: Watch[]) =>
 const getDependencyHash = (
   watches: Watch[],
   preferences: UserPreferences | null,
-  vaultMetadata: VaultMetadata | null
+  vaultMetadata: VaultMetadata | null,
+  preferredCurrency: string
 ) => {
   const derivedTotalValue = watches.reduce((sum, watch) => sum + (watch.currentValue || watch.purchasePrice), 0)
   return JSON.stringify({
     watches: getNormalizedWatchesForDependency(watches),
     dealsPreferences: preferences?.deals || null,
+    preferredCurrency,
     vault: {
       watchCount: watches.length,
       totalValue: derivedTotalValue,
@@ -201,13 +203,13 @@ export function AIAdvisorModule({ watches, userId, preferredCurrency = "USD" }: 
 
       return {
         cacheKey,
-        dependencyHash: getDependencyHash(watches, preferences ?? null, vaultMetadata ?? null),
+        dependencyHash: getDependencyHash(watches, preferences ?? null, vaultMetadata ?? null, preferredCurrency),
         cache,
       }
     } catch {
       return {
         cacheKey,
-        dependencyHash: getDependencyHash(watches, null, null),
+        dependencyHash: getDependencyHash(watches, null, null, preferredCurrency),
         cache: null,
       }
     }
@@ -232,10 +234,12 @@ export function AIAdvisorModule({ watches, userId, preferredCurrency = "USD" }: 
   }
 
   useEffect(() => {
-    if (watches.length > 0 && signals.length === 0) {
+    if (watches.length > 0) {
       generateSignals()
+      return
     }
-  }, [watches])
+    setSignals([])
+  }, [watches, preferredCurrency])
 
   useEffect(() => {
     // Load (or reload) the Deal of the Day whenever the watch portfolio changes.
@@ -246,7 +250,7 @@ export function AIAdvisorModule({ watches, userId, preferredCurrency = "USD" }: 
     // so including it here would cause an infinite update loop.
     loadDealOfDay()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [watches])
+  }, [watches, preferredCurrency])
 
   const generateSignals = async () => {
     if (watches.length === 0) return
@@ -548,7 +552,7 @@ Respond in valid JSON format:
         return
       }
 
-      const assessmentPrompt = `In exactly 2 sentences, explain why this watch is today's best deal: ${topDeal.brand} ${topDeal.model} ${topDeal.referenceNumber || ''}, ${topDeal.year || 'unknown year'}, ${topDeal.condition}, asking ${formatCurrency(topDeal.price, preferredCurrency)} vs fair market value of ${formatCurrency(topDeal.fairValue || topDeal.price, preferredCurrency)}. Be specific about what makes the price attractive and who should consider buying it.`
+      const assessmentPrompt = `In exactly 2 sentences, explain why this watch is today's best deal: ${topDeal.brand} ${topDeal.model} ${topDeal.referenceNumber || ''}, ${topDeal.year || 'unknown year'}, ${topDeal.condition}, asking ${formatCurrency(topDeal.price, preferredCurrency, { sourceCurrency: topDeal.currency || "USD" })} vs fair market value of ${formatCurrency(topDeal.fairValue || topDeal.price, preferredCurrency, { sourceCurrency: topDeal.currency || "USD" })}. Be specific about what makes the price attractive and who should consider buying it.`
 
 
       const assessment = await callTrackedLlm(assessmentPrompt, 'gpt-4o-mini')
@@ -698,13 +702,13 @@ Respond in valid JSON format:
                   <div>
                     <div className="text-sm text-muted-foreground">Asking Price</div>
                     <div className="text-2xl font-bold text-primary tabular-nums">
-                      {formatCurrency(dealOfDay.price, preferredCurrency)}
+                      {formatCurrency(dealOfDay.price, preferredCurrency, { sourceCurrency: dealOfDay.currency || "USD" })}
                     </div>
                   </div>
                   <div>
                     <div className="text-sm text-muted-foreground">Fair Value</div>
                     <div className="text-xl font-medium text-muted-foreground line-through tabular-nums">
-                      {formatCurrency((dealOfDay.fairValue || dealOfDay.price), preferredCurrency)}
+                      {formatCurrency((dealOfDay.fairValue || dealOfDay.price), preferredCurrency, { sourceCurrency: dealOfDay.currency || "USD" })}
                     </div>
                   </div>
                 </div>
@@ -712,7 +716,7 @@ Respond in valid JSON format:
                 <div className="flex gap-3 flex-wrap">
                   <Badge className="bg-success text-success-foreground text-base px-4 py-2">
                     <TrendDown className="mr-2" size={18} />
-                    Save {formatCurrency(((dealOfDay.fairValue || dealOfDay.price) - dealOfDay.price), preferredCurrency)} 
+                    Save {formatCurrency(((dealOfDay.fairValue || dealOfDay.price) - dealOfDay.price), preferredCurrency, { sourceCurrency: dealOfDay.currency || "USD" })} 
                     ({Math.round((((dealOfDay.fairValue || dealOfDay.price) - dealOfDay.price) / (dealOfDay.fairValue || dealOfDay.price)) * 100)}% below fair value)
                   </Badge>
                   
