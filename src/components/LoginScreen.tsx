@@ -8,6 +8,7 @@ import { AuthRecord, User } from "@/lib/types"
 import { hashPassword, verifyPassword } from "@/lib/auth"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ensureUserIndexed } from "@/lib/adminAnalytics"
+import { ensureDefaultAccount } from "@/lib/defaultAccount"
 
 interface LoginScreenProps {
   onLogin: (user: User, rememberMe: boolean) => void | Promise<void>
@@ -24,6 +25,12 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
   const [isCheckingAccount, setIsCheckingAccount] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
+
+  useEffect(() => {
+    ensureDefaultAccount().catch(() => {
+      // noop
+    })
+  }, [])
 
   useEffect(() => {
     let isCancelled = false
@@ -81,6 +88,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
     setIsLoading(true)
 
     try {
+      await ensureDefaultAccount()
       const emailKey = `user_email_${trimmedEmail}`
       const existingUserId = await window.spark.kv.get<string>(emailKey)
 
