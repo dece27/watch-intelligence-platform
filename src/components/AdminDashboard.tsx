@@ -370,6 +370,7 @@ export function AdminDashboard() {
                       <Button
                         variant="destructive"
                         size="sm"
+                        aria-busy={isDeletingUserId === row.user.id}
                         disabled={isResetting || Boolean(isDeletingUserId) || isAdminUser}
                         onClick={() => setSelectedUserForDeletion(row.user)}
                       >
