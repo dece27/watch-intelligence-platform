@@ -147,7 +147,7 @@ const AUCTION_BRANDS = [
   'Cartier',
   'Omega',
   'IWC',
-] as const
+].sort((left, right) => right.length - left.length)
 
 const formatAuctionDate = (dateValue: string) => {
   const parsed = new Date(dateValue)
@@ -159,7 +159,8 @@ const formatAuctionDate = (dateValue: string) => {
 
 const getAuctionBrandAndModel = (auction: AuctionResult) => {
   const lot = auction.lot.trim()
-  const matchedBrand = AUCTION_BRANDS.find((brand) => lot.startsWith(brand))
+  const normalizedLot = lot.toLowerCase()
+  const matchedBrand = AUCTION_BRANDS.find((brand) => normalizedLot.startsWith(brand.toLowerCase()))
 
   if (!matchedBrand) {
     return {
@@ -170,7 +171,7 @@ const getAuctionBrandAndModel = (auction: AuctionResult) => {
 
   const model = lot
     .slice(matchedBrand.length)
-    .replace(/^[-–—:\s]+/, '')
+    .replace(/^[\u2010-\u2015\-:\s]+/, '')
     .replace(/^Ref\.?\s*/i, '')
     .trim()
 
