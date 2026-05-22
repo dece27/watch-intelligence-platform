@@ -53,7 +53,10 @@ export function sanitizeWatchImageUrl(imageUrl?: string): string | undefined {
  * @param kvSet            - Async function that persists a value to KV storage.
  * @param existingDisplayUrl - The currently hydrated image URL for this watch
  *   (from in-memory React state). Used as the display URL when the watch already
- *   has a `kv-photo:` reference so the UI continues showing the photo.
+ *   has a `kv-photo:` reference so the UI continues showing the photo without
+ *   an extra KV read. When `undefined` (e.g. the watch is new or not yet in
+ *   state), the returned display URL will also be `undefined` and the photo
+ *   will appear after the next full load that hydrates the reference.
  */
 export async function prepareWatchForStorage(
   watch: Watch,
