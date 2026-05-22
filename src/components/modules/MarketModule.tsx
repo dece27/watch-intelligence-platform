@@ -160,6 +160,11 @@ const getTrendChange = (trend: number[], months: number) => {
 }
 
 const formatTrend = (change: number) => `${change >= 0 ? '+' : ''}${change.toFixed(1)}%`
+const getTrendDirectionColor = (change: number) => change >= 0 ? 'text-success' : 'text-destructive'
+const getTrendMetricCardClass = (change: number) =>
+  change >= 0
+    ? 'border-success/20 bg-success/5'
+    : 'border-destructive/20 bg-destructive/5'
 
 export function MarketModule({ watches }: MarketModuleProps) {
   const [priceAlerts, setPriceAlerts] = useKV<PriceAlert[]>("priceAlerts", [])
@@ -187,16 +192,6 @@ export function MarketModule({ watches }: MarketModuleProps) {
     const total = BRAND_INDICES.reduce((sum, b) => sum + b.currentIndex, 0)
     return (total / BRAND_INDICES.length).toFixed(1)
   }, [])
-
-  const last12MonthLabels = useMemo(() => {
-    return Array.from({ length: 12 }, (_, idx) => {
-      const date = new Date()
-      date.setMonth(date.getMonth() - (11 - idx))
-      return date.toLocaleString('en-US', { month: 'short' })
-    })
-  }, [])
-
-  const trendRangeLabel = `${last12MonthLabels[0]}–${last12MonthLabels[last12MonthLabels.length - 1]}`
 
   const overallChange1m = useMemo(() => {
     const total = BRAND_INDICES.reduce((sum, b) => sum + getTrendChange(b.trend, 1), 0)
@@ -550,10 +545,12 @@ export function MarketModule({ watches }: MarketModuleProps) {
           const oneMonthChange = getTrendChange(brandIndex.trend, 1)
           const sixMonthChange = getTrendChange(brandIndex.trend, 6)
           const twelveMonthChange = getTrendChange(brandIndex.trend, brandIndex.trend.length - 1)
-          const trendData = brandIndex.trend.map((value, index) => ({
-            value,
-            month: last12MonthLabels[index] ?? `M${index + 1}`
-          }))
+          const trendMetrics = [
+            { label: '1M', change: oneMonthChange, description: 'vs last month' },
+            { label: '6M', change: sixMonthChange, description: 'vs 6 months ago' },
+            { label: '12M', change: twelveMonthChange, description: 'vs 12 months ago' },
+          ]
+
           return (
             <Card key={brandIndex.brand} className={`bg-card border-border ${isOwned ? 'ring-2 ring-primary/30' : ''}`}>
               <CardHeader className="pb-3">
@@ -572,41 +569,33 @@ export function MarketModule({ watches }: MarketModuleProps) {
                   <div className="text-2xl font-semibold tabular-nums">{brandIndex.currentIndex}</div>
                 </div>
 
-                <div className="h-16">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={trendData}>
-                      <Line 
-                        type="monotone" 
-                        dataKey="value" 
-                        stroke="oklch(0.72 0.09 85)" 
-                        strokeWidth={2}
-                        dot={false}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-
-                <div className="text-[11px] text-muted-foreground -mt-1">Trend · Last 12 months ({trendRangeLabel})</div>
-
-                <div className="grid grid-cols-3 gap-2 text-xs">
-                  <div>
-                    <div className="text-muted-foreground">1m</div>
-                    <div className={oneMonthChange >= 0 ? 'text-success' : 'text-destructive'}>
-                      {formatTrend(oneMonthChange)}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">6m</div>
-                    <div className={sixMonthChange >= 0 ? 'text-success' : 'text-destructive'}>
-                      {formatTrend(sixMonthChange)}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">12m</div>
-                    <div className={twelveMonthChange >= 0 ? 'text-success' : 'text-destructive'}>
-                      {formatTrend(twelveMonthChange)}
-                    </div>
-                  </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {trendMetrics.map((metric) => {
+                    const isPositive = metric.change >= 0
+                    return (
+                      <div
+                        key={metric.label}
+                        className={`rounded-xl border px-3 py-4 transition-colors ${getTrendMetricCardClass(metric.change)}`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="text-[11px] font-medium tracking-[0.24em] text-muted-foreground">
+                            {metric.label}
+                          </div>
+                          {isPositive ? (
+                            <TrendUp className="text-success" size={18} weight="bold" />
+                          ) : (
+                            <TrendDown className="text-destructive" size={18} weight="bold" />
+                          )}
+                        </div>
+                        <div className={`mt-3 text-2xl font-semibold tabular-nums ${getTrendDirectionColor(metric.change)}`}>
+                          {formatTrend(metric.change)}
+                        </div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {metric.description}
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               </CardContent>
             </Card>
