@@ -55,8 +55,6 @@ export function AppraisalModule({ watches, preferredCurrency = "USD" }: Appraisa
     window.print()
   }
 
-  const appraisalValue = marketValue ?? selectedWatch?.currentValue ?? selectedWatch?.purchasePrice ?? 0
-
   if (!selectedWatch) {
     return (
       <div className="space-y-6">
@@ -73,6 +71,7 @@ export function AppraisalModule({ watches, preferredCurrency = "USD" }: Appraisa
     )
   }
 
+  const appraisalValue = marketValue ?? selectedWatch.currentValue ?? selectedWatch.purchasePrice
   const appraisalDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
 
   return (

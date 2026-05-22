@@ -27,6 +27,11 @@ const getHostname = (url: string): string | undefined => {
   }
 }
 
+const isTrustedHost = (hostname: string, trustedDomain: string): boolean => {
+  const normalizedHost = hostname.toLowerCase()
+  return normalizedHost === trustedDomain || normalizedHost.endsWith(`.${trustedDomain}`)
+}
+
 const BRAND_INDICES: BrandIndex[] = [
   {
     brand: 'Rolex',
@@ -157,10 +162,10 @@ const formatAuctionDate = (dateValue: string) => {
 const getAuctionSourceLabel = (auction: AuctionResult) => {
   if (auction.sourceUrl) {
     const hostname = getHostname(auction.sourceUrl)
-    if (hostname?.includes('christies.com')) {
+    if (hostname && isTrustedHost(hostname, 'christies.com')) {
       return "Christie's"
     }
-    if (hostname?.includes('phillips.com')) {
+    if (hostname && isTrustedHost(hostname, 'phillips.com')) {
       return 'Phillips'
     }
   }

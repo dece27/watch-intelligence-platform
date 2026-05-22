@@ -36,10 +36,10 @@ export function WhatIfSellCalculator({ watches, getMockMarketValue, calculateHea
   const sliderMax = Math.round(currentMarketValue * 1.3)
 
   useEffect(() => {
-    if (selectedWatch && salePrice === 0) {
-      setSalePrice(currentMarketValue)
+    if (selectedWatch) {
+      setSalePrice((currentPrice) => currentPrice === 0 ? currentMarketValue : currentPrice)
     }
-  }, [currentMarketValue, salePrice, selectedWatch])
+  }, [currentMarketValue, selectedWatch])
 
   const currentMetrics = useMemo(() => {
     const watchesWithValues = watches.map(w => ({

@@ -200,7 +200,7 @@ function extractNumber(value: unknown): number | undefined {
 
 function extractEstimateRange(text: string): { low?: number; high?: number } {
   const match = text.match(
-    /(estimate|est\.?)\s*[:-]?\s*(?:US\$|\$|USD|HK\$|CHF|GBP|£|€)?\s*([\d,.]+)\s*(?:-|–|to)\s*(?:US\$|\$|USD|HK\$|CHF|GBP|£|€)?\s*([\d,.]+)/i
+    /(estimate|est\.?)\s*[:–-]?\s*(?:US\$|\$|USD|HK\$|CHF|GBP|£|€)?\s*([\d,.]+)\s*(?:-|–|to)\s*(?:US\$|\$|USD|HK\$|CHF|GBP|£|€)?\s*([\d,.]+)/i
   )
 
   if (!match) {
