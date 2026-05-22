@@ -9,7 +9,7 @@ interface NavItem {
 interface AppSidebarProps {
   activeModule: string
   onModuleChange: (moduleId: string) => void
-  isOwner?: boolean
+  isAdmin?: boolean
 }
 
 const navItems: NavItem[] = [
@@ -22,10 +22,11 @@ const navItems: NavItem[] = [
 ]
 
 const ownerNavItems: NavItem[] = [
+  { id: 'admin-dashboard', label: 'Admin Dashboard', icon: '📊' },
   { id: 'feedback', label: 'Feedback', icon: '💬' },
 ]
 
-export function AppSidebar({ activeModule, onModuleChange, isOwner }: AppSidebarProps) {
+export function AppSidebar({ activeModule, onModuleChange, isAdmin }: AppSidebarProps) {
   return (
     <div className="w-60 h-screen border-r border-border bg-background flex flex-col">
       <div className="p-6 border-b border-border">
@@ -64,7 +65,7 @@ export function AppSidebar({ activeModule, onModuleChange, isOwner }: AppSidebar
           ))}
         </ul>
 
-        {isOwner && (
+        {isAdmin && (
           <>
             <div className="my-4 border-t border-border" />
             <div className="space-y-1">

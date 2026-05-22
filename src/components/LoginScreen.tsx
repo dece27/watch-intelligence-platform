@@ -7,6 +7,7 @@ import { Watch as WatchIcon } from "@phosphor-icons/react"
 import { AuthRecord, User } from "@/lib/types"
 import { hashPassword, verifyPassword } from "@/lib/auth"
 import { Checkbox } from "@/components/ui/checkbox"
+import { ensureUserIndexed } from "@/lib/adminAnalytics"
 
 interface LoginScreenProps {
   onLogin: (user: User, rememberMe: boolean) => void | Promise<void>
@@ -117,8 +118,10 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
           failedAttempts: 0,
           lockUntil: undefined,
           lastLoginAt: new Date().toISOString(),
+          loginCount: (auth.loginCount || 0) + 1,
         })
 
+        await ensureUserIndexed(user.id)
         await onLogin(user, rememberMe)
         return
       }
@@ -156,7 +159,9 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
         ...passwordPayload,
         failedAttempts: 0,
         lastLoginAt: createdAt,
+        loginCount: 1,
       } satisfies AuthRecord)
+      await ensureUserIndexed(userId)
 
       await onLogin(user, rememberMe)
     } catch {

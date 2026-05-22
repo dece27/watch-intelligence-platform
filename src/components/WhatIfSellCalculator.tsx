@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Slider } from "@/components/ui/slider"
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table"
 import { CaretDown, CaretUp, Lightbulb } from "@phosphor-icons/react"
+import { callTrackedLlm } from "@/lib/adminAnalytics"
 
 interface WhatIfSellCalculatorProps {
   watches: Watch[]
@@ -126,7 +127,7 @@ export function WhatIfSellCalculator({ watches, getMockMarketValue, calculateHea
 
       const promptText = `You are a luxury watch investment advisor. The user is selling a ${selectedWatch.brand} ${selectedWatch.model} and will receive approximately $${netProceeds.netAfterTax.toLocaleString()} in net proceeds after tax. Their remaining collection after the sale: ${collectionSummary}. In 3-4 sentences, suggest how they might redeploy these proceeds within the watch market to improve diversification, returns, or collection quality. Be specific about watch categories or references worth considering. Do not give generic advice.`
 
-      const response = await window.spark.llm(promptText, "gpt-4o-mini")
+      const response = await callTrackedLlm(promptText, "gpt-4o-mini")
       setLlmSuggestion(response)
     } catch (error) {
       setLlmSuggestion("Unable to generate suggestion at this time. Please try again.")
