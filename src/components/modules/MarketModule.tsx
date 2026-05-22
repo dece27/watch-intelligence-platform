@@ -144,6 +144,29 @@ const formatAuctionDate = (dateValue: string) => {
   return parsed.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
+const getAuctionSourceLabel = (auction: AuctionResult) => {
+  if (auction.sourceUrl) {
+    try {
+      const hostname = new URL(auction.sourceUrl).hostname.toLowerCase()
+      if (hostname.includes('christies.com')) {
+        return "Christie's"
+      }
+      if (hostname.includes('phillips.com')) {
+        return 'Phillips'
+      }
+    } catch {}
+  }
+
+  const normalizedHouse = auction.house.trim().toLowerCase()
+  if (normalizedHouse.startsWith("christie's") || normalizedHouse.startsWith('christies')) {
+    return "Christie's"
+  }
+  if (normalizedHouse.startsWith('phillips')) {
+    return 'Phillips'
+  }
+  return 'Auction result'
+}
+
 const getAuctionBrandAndModel = (auction: AuctionResult) => {
   const lot = auction.lot.trim()
   const normalizedLot = lot.toLowerCase()
@@ -746,6 +769,7 @@ export function MarketModule({ watches }: MarketModuleProps) {
                   <th className="text-left py-3 px-2 text-sm font-medium text-muted-foreground">Model</th>
                   <th className="text-left py-3 px-2 text-sm font-medium text-muted-foreground">Reference</th>
                   <th className="text-right py-3 px-2 text-sm font-medium text-muted-foreground">Auction Price Sold</th>
+                  <th className="text-left py-3 px-2 text-sm font-medium text-muted-foreground">Related Auction Result</th>
                 </tr>
               </thead>
               <tbody>
@@ -761,6 +785,21 @@ export function MarketModule({ watches }: MarketModuleProps) {
                       <td className="py-3 px-2 text-sm text-muted-foreground">{auction.reference || '—'}</td>
                       <td className="py-3 px-2 text-sm text-right font-bold tabular-nums">
                         ${auction.result.toLocaleString()}
+                      </td>
+                      <td className="py-3 px-2 text-sm">
+                        {auction.sourceUrl ? (
+                          <a
+                            href={auction.sourceUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            aria-label={`Open ${getAuctionSourceLabel(auction)} auction result in a new tab`}
+                            className="text-primary underline underline-offset-4 hover:text-primary/80"
+                          >
+                            {getAuctionSourceLabel(auction)}
+                          </a>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
                       </td>
                     </tr>
                   )
