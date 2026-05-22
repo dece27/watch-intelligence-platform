@@ -177,9 +177,9 @@ const getTrendMetricStyle = (isPositive: boolean) =>
   isPositive ? TREND_METRIC_STYLES.positive : TREND_METRIC_STYLES.negative
 
 const TREND_METRIC_CONFIGS = [
-  { key: 'oneMonth', label: '1M', description: 'vs last month' },
-  { key: 'sixMonth', label: '6M', description: 'vs 6 months ago' },
-  { key: 'twelveMonth', label: '12M', description: 'vs 12 months ago' }
+  { key: 'oneMonthChange', label: '1M', description: 'vs last month' },
+  { key: 'sixMonthChange', label: '6M', description: 'vs 6 months ago' },
+  { key: 'twelveMonthChange', label: '12M', description: 'vs 12 months ago' }
 ] as const
 
 export function MarketModule({ watches }: MarketModuleProps) {
@@ -562,9 +562,9 @@ export function MarketModule({ watches }: MarketModuleProps) {
           const sixMonthChange = getTrendChange(brandIndex.trend, 6)
           const twelveMonthChange = getTrendChange(brandIndex.trend, brandIndex.trend.length - 1)
           const trendChanges = {
-            oneMonth: oneMonthChange,
-            sixMonth: sixMonthChange,
-            twelveMonth: twelveMonthChange
+            oneMonthChange,
+            sixMonthChange,
+            twelveMonthChange
           }
 
           return (
@@ -593,6 +593,8 @@ export function MarketModule({ watches }: MarketModuleProps) {
                     return (
                       <div
                         key={metric.label}
+                        aria-label={`${metric.label} ${formatTrend(metricChange)} ${metric.description}`}
+                        role="group"
                         className={`rounded-xl border px-3 py-4 transition-colors ${trendMetricStyle.cardClassName}`}
                       >
                         <div className="flex items-center justify-between gap-2">
