@@ -173,7 +173,7 @@ function normalizeXmlItems(rawXml: string, house: string): AuctionResult[] {
 async function fetchFeed(feed: FeedConfig): Promise<AuctionResult[]> {
   const response = await fetch(feed.url)
   if (!response.ok) {
-    throw new Error(`${feed.house} feed request failed: ${response.status} from ${feed.url}`)
+    throw new Error(`${feed.house} feed request failed with status ${response.status}`)
   }
 
   const contentType = response.headers.get('content-type') || ''
@@ -239,7 +239,14 @@ function normalizeAndFilter(
       const searchableText = `${item.lot} ${item.notes} ${item.reference || ''}`.toLowerCase()
       return lowerCaseRefs.some((reference) => searchableText.includes(reference))
     })
-    .sort((a, b) => (parseDateToTimestamp(b.date) ?? -1) - (parseDateToTimestamp(a.date) ?? -1))
+    .sort((a, b) => {
+      const bTime = parseDateToTimestamp(b.date) ?? Number.NEGATIVE_INFINITY
+      const aTime = parseDateToTimestamp(a.date) ?? Number.NEGATIVE_INFINITY
+      if (bTime !== aTime) {
+        return bTime - aTime
+      }
+      return a.lot.localeCompare(b.lot)
+    })
     .slice(0, limit)
 }
 

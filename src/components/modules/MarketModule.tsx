@@ -88,7 +88,7 @@ const FALLBACK_AUCTION_RESULTS: AuctionResult[] = [
   { house: 'Phillips New York', date: 'Oct 2024', lot: 'F.P. Journe Tourbillon Souverain', result: 185000, estLow: 150000, estHigh: 200000, notes: 'Titanium case, exceptional mvt' }
 ]
 
-const AUCTION_FILTER_REFERENCES = ['1518', '6241', '5711', '15202', '116500', 'tourbillon souverain']
+const AUCTION_SEARCH_TERMS = ['1518', '6241', '5711', '15202', '116500', 'tourbillon souverain']
 
 export function MarketModule({ watches }: MarketModuleProps) {
   const [priceAlerts, setPriceAlerts] = useKV<PriceAlert[]>("priceAlerts", [])
@@ -139,7 +139,7 @@ export function MarketModule({ watches }: MarketModuleProps) {
     const loadAuctionResults = async () => {
       setIsAuctionResultsLoading(true)
       try {
-        const liveResults = await fetchRecentAuctionResults({ references: AUCTION_FILTER_REFERENCES, limit: 8 })
+        const liveResults = await fetchRecentAuctionResults({ references: AUCTION_SEARCH_TERMS, limit: 8 })
         if (!isMounted) return
 
         if (liveResults.length > 0) {
@@ -540,7 +540,7 @@ export function MarketModule({ watches }: MarketModuleProps) {
                       </td>
                       <td className="py-3 px-2 text-sm text-right text-muted-foreground tabular-nums">
                         {hasEstimate
-                          ? `$${auction.estLow?.toLocaleString()}–$${auction.estHigh?.toLocaleString()}`
+                          ? `$${auction.estLow.toLocaleString()}–$${auction.estHigh.toLocaleString()}`
                           : '—'}
                       </td>
                       <td className="py-3 px-2 text-sm text-muted-foreground">{auction.notes}</td>
