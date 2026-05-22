@@ -590,14 +590,14 @@ export function MarketModule({ watches }: MarketModuleProps) {
                     const metricChange = trendChanges[metric.key]
                     const isPositive = metricChange >= 0
                     const trendMetricStyle = getTrendMetricStyle(isPositive)
-                    const iconLabel = `${metric.iconLabel} showing ${isPositive ? 'positive' : 'negative'} movement`
+                    const iconLabel = `${metric.iconLabel}: ${formatTrend(metricChange)} ${metric.description}`
                     return (
                       <div
                         key={metric.label}
                         className={`rounded-xl border px-3 py-4 transition-colors ${trendMetricStyle.cardClassName}`}
                       >
                         <div className="flex items-center justify-between gap-2">
-                          <div className="text-xs font-medium tracking-normal text-muted-foreground">
+                          <div className="text-xs font-medium text-muted-foreground">
                             {metric.label}
                           </div>
                           {isPositive ? (
