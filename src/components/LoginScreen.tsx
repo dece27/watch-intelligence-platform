@@ -14,6 +14,14 @@ interface LoginScreenProps {
   onLogin: (user: User, rememberMe: boolean) => void | Promise<void>
 }
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const ADMIN_LOGIN_IDENTIFIER = "administrator"
+
+function isValidLoginIdentifier(value: string): boolean {
+  const normalized = value.trim().toLowerCase()
+  return normalized === ADMIN_LOGIN_IDENTIFIER || EMAIL_REGEX.test(normalized)
+}
+
 export function LoginScreen({ onLogin }: LoginScreenProps) {
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
@@ -38,7 +46,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
     let isCancelled = false
     const normalizedEmail = email.trim().toLowerCase()
 
-    if (!normalizedEmail) {
+    if (!normalizedEmail || !isValidLoginIdentifier(normalizedEmail)) {
       setIsReturningUser(false)
       return
     }
@@ -96,6 +104,11 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
 
     if (!trimmedEmail || !password.trim()) {
       setError("Email and passphrase are required.")
+      return
+    }
+
+    if (!isValidLoginIdentifier(trimmedEmail)) {
+      setError("Enter a valid email address or use Administrator.")
       return
     }
 
@@ -216,7 +229,9 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
               <Input
                 id="email"
                 type="text"
-                placeholder="Enter your account email"
+                inputMode="email"
+                autoComplete="email"
+                placeholder="your.email@example.com or Administrator"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
