@@ -124,7 +124,7 @@ function normalizeJsonItem(item: UnknownRecord, house: string): AuctionResult | 
   }
 
   return {
-    house: getStringValue(item, ['house']) || house,
+    house,
     date: dateString || 'Unknown date',
     lot,
     result,

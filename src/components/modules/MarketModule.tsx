@@ -527,7 +527,7 @@ export function MarketModule({ watches }: MarketModuleProps) {
                 {auctionResults.map((auction, idx) => {
                   const hasEstimate = typeof auction.estLow === 'number' && typeof auction.estHigh === 'number'
                   const aboveEstimate = hasEstimate && auction.result > auction.estHigh
-                  const withinEstimate = hasEstimate && auction.result >= auction.estLow && auction.result <= auction.estHigh
+                  const withinEstimate = hasEstimate && !aboveEstimate && auction.result >= auction.estLow
                   const resultColor = aboveEstimate ? '#5E8C6A' : withinEstimate ? '#C9A84C' : 'inherit'
                   
                   return (
