@@ -81,7 +81,7 @@ export function AdminDashboard() {
     loadStats()
   }, [])
 
-  const deleteSingleUserData = async (userId: string, userEmail?: string) => {
+  const deleteSingleUserData = async (userId: string, userEmail: string) => {
     const watches = await window.spark.kv.get<Watch[]>(`watches_${userId}`) || []
     await Promise.all(
       watches
@@ -100,52 +100,46 @@ export function AdminDashboard() {
       window.spark.kv.delete(`vaultMetadata_${userId}`),
     ]
 
-    if (userEmail) {
-      userDeletionTasks.push(window.spark.kv.delete(`user_email_${normalizeEmail(userEmail)}`))
-    }
+    userDeletionTasks.push(window.spark.kv.delete(`user_email_${normalizeEmail(userEmail)}`))
 
     await Promise.all(userDeletionTasks)
 
     const userIds = await window.spark.kv.get<string[]>("all_user_ids") || []
     await window.spark.kv.set("all_user_ids", userIds.filter((id) => id !== userId))
 
-    if (userEmail) {
-      const normalizedUserEmail = normalizeEmail(userEmail)
-      const feedbackIds = await window.spark.kv.get<string[]>("all_feedback_ids") || []
-      const keptFeedbackIds: string[] = []
+    const normalizedUserEmail = normalizeEmail(userEmail)
+    const feedbackIds = await window.spark.kv.get<string[]>("all_feedback_ids") || []
+    const keptFeedbackIds: string[] = []
 
-      for (const feedbackId of feedbackIds) {
-        const lookupKeys = Array.from(new Set([feedbackId, `feedback_${feedbackId}`]))
-        let feedbackOwnerEmail: string | undefined
-        let resolvedFeedbackKey: string | null = null
+    for (const feedbackId of feedbackIds) {
+      const lookupKeys = Array.from(new Set([feedbackId, `feedback_${feedbackId}`]))
+      const feedbackCandidates = await Promise.all(
+        lookupKeys.map(async (lookupKey) => ({
+          lookupKey,
+          feedback: await window.spark.kv.get<{ userEmail?: string }>(lookupKey),
+        }))
+      )
+      const resolvedFeedback = feedbackCandidates.find((candidate) => candidate.feedback)
+      const feedbackOwnerEmail = resolvedFeedback?.feedback?.userEmail
+      const resolvedFeedbackKey = resolvedFeedback?.lookupKey
 
-        for (const lookupKey of lookupKeys) {
-          const feedback = await window.spark.kv.get<{ userEmail?: string }>(lookupKey)
-          if (feedback) {
-            feedbackOwnerEmail = feedback.userEmail
-            resolvedFeedbackKey = lookupKey
-            break
-          }
+      if (feedbackOwnerEmail && normalizeEmail(feedbackOwnerEmail) === normalizedUserEmail) {
+        if (resolvedFeedbackKey) {
+          await window.spark.kv.delete(resolvedFeedbackKey)
         }
-
-        if (feedbackOwnerEmail && normalizeEmail(feedbackOwnerEmail) === normalizedUserEmail) {
-          if (resolvedFeedbackKey) {
-            await window.spark.kv.delete(resolvedFeedbackKey)
-          }
-          continue
-        }
-
-        keptFeedbackIds.push(feedbackId)
+        continue
       }
 
-      await window.spark.kv.set("all_feedback_ids", keptFeedbackIds)
+      keptFeedbackIds.push(feedbackId)
     }
+
+    await window.spark.kv.set("all_feedback_ids", keptFeedbackIds)
   }
 
   const handleDeleteSingleUser = async () => {
     if (!selectedUserForDeletion) return
     if (isAdminEmail(selectedUserForDeletion.email)) {
-      toast.error("Admin account cannot be deleted here.")
+      toast.error("Admin accounts cannot be deleted.")
       setSelectedUserForDeletion(null)
       return
     }
