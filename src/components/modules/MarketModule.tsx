@@ -148,6 +148,8 @@ const AUCTION_BRANDS = [
   'Omega',
   'IWC',
 ].sort((left, right) => right.length - left.length)
+const AUCTION_TITLE_LEADING_SEPARATOR_PATTERN = /^[\u2010-\u2015\-:\s]+/
+const AUCTION_TITLE_REFERENCE_PREFIX_PATTERN = /^Ref\.?\s*/i
 
 const formatAuctionDate = (dateValue: string) => {
   const parsed = new Date(dateValue)
@@ -160,7 +162,7 @@ const formatAuctionDate = (dateValue: string) => {
 const getAuctionBrandAndModel = (auction: AuctionResult) => {
   const lot = auction.lot.trim()
   const normalizedLot = lot.toLowerCase()
-  const matchedBrand = AUCTION_BRANDS.find((brand) => normalizedLot.startsWith(brand.toLowerCase()))
+  const matchedBrand = AUCTION_BRANDS.find((brand) => normalizedLot.includes(brand.toLowerCase()))
 
   if (!matchedBrand) {
     return {
@@ -169,10 +171,11 @@ const getAuctionBrandAndModel = (auction: AuctionResult) => {
     }
   }
 
+  const brandStartIndex = normalizedLot.indexOf(matchedBrand.toLowerCase())
   const model = lot
-    .slice(matchedBrand.length)
-    .replace(/^[\u2010-\u2015\-:\s]+/, '')
-    .replace(/^Ref\.?\s*/i, '')
+    .slice(brandStartIndex + matchedBrand.length)
+    .replace(AUCTION_TITLE_LEADING_SEPARATOR_PATTERN, '')
+    .replace(AUCTION_TITLE_REFERENCE_PREFIX_PATTERN, '')
     .trim()
 
   return {
