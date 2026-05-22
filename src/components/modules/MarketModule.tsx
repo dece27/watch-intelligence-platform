@@ -202,8 +202,8 @@ export function MarketModule({ watches }: MarketModuleProps) {
     toast.success("Price alert removed")
   }
 
-  const getAuctionHouseSearchUrl = (house: string, query: string) => {
-    const normalizedHouse = house.toLowerCase()
+  const getAuctionHouseSearchUrl = (auctionHouse: string, query: string): string | null => {
+    const normalizedHouse = auctionHouse.toLowerCase()
 
     if (normalizedHouse.includes("christie")) {
       return `https://www.christies.com/en/results/soldlots/?searchphrase=${encodeURIComponent(query)}`
