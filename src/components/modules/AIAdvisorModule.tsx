@@ -10,7 +10,8 @@ import { Label } from "@/components/ui/label"
 import { Sparkle, PaperPlaneTilt, Image as ImageIcon, Plus, Fire, Star, ShoppingCart, TrendUp, TrendDown, FileArrowUp } from "@phosphor-icons/react"
 import { toast } from "sonner"
 import { callTrackedLlm } from "@/lib/adminAnalytics"
-import { hasChrono24Credentials, searchChrono24Deals } from "@/lib/chrono24-client"
+import { searchChrono24Deals } from "@/lib/chrono24-client"
+import { FALLBACK_DEALS } from "@/lib/fallback-deals"
 
 interface AIAdvisorModuleProps {
   watches: Watch[]
@@ -235,9 +236,12 @@ export function AIAdvisorModule({ watches, userId }: AIAdvisorModuleProps) {
   }, [watches])
 
   useEffect(() => {
-    if (watches.length === 0 && (!mockListings || mockListings.length === 0)) return
+    // Load (or reload) the Deal of the Day whenever the watch portfolio changes.
+    // The function always attempts live data and falls back to cached or static
+    // deals, so we no longer need to gate on `hasChrono24Credentials`.
     loadDealOfDay()
-  }, [watches, mockListings])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watches])
 
   const generateSignals = async () => {
     if (watches.length === 0) return
@@ -472,58 +476,62 @@ Respond in valid JSON format:
     setIsLoadingDeal(true)
     try {
       let listings: Deal[] = []
+      let usedLiveData = false
 
-      if (hasChrono24Credentials) {
-        const portfolioBrands = Array.from(new Set(watches.map((watch) => watch.brand))).slice(0, MAX_DEAL_OF_DAY_BRANDS)
-        const queryTargets = portfolioBrands.length > 0 ? portfolioBrands : DEAL_OF_DAY_FALLBACK_BRANDS
-        const uniqueDealsMap = new Map<string, Deal>()
+      // Always attempt live data from Chrono24 regardless of whether a wrapper
+      // is configured – errors are caught per-brand and the module falls back.
+      const portfolioBrands = Array.from(new Set(watches.map((watch) => watch.brand))).slice(0, MAX_DEAL_OF_DAY_BRANDS)
+      const queryTargets = portfolioBrands.length > 0 ? portfolioBrands : DEAL_OF_DAY_FALLBACK_BRANDS
+      const uniqueDealsMap = new Map<string, Deal>()
 
-        for (const brand of queryTargets) {
-          try {
-            const brandDeals = await searchChrono24Deals({
-              brand,
-              page: 1,
-              limit: DEAL_OF_DAY_QUERY_LIMIT,
-            })
+      for (const brand of queryTargets) {
+        try {
+          const brandDeals = await searchChrono24Deals({
+            brand,
+            page: 1,
+            limit: DEAL_OF_DAY_QUERY_LIMIT,
+          })
 
-            for (const deal of brandDeals) {
-              uniqueDealsMap.set(deal.id, deal)
-            }
-
-            if (uniqueDealsMap.size >= DEAL_OF_DAY_QUERY_LIMIT) {
-              break
-            }
-          } catch {
-            // Keep iterating through the remaining brands before falling back.
+          for (const deal of brandDeals) {
+            uniqueDealsMap.set(deal.id, deal)
           }
-        }
 
-        listings = Array.from(uniqueDealsMap.values())
+          if (uniqueDealsMap.size >= DEAL_OF_DAY_QUERY_LIMIT) {
+            break
+          }
+        } catch {
+          // Keep iterating through the remaining brands before falling back.
+        }
       }
+
+      listings = Array.from(uniqueDealsMap.values())
 
       if (listings.length > 0) {
+        // Cache the live results for next time
         setMockListings(listings)
-        setIsLiveDealData(true)
+        usedLiveData = true
       } else if (mockListings && mockListings.length > 0) {
+        // Use previously cached live results
         listings = mockListings
-        setIsLiveDealData(false)
       } else {
-        setDealOfDay(null)
-        setDealAssessment('')
-        setIsLiveDealData(false)
-        return
+        // Last resort: use the static fallback deals so the section is never blank.
+        // These are clearly labelled as fallback data in the UI badge.
+        listings = FALLBACK_DEALS
       }
 
+      setIsLiveDealData(usedLiveData)
+
+      // Score every listing: higher discount from fair value + seller rating wins.
       const listingsWithScores = listings.map(l => {
         const fairVal = l.fairValue || l.marketValue || l.price
         const dealScore = Math.max(0, Math.min(100, Math.round(
-          100 - ((l.price / fairVal) * 100) + 
-          ((l.sellerRating || 0) * 5) - 
+          100 - ((l.price / fairVal) * 100) +
+          ((l.sellerRating || 0) * 5) -
           ((l.daysListed || 0) * 0.5)
         )))
         return { ...l, dealScore, fairValue: fairVal }
       })
-      
+
       listingsWithScores.sort((a, b) => b.dealScore - a.dealScore)
       const topDeal = listingsWithScores[0]
       setDealOfDay(topDeal)
@@ -534,9 +542,9 @@ Respond in valid JSON format:
         setDealAssessment(cachedAssessment)
         return
       }
-      
+
       const assessmentPrompt = `In exactly 2 sentences, explain why this watch is today's best deal: ${topDeal.brand} ${topDeal.model} ${topDeal.referenceNumber || ''}, ${topDeal.year || 'unknown year'}, ${topDeal.condition}, asking $${topDeal.price.toLocaleString()} vs fair market value of $${topDeal.fairValue.toLocaleString()}. Be specific about what makes the price attractive and who should consider buying it.`
-      
+
       const assessment = await callTrackedLlm(assessmentPrompt, 'gpt-4o-mini')
       setDealAssessment(assessment)
       await saveAiCache(cacheKey, dependencyHash, {
