@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input"
 import { Copy, Check, ShareNetwork } from "@phosphor-icons/react"
 import { toast } from "sonner"
 import { SharedCollectionRecord, Watch } from "@/lib/types"
+import { buildSharedCollectionUrl, getSharedCollectionPrefix } from "@/lib/sitePath"
 
 interface ShareCollectionModalProps {
   open: boolean
@@ -122,7 +123,7 @@ export function ShareCollectionModal({ open, onOpenChange, userId, vaultName, wa
 
       await window.spark.kv.set(key, record)
       setCustomSlug(slug)
-      setShareUrl(`${window.location.origin}/shared/${encodeURIComponent(slug)}`)
+      setShareUrl(buildSharedCollectionUrl(window.location.origin, slug, import.meta.env.BASE_URL))
       toast.success(existing ? "Share link updated" : "Share link created")
     } catch (error) {
       console.error("Failed to publish shared collection:", error)
@@ -147,7 +148,7 @@ export function ShareCollectionModal({ open, onOpenChange, userId, vaultName, wa
             <label className="text-sm font-medium">Custom URL</label>
             <div className="flex items-center rounded-md border border-input bg-background px-3">
               <span className="text-xs text-muted-foreground whitespace-nowrap pr-2">
-                {window.location.origin}/shared/
+                {getSharedCollectionPrefix(window.location.origin, import.meta.env.BASE_URL)}
               </span>
               <Input
                 value={customSlug}

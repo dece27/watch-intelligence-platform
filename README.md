@@ -99,6 +99,20 @@ VITE_CHRONO24_API_HOST=http://localhost:8000 npm run dev
 When running the frontend on localhost, it also auto-falls back to
 `http://localhost:8000` if no Chrono24 base URL env is provided.
 
+## GitHub Pages deployment
+
+This repository can be deployed to GitHub Pages with the included workflow at
+`/home/runner/work/watch-intelligence-platform/watch-intelligence-platform/.github/workflows/deploy-pages.yml`.
+
+Before the first deployment:
+
+1. Install the frontend dependencies with `npm install`
+2. If you need the optional Chrono24 wrapper locally, install its packages with `pip install -r chrono24-api/requirements.txt`
+3. In GitHub, open **Settings → Pages** and set **Source** to **GitHub Actions**
+
+After that, every push to `main` will build the Vite app with the repository
+base path and publish it to GitHub Pages automatically.
+
 ## License
 
 This repository is licensed under the MIT License.
