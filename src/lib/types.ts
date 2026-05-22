@@ -19,6 +19,33 @@ export interface Watch {
   hasPapers?: boolean
 }
 
+export interface SharedWatch {
+  id: string
+  brand: string
+  model: string
+  referenceNumber?: string
+  year?: number
+  currentValue?: number
+  condition: Watch['condition']
+  category: Watch['category']
+  imageUrl?: string
+  movement?: string
+  caseMaterial?: string
+  caseDiameter?: string
+  notes?: string
+  hasBox?: boolean
+  hasPapers?: boolean
+}
+
+export interface SharedCollectionRecord {
+  slug: string
+  ownerUserId: string
+  ownerVaultName: string
+  createdAt: string
+  updatedAt: string
+  watches: SharedWatch[]
+}
+
 export interface Deal {
   id: string
   brand: string

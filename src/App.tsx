@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react"
 import { useKV } from "@github/spark/hooks"
 import { useIsMobile } from "@/hooks/use-mobile"
-import { Watch, User } from "@/lib/types"
+import { SharedCollectionRecord, Watch, User } from "@/lib/types"
 import { AppSidebar } from "@/components/AppSidebar"
 import { AppHeader } from "@/components/AppHeader"
 import { WelcomeModal } from "@/components/WelcomeModal"
@@ -56,6 +56,16 @@ function sanitizeWatchImageUrl(imageUrl?: string): string | undefined {
   }
 }
 
+function decodeLegacySharedSlug(value: string): string | null {
+  try {
+    const normalized = value.replace(/-/g, "+").replace(/_/g, "/")
+    const decoded = atob(normalized)
+    return decoded || null
+  } catch {
+    return null
+  }
+}
+
 function App() {
   const [persistedUser, setPersistedUser] = useKV<User | null>("currentUser", null)
   const [currentUser, setCurrentUser] = useState<User | null>(persistedUser ?? null)
@@ -64,7 +74,54 @@ function App() {
   const [triggerAddWatch, setTriggerAddWatch] = useState(false)
   const [watches, setWatches] = useState<Watch[]>([])
   const [watchesLoaded, setWatchesLoaded] = useState(false)
+  const [sharedSlug, setSharedSlug] = useState<string | null>(null)
+  const [sharedCollection, setSharedCollection] = useState<SharedCollectionRecord | null>(null)
+  const [sharedLoading, setSharedLoading] = useState(false)
+  const [sharedError, setSharedError] = useState<string | null>(null)
   const isMobile = useIsMobile()
+
+  useEffect(() => {
+    const [first, second] = window.location.pathname.split("/").filter(Boolean)
+    if (first === "shared" && second) {
+      setSharedSlug(decodeURIComponent(second))
+    }
+  }, [])
+
+  useEffect(() => {
+    const loadSharedCollection = async () => {
+      if (!sharedSlug) return
+
+      setSharedLoading(true)
+      setSharedError(null)
+      try {
+        const key = `shared_collection_${sharedSlug}`
+        let shared = await window.spark.kv.get<SharedCollectionRecord>(key)
+
+        if (!shared) {
+          const decodedSlug = decodeLegacySharedSlug(sharedSlug)
+          if (decodedSlug && decodedSlug !== sharedSlug) {
+            shared = await window.spark.kv.get<SharedCollectionRecord>(`shared_collection_${decodedSlug}`)
+          }
+        }
+
+        if (!shared) {
+          setSharedCollection(null)
+          setSharedError("This shared collection link is invalid or has expired.")
+          return
+        }
+
+        setSharedCollection(shared)
+      } catch (error) {
+        console.error("Failed to load shared collection:", error)
+        setSharedCollection(null)
+        setSharedError("Unable to load shared collection.")
+      } finally {
+        setSharedLoading(false)
+      }
+    }
+
+    loadSharedCollection()
+  }, [sharedSlug])
 
   useEffect(() => {
     if (persistedUser) {
@@ -227,7 +284,16 @@ function App() {
   const renderModule = () => {
     switch (activeModule) {
       case 'collection':
-        return <CollectionModule watches={watchList} onUpdate={handleUpdateWatches} triggerAdd={triggerAddWatch} onTriggerComplete={() => setTriggerAddWatch(false)} />
+        return (
+          <CollectionModule
+            watches={watchList}
+            onUpdate={handleUpdateWatches}
+            triggerAdd={triggerAddWatch}
+            onTriggerComplete={() => setTriggerAddWatch(false)}
+            currentUserId={currentUser?.id}
+            vaultName={currentUser?.vaultName}
+          />
+        )
       case 'portfolio':
         return <PortfolioModule watches={watchList} />
       case 'market':
@@ -239,12 +305,78 @@ function App() {
       case 'appraisal':
         return <AppraisalModule watches={watchList} />
       case 'feedback':
-        return isAdmin ? <FeedbackDashboard /> : <CollectionModule watches={watchList} onUpdate={handleUpdateWatches} />
+        return isAdmin ? (
+          <FeedbackDashboard />
+        ) : (
+          <CollectionModule
+            watches={watchList}
+            onUpdate={handleUpdateWatches}
+            currentUserId={currentUser?.id}
+            vaultName={currentUser?.vaultName}
+          />
+        )
       case 'admin-dashboard':
-        return isAdmin ? <AdminDashboard /> : <CollectionModule watches={watchList} onUpdate={handleUpdateWatches} />
+        return isAdmin ? (
+          <AdminDashboard />
+        ) : (
+          <CollectionModule
+            watches={watchList}
+            onUpdate={handleUpdateWatches}
+            currentUserId={currentUser?.id}
+            vaultName={currentUser?.vaultName}
+          />
+        )
       default:
-        return <CollectionModule watches={watchList} onUpdate={handleUpdateWatches} />
+        return (
+          <CollectionModule
+            watches={watchList}
+            onUpdate={handleUpdateWatches}
+            currentUserId={currentUser?.id}
+            vaultName={currentUser?.vaultName}
+          />
+        )
     }
+  }
+
+  if (sharedSlug) {
+    if (sharedLoading) {
+      return (
+        <div className="min-h-screen bg-background text-foreground flex items-center justify-center p-6">
+          <p className="text-muted-foreground">Loading shared collection…</p>
+        </div>
+      )
+    }
+
+    if (sharedError || !sharedCollection) {
+      return (
+        <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center p-6 gap-4 text-center">
+          <h1 className="text-2xl font-semibold">Shared collection unavailable</h1>
+          <p className="text-muted-foreground">{sharedError || "This shared link could not be loaded."}</p>
+        </div>
+      )
+    }
+
+    const sharedWatches: Watch[] = sharedCollection.watches.map((watch) => ({
+      ...watch,
+      purchasePrice: 0,
+      purchaseDate: "",
+    }))
+
+    return (
+      <div className="min-h-screen bg-background text-foreground p-4 md:p-6">
+        <div className="max-w-7xl mx-auto">
+          <CollectionModule
+            watches={sharedWatches}
+            onUpdate={() => {}}
+            readOnly
+            hidePurchasePrice
+            title={`${sharedCollection.ownerVaultName} — Shared Collection`}
+            subtitle={`${sharedCollection.watches.length} ${sharedCollection.watches.length === 1 ? "watch" : "watches"} in this public view`}
+          />
+        </div>
+        <Toaster />
+      </div>
+    )
   }
 
   if (!currentUser) {
