@@ -25,6 +25,38 @@ interface RebalanceAnalysis {
   }
 }
 
+const extractJsonPayload = (response: string) => {
+  const trimmed = response.trim()
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)
+  return fenced ? fenced[1].trim() : trimmed
+}
+
+const pickStringValue = (source: Record<string, unknown>, keys: string[]) => {
+  for (const key of keys) {
+    const value = source[key]
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value.trim()
+    }
+  }
+  return ''
+}
+
+const parseRebalanceAnalysis = (response: string): RebalanceAnalysis => {
+  const parsed = JSON.parse(extractJsonPayload(response)) as Record<string, unknown>
+  const strategicScore = (parsed.strategicScore || parsed.strategic_score || {}) as Record<string, unknown>
+  const parsedScore = Number(strategicScore.score)
+
+  return {
+    concentrationRisk: pickStringValue(parsed, ['concentrationRisk', 'concentration_risk', 'concentration risk']),
+    sell: pickStringValue(parsed, ['sell', 'sellRecommendation', 'sell_recommendation', 'sell recommendation']),
+    buy: pickStringValue(parsed, ['buy', 'buyRecommendation', 'buy_recommendation', 'buy recommendation']),
+    strategicScore: {
+      score: Number.isFinite(parsedScore) ? parsedScore : 5,
+      explanation: pickStringValue(strategicScore, ['explanation', 'reasoning']) || 'No explanation provided.'
+    }
+  }
+}
+
 const STARTER_QUESTIONS = [
   "What should I add to diversify my collection?",
   "Which of my watches has the best investment potential?",
@@ -296,9 +328,7 @@ Respond in valid JSON format:
 }`
 
       const response = await callTrackedLlm(promptText, 'gpt-4o-mini', true)
-      const parsed = JSON.parse(response)
-      
-      setRebalanceAnalysis(parsed)
+      setRebalanceAnalysis(parseRebalanceAnalysis(response))
     } catch (error) {
       toast.error("Failed to generate rebalancing analysis")
       console.error(error)
