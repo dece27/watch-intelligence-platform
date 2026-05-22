@@ -138,6 +138,8 @@ const FALLBACK_AUCTION_RESULTS: AuctionResult[] = [
 
 const AUCTION_SEARCH_TERMS = ['1518', '6264', '4131', 'rm27-01', 'resonance', 'tourbillon souverain']
 const SENTIMENT_LINE_COLORS = ['#5E8C6A', '#4A7C90', '#C9A84C', '#A0785A', '#6A5ACD', '#3B9D9D']
+const GOLDEN_ANGLE_DEGREES = 137.508
+const SENTIMENT_Y_AXIS_PADDING = 2
 
 export function MarketModule({ watches }: MarketModuleProps) {
   const [priceAlerts, setPriceAlerts] = useKV<PriceAlert[]>("priceAlerts", [])
@@ -199,7 +201,7 @@ export function MarketModule({ watches }: MarketModuleProps) {
         return SENTIMENT_LINE_COLORS[index]
       }
 
-      const hue = Math.round((index * 137.508) % 360)
+      const hue = Math.round((index * GOLDEN_ANGLE_DEGREES) % 360)
       return `hsl(${hue}, 52%, 46%)`
     }
 
@@ -412,7 +414,10 @@ export function MarketModule({ watches }: MarketModuleProps) {
                   <XAxis dataKey="month" tick={{ fontSize: 12 }} />
                   <YAxis
                     tick={{ fontSize: 12 }}
-                    domain={['dataMin - 2', 'dataMax + 2']}
+                    domain={[
+                      `dataMin - ${SENTIMENT_Y_AXIS_PADDING}`,
+                      `dataMax + ${SENTIMENT_Y_AXIS_PADDING}`,
+                    ]}
                     width={40}
                   />
                   <Tooltip />
