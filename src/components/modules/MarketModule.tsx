@@ -160,11 +160,24 @@ const getTrendChange = (trend: number[], months: number) => {
 }
 
 const formatTrend = (change: number) => `${change >= 0 ? '+' : ''}${change.toFixed(1)}%`
-const getTrendDirectionColor = (change: number) => change >= 0 ? 'text-success' : 'text-destructive'
-const getTrendMetricCardClass = (change: number) =>
-  change >= 0
-    ? 'border-success/20 bg-success/5'
-    : 'border-destructive/20 bg-destructive/5'
+const TREND_METRIC_STYLES = {
+  positive: {
+    iconLabel: 'Positive trend',
+    iconClassName: 'text-success',
+    valueClassName: 'text-success',
+    cardClassName: 'border-success/20 bg-success/5'
+  },
+  negative: {
+    iconLabel: 'Negative trend',
+    iconClassName: 'text-destructive',
+    valueClassName: 'text-destructive',
+    cardClassName: 'border-destructive/20 bg-destructive/5'
+  }
+} as const
+
+const getTrendMetricStyle = (isPositive: boolean) =>
+  isPositive ? TREND_METRIC_STYLES.positive : TREND_METRIC_STYLES.negative
+
 const getTrendMetrics = (oneMonthChange: number, sixMonthChange: number, twelveMonthChange: number) => [
   { label: '1M', change: oneMonthChange, description: 'vs last month' },
   { label: '6M', change: sixMonthChange, description: 'vs 6 months ago' },
@@ -573,22 +586,23 @@ export function MarketModule({ watches }: MarketModuleProps) {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {trendMetrics.map((metric) => {
                     const isPositive = metric.change >= 0
+                    const trendMetricStyle = getTrendMetricStyle(isPositive)
                     return (
                       <div
                         key={metric.label}
-                        className={`rounded-xl border px-3 py-4 transition-colors ${getTrendMetricCardClass(metric.change)}`}
+                        className={`rounded-xl border px-3 py-4 transition-colors ${trendMetricStyle.cardClassName}`}
                       >
                         <div className="flex items-center justify-between gap-2">
                           <div className="text-xs font-medium tracking-normal text-muted-foreground">
                             {metric.label}
                           </div>
                           {isPositive ? (
-                            <TrendUp aria-label="Positive trend" className="text-success" size={18} weight="bold" />
+                            <TrendUp aria-label={trendMetricStyle.iconLabel} className={trendMetricStyle.iconClassName} size={18} weight="bold" />
                           ) : (
-                            <TrendDown aria-label="Negative trend" className="text-destructive" size={18} weight="bold" />
+                            <TrendDown aria-label={trendMetricStyle.iconLabel} className={trendMetricStyle.iconClassName} size={18} weight="bold" />
                           )}
                         </div>
-                        <div className={`mt-3 text-2xl font-semibold tabular-nums ${getTrendDirectionColor(metric.change)}`}>
+                        <div className={`mt-3 text-2xl font-semibold tabular-nums ${trendMetricStyle.valueClassName}`}>
                           {formatTrend(metric.change)}
                         </div>
                         <div className="mt-1 text-xs text-muted-foreground">
