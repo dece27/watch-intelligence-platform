@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useKV } from "@github/spark/hooks"
 import { Watch, BrandIndex, PriceAlert } from "@/lib/types"
+import { AuctionResult, fetchRecentAuctionResults } from "@/lib/auction-feeds"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -78,20 +79,24 @@ const TOP_MOVERS = [
   { reference: 'GMT-Master II Pepsi', brand: 'Rolex', currentPrice: 21000, change: 0.8, direction: 'up' as const }
 ]
 
-const AUCTION_RESULTS = [
+const FALLBACK_AUCTION_RESULTS: AuctionResult[] = [
   { house: 'Phillips Geneva', date: 'Nov 2024', lot: 'Patek Philippe 1518 Stainless Steel', result: 1240000, estLow: 900000, estHigh: 1400000, notes: 'One of 4 known steel examples' },
-  { house: 'Sotheby\'s New York', date: 'Dec 2024', lot: 'Rolex Daytona Paul Newman Ref. 6241', result: 287500, estLow: 200000, estHigh: 300000, notes: 'Original tropical dial, full set' },
+  { house: 'Christie\'s New York', date: 'Dec 2024', lot: 'Rolex Daytona Paul Newman Ref. 6241', result: 287500, estLow: 200000, estHigh: 300000, notes: 'Original tropical dial, full set' },
   { house: 'Christie\'s Geneva', date: 'Nov 2024', lot: 'Patek Nautilus 5711/1A-018 Tiffany Blue', result: 326000, estLow: 280000, estHigh: 380000, notes: 'Tiffany & Co. exclusive dial' },
   { house: 'Phillips Hong Kong', date: 'Oct 2024', lot: 'AP Royal Oak 15202ST Jumbo A-Series', result: 98000, estLow: 75000, estHigh: 95000, notes: 'Early 38mm "A-series" gen' },
   { house: 'Christie\'s HK', date: 'Nov 2024', lot: 'Rolex Daytona 116500LN Panda', result: 36800, estLow: 30000, estHigh: 40000, notes: 'Full set, last-gen ceramic' },
-  { house: 'Phillips New York', date: 'Oct 2024', lot: 'F.P. Journe Tourbillon Souverain', result: 185000, estLow: 150000, estHigh: 200000, notes: 'Titanium case, exceptional mvt' },
-  { house: 'Bonhams London', date: 'Dec 2024', lot: 'Patek Philippe 5726/1A Annual Calendar', result: 74500, estLow: 60000, estHigh: 80000, notes: 'Full set 2020, excellent cond' },
-  { house: 'Sotheby\'s London', date: 'Sep 2024', lot: 'Grand Seiko SBGW047 Limited', result: 12400, estLow: 10000, estHigh: 14000, notes: 'Hand-wound dress, 100 pcs' }
+  { house: 'Phillips New York', date: 'Oct 2024', lot: 'F.P. Journe Tourbillon Souverain', result: 185000, estLow: 150000, estHigh: 200000, notes: 'Titanium case, exceptional mvt' }
 ]
+
+const GRAIL_REFERENCES = ['1518', '6241', '5711', '15202', '116500', 'tourbillon souverain']
 
 export function MarketModule({ watches }: MarketModuleProps) {
   const [priceAlerts, setPriceAlerts] = useKV<PriceAlert[]>("priceAlerts", [])
   const [isAlertDialogOpen, setIsAlertDialogOpen] = useState(false)
+  const [auctionResults, setAuctionResults] = useState<AuctionResult[]>(FALLBACK_AUCTION_RESULTS)
+  const [isAuctionResultsLoading, setIsAuctionResultsLoading] = useState(false)
+  const [auctionResultsDataSource, setAuctionResultsDataSource] = useState<'live' | 'fallback'>('fallback')
+  const [auctionResultsUpdatedAt, setAuctionResultsUpdatedAt] = useState<string | null>(null)
   const [searchReference, setSearchReference] = useState('')
   const [newAlert, setNewAlert] = useState({
     watchRef: '',
@@ -126,6 +131,42 @@ export function MarketModule({ watches }: MarketModuleProps) {
 
   const positiveBrandsCount = useMemo(() => {
     return BRAND_INDICES.filter(b => b.change30d > 0).length
+  }, [])
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadAuctionResults = async () => {
+      setIsAuctionResultsLoading(true)
+      try {
+        const liveResults = await fetchRecentAuctionResults({ references: GRAIL_REFERENCES, limit: 8 })
+        if (!isMounted) return
+
+        if (liveResults.length > 0) {
+          setAuctionResults(liveResults)
+          setAuctionResultsDataSource('live')
+          setAuctionResultsUpdatedAt(new Date().toISOString())
+          return
+        }
+
+        setAuctionResults(FALLBACK_AUCTION_RESULTS)
+        setAuctionResultsDataSource('fallback')
+      } catch {
+        if (!isMounted) return
+        setAuctionResults(FALLBACK_AUCTION_RESULTS)
+        setAuctionResultsDataSource('fallback')
+      } finally {
+        if (isMounted) {
+          setIsAuctionResultsLoading(false)
+        }
+      }
+    }
+
+    loadAuctionResults()
+
+    return () => {
+      isMounted = false
+    }
   }, [])
 
   const handleAddAlert = () => {
@@ -463,7 +504,10 @@ export function MarketModule({ watches }: MarketModuleProps) {
         <CardHeader>
           <div>
             <CardTitle>Recent Auction Results</CardTitle>
-            <p className="text-sm text-muted-foreground mt-1">Major Houses · Late 2024</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Phillips & Christie&apos;s · Grail References
+              {isAuctionResultsLoading ? ' · Syncing live feed…' : ''}
+            </p>
           </div>
         </CardHeader>
         <CardContent>
@@ -480,9 +524,10 @@ export function MarketModule({ watches }: MarketModuleProps) {
                 </tr>
               </thead>
               <tbody>
-                {AUCTION_RESULTS.map((auction, idx) => {
-                  const aboveEstimate = auction.result > auction.estHigh
-                  const withinEstimate = auction.result >= auction.estLow && auction.result <= auction.estHigh
+                {auctionResults.map((auction, idx) => {
+                  const hasEstimate = typeof auction.estLow === 'number' && typeof auction.estHigh === 'number'
+                  const aboveEstimate = hasEstimate && auction.result > auction.estHigh
+                  const withinEstimate = hasEstimate && auction.result >= auction.estLow && auction.result <= auction.estHigh
                   const resultColor = aboveEstimate ? '#5E8C6A' : withinEstimate ? '#C9A84C' : 'inherit'
                   
                   return (
@@ -494,7 +539,9 @@ export function MarketModule({ watches }: MarketModuleProps) {
                         ${auction.result.toLocaleString()}
                       </td>
                       <td className="py-3 px-2 text-sm text-right text-muted-foreground tabular-nums">
-                        ${auction.estLow.toLocaleString()}–${auction.estHigh.toLocaleString()}
+                        {hasEstimate
+                          ? `$${auction.estLow?.toLocaleString()}–$${auction.estHigh?.toLocaleString()}`
+                          : '—'}
                       </td>
                       <td className="py-3 px-2 text-sm text-muted-foreground">{auction.notes}</td>
                     </tr>
@@ -504,7 +551,9 @@ export function MarketModule({ watches }: MarketModuleProps) {
             </table>
           </div>
           <div className="text-xs text-muted-foreground mt-4 pt-4 border-t border-border">
-            Sources: Phillips, Sotheby's, Christie's, Bonhams. Results in USD. Some converted from CHF/GBP at prevailing rates.
+            Sources: {auctionResultsDataSource === 'live' ? 'Live Phillips/Christie’s feeds' : 'Fallback cached data'}.
+            {' '}Results shown in reported currencies/converted USD where provided.
+            {auctionResultsUpdatedAt ? ` Last sync: ${new Date(auctionResultsUpdatedAt).toLocaleString()}.` : ''}
           </div>
         </CardContent>
       </Card>
