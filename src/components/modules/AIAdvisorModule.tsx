@@ -239,6 +239,7 @@ export function AIAdvisorModule({ watches, userId, preferredCurrency = "USD" }: 
       return
     }
     generateSignals()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [watches, preferredCurrency])
 
   useEffect(() => {

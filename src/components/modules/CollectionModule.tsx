@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Watch } from "@/lib/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -67,12 +67,24 @@ export function CollectionModule({
   const [searchQuery, setSearchQuery] = useState('')
   const [brandFilter, setBrandFilter] = useState<string>('all')
 
+  const handleAdd = useCallback(() => {
+    if (readOnly) return
+    setFormData({
+      condition: 'excellent',
+      category: 'dress',
+      hasBox: false,
+      hasPapers: false
+    })
+    setEditingWatch(null)
+    setIsAddOpen(true)
+  }, [readOnly])
+
   useEffect(() => {
     if (triggerAdd && !readOnly) {
       handleAdd()
       onTriggerComplete?.()
     }
-  }, [triggerAdd, readOnly, onTriggerComplete])
+  }, [triggerAdd, readOnly, onTriggerComplete, handleAdd])
 
   const filteredWatches = watches.filter(watch => {
     const matchesSearch = searchQuery === '' || 
@@ -86,18 +98,6 @@ export function CollectionModule({
     
     return matchesSearch && matchesBrand
   })
-
-  const handleAdd = () => {
-    if (readOnly) return
-    setFormData({
-      condition: 'excellent',
-      category: 'dress',
-      hasBox: false,
-      hasPapers: false
-    })
-    setEditingWatch(null)
-    setIsAddOpen(true)
-  }
 
   const handleEdit = (watch: Watch) => {
     if (readOnly) return
