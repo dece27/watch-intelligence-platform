@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Watch } from "@/lib/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -129,10 +129,11 @@ export function PortfolioModule({ watches }: PortfolioModuleProps) {
       const nextValues: Record<string, number> = {}
       for (const result of results) {
         if (result.status !== 'fulfilled') continue
-        if (typeof result.value.value !== 'number' || !Number.isFinite(result.value.value) || result.value.value <= 0) {
+        const marketValue = result.value.value
+        if (typeof marketValue !== 'number' || !Number.isFinite(marketValue) || marketValue <= 0) {
           continue
         }
-        nextValues[result.value.watchId] = result.value.value
+        nextValues[result.value.watchId] = marketValue
       }
 
       setLiveMarketValues(nextValues)
@@ -145,9 +146,9 @@ export function PortfolioModule({ watches }: PortfolioModuleProps) {
     }
   }, [watches])
 
-  const getMarketValue = (watch: Watch): number => {
+  const getMarketValue = useCallback((watch: Watch): number => {
     return liveMarketValues[watch.id] ?? watch.currentValue ?? getEstimatedMarketValue(watch)
-  }
+  }, [liveMarketValues])
 
   const watchesWithMetrics = useMemo(() => {
     return watches.map(watch => {
@@ -165,7 +166,7 @@ export function PortfolioModule({ watches }: PortfolioModuleProps) {
         holdPeriodDays: Math.ceil((new Date().getTime() - new Date(watch.purchaseDate).getTime()) / (1000 * 60 * 60 * 24))
       }
     })
-  }, [watches, liveMarketValues])
+  }, [watches, getMarketValue])
 
   const sortedWatches = useMemo(() => {
     return [...watchesWithMetrics].sort((a, b) => {
