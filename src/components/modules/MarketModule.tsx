@@ -162,13 +162,13 @@ const getTrendChange = (trend: number[], months: number) => {
 const formatTrend = (change: number) => `${change >= 0 ? '+' : ''}${change.toFixed(1)}%`
 const TREND_METRIC_STYLES = {
   positive: {
-    iconLabel: 'Positive trend',
+    iconLabelSuffix: 'positive trend',
     iconClassName: 'text-success',
     valueClassName: 'text-success',
     cardClassName: 'border-success/20 bg-success/5'
   },
   negative: {
-    iconLabel: 'Negative trend',
+    iconLabelSuffix: 'negative trend',
     iconClassName: 'text-destructive',
     valueClassName: 'text-destructive',
     cardClassName: 'border-destructive/20 bg-destructive/5'
@@ -597,9 +597,9 @@ export function MarketModule({ watches }: MarketModuleProps) {
                             {metric.label}
                           </div>
                           {isPositive ? (
-                            <TrendUp aria-label={trendMetricStyle.iconLabel} className={trendMetricStyle.iconClassName} size={18} weight="bold" />
+                            <TrendUp aria-label={`${metric.label} ${trendMetricStyle.iconLabelSuffix}`} className={trendMetricStyle.iconClassName} size={18} weight="bold" />
                           ) : (
-                            <TrendDown aria-label={trendMetricStyle.iconLabel} className={trendMetricStyle.iconClassName} size={18} weight="bold" />
+                            <TrendDown aria-label={`${metric.label} ${trendMetricStyle.iconLabelSuffix}`} className={trendMetricStyle.iconClassName} size={18} weight="bold" />
                           )}
                         </div>
                         <div className={`mt-3 text-2xl font-semibold tabular-nums ${trendMetricStyle.valueClassName}`}>
