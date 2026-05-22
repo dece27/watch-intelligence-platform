@@ -76,8 +76,8 @@ export interface Chrono24SearchParams {
 
 export const isChrono24WrapperConfigured = Boolean(CHRONO24_WRAPPER_BASE_URL)
 
-const assertChrono24Configured = () => {
-  if (!isChrono24WrapperConfigured) {
+function assertChrono24Configured(baseUrl: string | undefined): asserts baseUrl is string {
+  if (!baseUrl) {
     throw new Error(CHRONO24_CONFIG_ERROR_MESSAGE)
   }
 }
@@ -349,7 +349,7 @@ const requestEndpoint = async (
   endpoint: string,
   params: Chrono24SearchParams
 ): Promise<unknown> => {
-  assertChrono24Configured()
+  assertChrono24Configured(CHRONO24_WRAPPER_BASE_URL)
 
   const baseUrl = ensureTrailingSlash(CHRONO24_WRAPPER_BASE_URL)
   const url = new URL(normalizeEndpointPath(endpoint), baseUrl)
@@ -442,7 +442,7 @@ export async function searchChrono24Deals(params: Chrono24SearchParams): Promise
   // Fast-fail with a clear message when no API wrapper is configured so the
   // error shown in the UI is concise rather than the same message repeated
   // once per endpoint candidate.
-  assertChrono24Configured()
+  assertChrono24Configured(CHRONO24_WRAPPER_BASE_URL)
 
   const cachedDeals = readCachedDeals(params)
   if (cachedDeals && cachedDeals.length > 0) {
