@@ -1,5 +1,3 @@
-import axios, { type AxiosInstance, type AxiosRequestConfig, type AxiosResponse } from 'axios'
-
 export interface WatchChartsClientConfig {
   apiKey?: string
   baseURL?: string
@@ -49,7 +47,9 @@ export interface WatchChartsLookupInput {
 const DEFAULT_BASE_URL = 'https://api.watchcharts.com'
 
 export class WatchChartsClient {
-  private readonly client: AxiosInstance
+  private readonly baseURL: string
+  private readonly timeoutMs: number
+  private readonly headers: Record<string, string>
 
   constructor({
     apiKey = import.meta.env.VITE_WATCHCHARTS_API_KEY,
@@ -57,37 +57,57 @@ export class WatchChartsClient {
     timeoutMs = 15000,
     apiKeyHeader = 'X-API-Key',
   }: WatchChartsClientConfig = {}) {
-    this.client = axios.create({
-      baseURL,
-      timeout: timeoutMs,
-      headers: {
-        Accept: 'application/json',
-      },
-    })
+    this.baseURL = baseURL
+    this.timeoutMs = timeoutMs
+    this.headers = {
+      Accept: 'application/json',
+    }
 
     if (apiKey) {
-      this.client.defaults.headers.common[apiKeyHeader] = apiKey
+      this.headers[apiKeyHeader] = apiKey
     }
   }
 
-  async request<T>(config: AxiosRequestConfig): Promise<T> {
-    const response: AxiosResponse<T> = await this.client.request<T>(config)
-    return response.data
+  private async request<T>(method: string, path: string, params?: Record<string, any>): Promise<T> {
+    const url = new URL(path, this.baseURL)
+    
+    if (params && method === 'GET') {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          url.searchParams.append(key, String(value))
+        }
+      })
+    }
+
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs)
+
+    try {
+      const response = await fetch(url.toString(), {
+        method,
+        headers: this.headers,
+        signal: controller.signal,
+      })
+
+      clearTimeout(timeoutId)
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+
+      return await response.json()
+    } catch (error) {
+      clearTimeout(timeoutId)
+      throw error
+    }
   }
 
   async searchWatches(params: WatchChartsSearchParams): Promise<WatchChartsSearchResponse> {
-    return this.request<WatchChartsSearchResponse>({
-      method: 'GET',
-      url: '/watches/search',
-      params,
-    })
+    return this.request<WatchChartsSearchResponse>('GET', '/watches/search', params)
   }
 
   async getEstimatedValue(watchId: string): Promise<WatchChartsEstimateResponse> {
-    return this.request<WatchChartsEstimateResponse>({
-      method: 'GET',
-      url: `/watches/${watchId}/estimate`,
-    })
+    return this.request<WatchChartsEstimateResponse>('GET', `/watches/${watchId}/estimate`)
   }
 
   async getMarketValue(input: WatchChartsLookupInput): Promise<number | null> {

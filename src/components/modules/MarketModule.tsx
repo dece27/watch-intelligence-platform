@@ -559,8 +559,8 @@ export function MarketModule({ watches }: MarketModuleProps) {
               <tbody>
                 {auctionResults.map((auction, idx) => {
                   const hasEstimate = typeof auction.estLow === 'number' && typeof auction.estHigh === 'number'
-                  const aboveEstimate = hasEstimate && auction.result > auction.estHigh
-                  const withinEstimate = hasEstimate && !aboveEstimate && auction.result >= auction.estLow
+                  const aboveEstimate = hasEstimate && auction.result > (auction.estHigh ?? 0)
+                  const withinEstimate = hasEstimate && !aboveEstimate && auction.result >= (auction.estLow ?? 0)
                   const resultColor = aboveEstimate ? '#5E8C6A' : withinEstimate ? '#C9A84C' : 'inherit'
                   
                   return (
@@ -573,7 +573,7 @@ export function MarketModule({ watches }: MarketModuleProps) {
                       </td>
                       <td className="py-3 px-2 text-sm text-right text-muted-foreground tabular-nums">
                         {hasEstimate
-                          ? `$${auction.estLow.toLocaleString()}–$${auction.estHigh.toLocaleString()}`
+                          ? `$${(auction.estLow ?? 0).toLocaleString()}–$${(auction.estHigh ?? 0).toLocaleString()}`
                           : '—'}
                       </td>
                       <td className="py-3 px-2 text-sm text-muted-foreground">{auction.notes}</td>

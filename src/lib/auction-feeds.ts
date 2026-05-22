@@ -161,13 +161,13 @@ function normalizeXmlItems(rawXml: string, house: string): AuctionResult[] {
         date,
         lot: title,
         result,
-        estLow: estimateRange.low,
-        estHigh: estimateRange.high,
+        estLow: estimateRange.low ?? undefined,
+        estHigh: estimateRange.high ?? undefined,
         notes: description || 'Live auction feed',
         sourceUrl,
       } satisfies AuctionResult
     })
-    .filter((item): item is AuctionResult => item !== null)
+    .filter((item): item is NonNullable<typeof item> => item !== null) as AuctionResult[]
 }
 
 async function fetchFeed(feed: FeedConfig): Promise<AuctionResult[]> {

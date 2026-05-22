@@ -58,7 +58,7 @@ function sanitizeWatchImageUrl(imageUrl?: string): string | undefined {
 
 function App() {
   const [persistedUser, setPersistedUser] = useKV<User | null>("currentUser", null)
-  const [currentUser, setCurrentUser] = useState<User | null>(persistedUser)
+  const [currentUser, setCurrentUser] = useState<User | null>(persistedUser ?? null)
   const [activeModule, setActiveModule] = useState('collection')
   const [showWelcome, setShowWelcome] = useState(true)
   const [triggerAddWatch, setTriggerAddWatch] = useState(false)
@@ -99,15 +99,15 @@ function App() {
               }
 
               if (isWatchPhotoRef(rawImage)) {
-                let storedPhoto: string | null = null
+                let storedPhoto: string | undefined = undefined
                 try {
-                  storedPhoto = await window.spark.kv.get<string>(getWatchPhotoKey(currentUser.id, watch.id))
+                  storedPhoto = await window.spark.kv.get<string>(getWatchPhotoKey(currentUser.id, watch.id)) ?? undefined
                 } catch (error) {
                   console.error(`Error loading watch photo for ${watch.id}:`, error)
                 }
                 return {
                   ...watch,
-                  imageUrl: sanitizeWatchImageUrl(storedPhoto || undefined),
+                  imageUrl: sanitizeWatchImageUrl(storedPhoto),
                 }
               }
 

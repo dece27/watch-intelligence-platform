@@ -34,7 +34,7 @@ async function deriveHash(passphrase: string, salt: Uint8Array, iterations = ITE
   const derivedBits = await crypto.subtle.deriveBits(
     {
       name: AUTH_ALGORITHM,
-      salt,
+      salt: salt as BufferSource,
       iterations,
       hash: HASH_ALGORITHM,
     },

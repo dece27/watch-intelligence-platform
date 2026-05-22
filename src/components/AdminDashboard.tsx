@@ -70,9 +70,9 @@ export function AdminDashboard() {
       } satisfies AdminUserStats
     }))
 
-    const rows = rowsWithNulls.filter((row): row is AdminUserStats => row !== null)
+    const rows = rowsWithNulls.filter((row): row is NonNullable<typeof row> => row !== null) as AdminUserStats[]
 
-    rows.sort((a, b) => b.createdAtTimestamp - a.createdAtTimestamp)
+    rows.sort((a, b) => (b.createdAtTimestamp ?? 0) - (a.createdAtTimestamp ?? 0))
     setStats(rows)
     setIsLoading(false)
   }
