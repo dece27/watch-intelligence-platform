@@ -32,3 +32,9 @@ pids
 .devcontainer/
 
 .spark-workbench-id
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
