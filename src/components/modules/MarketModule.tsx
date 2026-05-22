@@ -780,6 +780,7 @@ export function MarketModule({ watches }: MarketModuleProps) {
                             href={auction.sourceUrl}
                             target="_blank"
                             rel="noopener noreferrer"
+                            aria-label={`Open ${getAuctionSourceLabel(auction)} auction result in a new tab`}
                             className="text-primary underline underline-offset-4 hover:text-primary/80"
                           >
                             {getAuctionSourceLabel(auction)}
