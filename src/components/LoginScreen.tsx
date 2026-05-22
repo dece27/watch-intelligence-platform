@@ -40,8 +40,8 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const [isBootstrapped, setIsBootstrapped] = useState(false)
-  const normalizedLoginIdentifier = email.trim().toLowerCase()
-  const isAdministratorLogin = normalizedLoginIdentifier === ADMIN_LOGIN_IDENTIFIER
+  const normalizedEmailInput = email.trim().toLowerCase()
+  const isAdministratorLogin = normalizedEmailInput === ADMIN_LOGIN_IDENTIFIER
 
   useEffect(() => {
     ensureDefaultAccount()
@@ -113,16 +113,16 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
     e.preventDefault()
 
     setError("")
-    const trimmedEmail = email.trim().toLowerCase()
+    const normalizedLoginIdentifier = email.trim().toLowerCase()
     const trimmedName = name.trim()
     const trimmedVaultName = vaultName.trim()
 
-    if (!trimmedEmail || !password.trim()) {
+    if (!normalizedLoginIdentifier || !password.trim()) {
       setError("Email and passphrase are required.")
       return
     }
 
-    if (!isValidLoginIdentifier(trimmedEmail)) {
+    if (!isValidLoginIdentifier(normalizedLoginIdentifier)) {
       setError("Enter a valid email address.")
       return
     }
@@ -131,7 +131,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
 
     try {
       await ensureDefaultAccount()
-      const emailKey = `user_email_${trimmedEmail}`
+      const emailKey = `user_email_${normalizedLoginIdentifier}`
       const existingUserId = await window.spark.kv.get<string>(emailKey)
 
       if (existingUserId) {
@@ -176,8 +176,8 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
         return
       }
 
-      if (trimmedEmail === ADMIN_LOGIN_IDENTIFIER) {
-        setError("Administrator account could not be loaded. Please refresh and try again.")
+      if (normalizedLoginIdentifier === ADMIN_LOGIN_IDENTIFIER) {
+        setError("Administrator account not found. Please verify system configuration or contact support.")
         return
       }
 
@@ -201,7 +201,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
       const user: User = {
         id: userId,
         name: trimmedName,
-        email: trimmedEmail,
+        email: normalizedLoginIdentifier,
         vaultName: trimmedVaultName,
         createdAt,
       }
