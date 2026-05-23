@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils"
 import {
   Drawer,
   DrawerContent,
+  DrawerDescription,
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer"
@@ -97,6 +98,9 @@ export function MobileNav({ activeModule, onModuleChange, isAdmin = false }: Mob
         <DrawerContent className="pb-safe">
           <DrawerHeader className="pb-2">
             <DrawerTitle className="text-sm text-muted-foreground font-medium">More</DrawerTitle>
+            <DrawerDescription className="sr-only">
+              Additional navigation items including market, appraisal, and administrator modules.
+            </DrawerDescription>
           </DrawerHeader>
           <div className="px-4 pb-6 grid grid-cols-3 gap-3">
             {visibleMoreItems.map((item) => (
