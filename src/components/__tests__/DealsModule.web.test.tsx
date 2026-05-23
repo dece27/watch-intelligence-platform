@@ -5,6 +5,7 @@ import { createRoot, Root } from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { DealsModule } from "@/components/modules/DealsModule"
 import type { DealsPreferences, UserPreferences, Watch } from "@/lib/types"
+import type { ReactNode } from "react"
 
 vi.mock("@/lib/chrono24-client", () => ({
   searchChrono24Deals: vi.fn(async () => []),
@@ -14,6 +15,21 @@ vi.mock("@/lib/chrono24-client", () => ({
 
 vi.mock("@/lib/adminAnalytics", () => ({
   callTrackedLlm: vi.fn(async () => `VERDICT: GOOD DEAL\nREASONING: This listing is competitively priced.\nRISK: Verify service history.`),
+}))
+
+vi.mock("@/components/ui/dialog", () => ({
+  Dialog: ({ children, open }: { children: ReactNode; open?: boolean }) => (open ? <div>{children}</div> : null),
+  DialogContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  DialogTitle: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  DialogDescription: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+}))
+
+vi.mock("recharts", () => ({
+  ResponsiveContainer: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  LineChart: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  Line: () => <div />,
+  XAxis: () => <div />,
+  YAxis: () => <div />,
 }))
 
 class ResizeObserverMock {
