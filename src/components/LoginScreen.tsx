@@ -86,6 +86,11 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
             setIsReturningUser(false)
           }
         }
+      } catch {
+        // KV lookup failures are non-fatal; the submit handler will re-verify.
+        if (!isCancelled) {
+          setIsReturningUser(false)
+        }
       } finally {
         if (!isCancelled) {
           setIsCheckingAccount(false)
@@ -130,7 +135,12 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
     setIsLoading(true)
 
     try {
-      await ensureDefaultAccount()
+      try {
+        await ensureDefaultAccount()
+      } catch (bootstrapError) {
+        console.error("ensureDefaultAccount failed during login, attempting login with existing data:", bootstrapError)
+        // Non-fatal: if the account was already set up, login can still proceed.
+      }
       const emailKey = `user_email_${normalizedLoginIdentifier}`
       const existingUserId = await window.spark.kv.get<string>(emailKey)
 
@@ -219,7 +229,8 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
       await ensureUserIndexed(userId)
 
       await onLogin(user, rememberMe)
-    } catch {
+    } catch (err) {
+      console.error("Login error:", err)
       setError("Unable to complete login. Please try again.")
     } finally {
       setIsLoading(false)
