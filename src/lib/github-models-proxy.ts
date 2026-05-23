@@ -55,7 +55,9 @@ export async function callGitHubModelsProxy({
   )
 
   if (error) {
-    throw new Error(`GitHub Models proxy request failed: ${error.message}`, { cause: error })
+    const wrappedError = new Error(`GitHub Models proxy request failed: ${error.message}`)
+    ;(wrappedError as Error & { cause?: unknown }).cause = error
+    throw wrappedError
   }
 
   if (data?.error) {

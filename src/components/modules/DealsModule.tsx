@@ -17,6 +17,7 @@ import {
 } from "@/lib/chrono24-client"
 import { convertCurrency, formatCurrency, normalizeCurrency } from "@/lib/currency"
 import { FALLBACK_DEALS } from "@/lib/fallback-deals"
+import { toast } from "sonner"
 
 interface DealsModuleProps {
   watches: Watch[]

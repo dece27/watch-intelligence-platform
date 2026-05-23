@@ -23,9 +23,7 @@ export interface ActivePriceAlert extends PriceAlertRecord {
   marketRecordedAt?: string
 }
 
-export interface PriceAlertInput extends Omit<PriceAlertRecord, 'createdAt' | 'updatedAt'> {
-  id?: string
-}
+export type PriceAlertInput = Omit<PriceAlertRecord, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }
 
 function throwIfError(error: PostgrestError | null): asserts error is null {
   if (error) {
