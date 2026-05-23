@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Dialog, DialogContent } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { toast } from "sonner"
 import { Heart, Plus, Copy, Check } from "@phosphor-icons/react"
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer } from "recharts"
@@ -173,6 +173,8 @@ Provide:
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-5xl max-h-[90vh] p-0 bg-background/95 backdrop-blur-xl border-white/[0.08]">
+        <DialogTitle className="sr-only">{deal.brand} {deal.model} deal details</DialogTitle>
+        <DialogDescription className="sr-only">Detailed pricing, AI analysis, market intelligence, and suggested offer for the selected deal.</DialogDescription>
         <div className="max-h-[85vh] overflow-y-auto px-6 py-6 space-y-6">
           <div>
             <h2 className="text-xl md:text-2xl font-semibold mb-1">
