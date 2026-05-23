@@ -65,14 +65,19 @@ function sha256(value) {
 }
 
 function stripHtml(value) {
+  const htmlEntities = {
+    '&nbsp;': ' ',
+    '&amp;': '&',
+    '&lt;': '<',
+    '&gt;': '>',
+    '&quot;': '"',
+    '&#039;': "'",
+    '&apos;': "'",
+  }
+
   return (value || '')
     .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#039;|&apos;/gi, "'")
+    .replace(/&[a-zA-Z0-9#]+;/g, (entity) => htmlEntities[entity.toLowerCase()] ?? ' ')
     .replace(/\s+/g, ' ')
     .trim()
 }
