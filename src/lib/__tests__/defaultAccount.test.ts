@@ -61,6 +61,61 @@ describe("ensureDefaultAccount", () => {
     expect(ensureUserIndexedMock).toHaveBeenCalledWith(userId)
   })
 
+  it("skips re-hashing when a valid complete auth record already exists", async () => {
+    const { ensureDefaultAccount, DEFAULT_ACCOUNT_EMAIL } = await import("@/lib/defaultAccount")
+    const store: KvStore = new Map()
+    ;(globalThis as { window?: unknown }).window = createSparkWindow(store)
+
+    // First call creates the account and hashes the password.
+    await ensureDefaultAccount()
+
+    const emailKey = `user_email_${DEFAULT_ACCOUNT_EMAIL.toLowerCase()}`
+    const userId = store.get(emailKey) as string
+    const authAfterFirstCall = store.get(`auth_${userId}`) as AuthRecord
+    expect(authAfterFirstCall.salt).toBeDefined()
+
+    // Mutate the auth record so we can detect whether it was overwritten.
+    const sentinel = "sentinel-value"
+    store.set(`auth_${userId}`, { ...authAfterFirstCall, lastLoginAt: sentinel })
+
+    // Second call should take the early-exit path and NOT overwrite the auth.
+    await ensureDefaultAccount()
+
+    const authAfterSecondCall = store.get(`auth_${userId}`) as AuthRecord
+    expect(authAfterSecondCall.lastLoginAt).toBe(sentinel)
+  })
+
+  it("re-initialises the auth record when it exists but is missing required fields", async () => {
+    const { ensureDefaultAccount, DEFAULT_ACCOUNT_EMAIL } = await import("@/lib/defaultAccount")
+    const userId = "existing-admin-id"
+    const normalizedEmail = DEFAULT_ACCOUNT_EMAIL.toLowerCase()
+    const store: KvStore = new Map([
+      [`user_email_${normalizedEmail}`, userId],
+      [
+        `user_${userId}`,
+        {
+          id: userId,
+          name: "Administrator",
+          email: normalizedEmail,
+          vaultName: "WatchVault",
+          createdAt: "2025-01-01T00:00:00.000Z",
+        } satisfies User,
+      ],
+      // Malformed auth record: exists (truthy) but missing salt, passwordHash, and iterations
+      [`auth_${userId}`, { userId } satisfies Partial<AuthRecord>],
+    ])
+    ;(globalThis as { window?: unknown }).window = createSparkWindow(store)
+
+    await ensureDefaultAccount()
+
+    const auth = store.get(`auth_${userId}`) as AuthRecord
+    // Auth should have been repaired with the correct password
+    expect(auth.passwordHash).toBeDefined()
+    expect(auth.salt).toBeDefined()
+    expect(auth.iterations).toBeGreaterThan(0)
+    await expect(verifyPassword("WatchVault", auth)).resolves.toBe(true)
+  })
+
   it("deletes legacy admin users during bootstrap", async () => {
     const { ensureDefaultAccount, DEFAULT_ACCOUNT_EMAIL } = await import("@/lib/defaultAccount")
     const legacyUserId = "legacy-admin-id"

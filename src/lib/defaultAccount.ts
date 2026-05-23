@@ -56,14 +56,18 @@ export async function ensureDefaultAccount() {
 
   if (userId && existingUser) {
     const existingAuth = await window.spark.kv.get<AuthRecord>(`auth_${userId}`)
-    if (existingAuth) {
-      // Account is fully set up — do the minimum required work and return early.
-      // Skipping hashPassword (210,000 PBKDF2 iterations) on every page load
-      // eliminates the performance hit that caused intermittent bootstrap failures.
+    if (existingAuth && existingAuth.passwordHash && existingAuth.salt && existingAuth.iterations) {
+      // Account is fully set up with a valid auth record — do the minimum required
+      // work and return early.  Skipping hashPassword (210,000 PBKDF2 iterations)
+      // on every page load eliminates the performance hit that caused intermittent
+      // bootstrap failures.
       await window.spark.kv.set(PROTECTED_ADMIN_USER_ID_KEY, userId)
       await ensureUserIndexed(userId)
       return
     }
+    // Auth record is missing or incomplete (e.g. legacy data without salt/hash/
+    // iterations).  Fall through to full re-initialization so the account is
+    // repaired and the admin can log in with the correct password.
   }
 
   // Account is new or incomplete — perform full initialisation.
