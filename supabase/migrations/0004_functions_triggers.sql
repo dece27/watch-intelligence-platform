@@ -214,7 +214,7 @@ create or replace function public.record_ai_usage(
 )
 returns setof public.ai_usage_logs
 language plpgsql
-security invoker
+security definer
 set search_path = public
 as $$
 declare
