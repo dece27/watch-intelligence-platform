@@ -436,7 +436,7 @@ function App() {
         </main>
       </div>
 
-      {isMobile && <MobileNav activeModule={activeModule} onModuleChange={setActiveModule} />}
+      {isMobile && <MobileNav activeModule={activeModule} onModuleChange={setActiveModule} isAdmin={isAdmin} />}
 
       <WelcomeModal
         open={watchesLoaded && watchList.length === 0 && showWelcome}
