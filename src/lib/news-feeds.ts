@@ -91,16 +91,14 @@ async function sha256Hash(input: string): Promise<string> {
 }
 
 function cleanHtml(html: string): string {
-  return html
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#039;/g, "'")
-    .replace(/&nbsp;/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
+  // Strip HTML tags first, then decode entities via DOMParser (single-pass, no double-unescape risk)
+  const stripped = html.replace(/<[^>]+>/g, ' ')
+  try {
+    const doc = new DOMParser().parseFromString(stripped, 'text/html')
+    return (doc.body.textContent ?? stripped).replace(/\s+/g, ' ').trim()
+  } catch {
+    return stripped.replace(/\s+/g, ' ').trim()
+  }
 }
 
 function extractImageFromItem(item: Element, rawContent: string): string | null {
