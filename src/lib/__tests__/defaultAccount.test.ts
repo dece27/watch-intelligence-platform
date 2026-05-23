@@ -19,6 +19,10 @@ type KvStore = Map<string, unknown>
 function createSparkWindow(store: KvStore) {
   return {
     spark: {
+      llmPrompt: (strings: string[], ...values: unknown[]) =>
+        strings.reduce((result, segment, index) => result + segment + String(values[index] ?? ""), ""),
+      llm: async () => "",
+      user: async () => null,
       kv: {
         get: async <T,>(key: string) => store.get(key) as T | undefined,
         set: async <T,>(key: string, value: T) => {
@@ -89,7 +93,7 @@ describe("ensureDefaultAccount", () => {
     const { ensureDefaultAccount, DEFAULT_ACCOUNT_EMAIL } = await import("@/lib/defaultAccount")
     const userId = "existing-admin-id"
     const normalizedEmail = DEFAULT_ACCOUNT_EMAIL.toLowerCase()
-    const store: KvStore = new Map([
+    const storeEntries: Array<[string, unknown]> = [
       [`user_email_${normalizedEmail}`, userId],
       [
         `user_${userId}`,
@@ -103,7 +107,8 @@ describe("ensureDefaultAccount", () => {
       ],
       // Malformed auth record: exists (truthy) but missing salt, passwordHash, and iterations
       [`auth_${userId}`, { userId } satisfies Partial<AuthRecord>],
-    ])
+    ]
+    const store: KvStore = new Map(storeEntries)
     ;(globalThis as { window?: unknown }).window = createSparkWindow(store)
 
     await ensureDefaultAccount()
@@ -120,7 +125,7 @@ describe("ensureDefaultAccount", () => {
     const { ensureDefaultAccount, DEFAULT_ACCOUNT_EMAIL } = await import("@/lib/defaultAccount")
     const legacyUserId = "legacy-admin-id"
     const legacyUserEmail = "dec.davide@gmail.com"
-    const store: KvStore = new Map([
+    const storeEntries: Array<[string, unknown]> = [
       ["all_user_ids", [legacyUserId]],
       [
         `user_${legacyUserId}`,
@@ -137,7 +142,8 @@ describe("ensureDefaultAccount", () => {
       [`watches_${legacyUserId}`, []],
       [`ai_usage_${legacyUserId}`, { userId: legacyUserId, aiTokensUsed: 0, aiRequestsCount: 0 }],
       [`vaultMetadata_${legacyUserId}`, { userId: legacyUserId }],
-    ])
+    ]
+    const store: KvStore = new Map(storeEntries)
     ;(globalThis as { window?: unknown }).window = createSparkWindow(store)
 
     await ensureDefaultAccount()

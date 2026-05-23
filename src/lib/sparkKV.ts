@@ -211,7 +211,7 @@ async function deleteFallbackValue(key: string): Promise<void> {
   }
 }
 
-function joinPrompt(strings: TemplateStringsArray, values: unknown[]): string {
+function joinPrompt(strings: string[], values: unknown[]): string {
   let result = ""
   for (let index = 0; index < strings.length; index += 1) {
     result += strings[index]

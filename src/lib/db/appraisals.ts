@@ -57,7 +57,7 @@ function toInsert(appraisal: AppraisalInput): TableInsert<'appraisals'> {
   }
 }
 
-export async function listAppraisals(client: Pick<SupabaseClient<Database>, 'from'>, userId: string): Promise<AppraisalRecord[]> {
+export async function listAppraisals(client: Pick<SupabaseClient<any>, 'from'>, userId: string): Promise<AppraisalRecord[]> {
   const { data, error } = await client
     .from('appraisals')
     .select('*')
@@ -69,7 +69,7 @@ export async function listAppraisals(client: Pick<SupabaseClient<Database>, 'fro
 }
 
 export async function createAppraisal(
-  client: Pick<SupabaseClient<Database>, 'from'>,
+  client: Pick<SupabaseClient<any>, 'from'>,
   appraisal: AppraisalInput,
 ): Promise<AppraisalRecord> {
   const { data, error } = await client

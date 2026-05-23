@@ -154,7 +154,7 @@ function mapShareToken(row: TableRow<'share_tokens'>): ShareTokenRecord {
   }
 }
 
-export async function getUserProfile(client: Pick<SupabaseClient<Database>, 'from'>, userId: string): Promise<ProfileRecord | null> {
+export async function getUserProfile(client: Pick<SupabaseClient<any>, 'from'>, userId: string): Promise<ProfileRecord | null> {
   const { data, error } = await client
     .from('profiles')
     .select('*')
@@ -165,7 +165,7 @@ export async function getUserProfile(client: Pick<SupabaseClient<Database>, 'fro
   return data ? mapProfile(data) : null
 }
 
-export async function upsertUserProfile(client: Pick<SupabaseClient<Database>, 'from'>, profile: ProfileInput): Promise<ProfileRecord> {
+export async function upsertUserProfile(client: Pick<SupabaseClient<any>, 'from'>, profile: ProfileInput): Promise<ProfileRecord> {
   const { data, error } = await client
     .from('profiles')
     .upsert(toProfileInsert(profile), { onConflict: 'id' })
@@ -177,7 +177,7 @@ export async function upsertUserProfile(client: Pick<SupabaseClient<Database>, '
 }
 
 export async function updateUserProfile(
-  client: Pick<SupabaseClient<Database>, 'from'>,
+  client: Pick<SupabaseClient<any>, 'from'>,
   userId: string,
   profile: Partial<ProfileInput>,
 ): Promise<ProfileRecord> {
@@ -192,7 +192,7 @@ export async function updateUserProfile(
   return mapProfile(data)
 }
 
-export async function getSubscription(client: Pick<SupabaseClient<Database>, 'from'>, userId: string): Promise<SubscriptionRecord | null> {
+export async function getSubscription(client: Pick<SupabaseClient<any>, 'from'>, userId: string): Promise<SubscriptionRecord | null> {
   const { data, error } = await client
     .from('subscriptions')
     .select('*')
@@ -204,7 +204,7 @@ export async function getSubscription(client: Pick<SupabaseClient<Database>, 'fr
 }
 
 export async function getUserPreferences(
-  client: Pick<SupabaseClient<Database>, 'from'>,
+  client: Pick<SupabaseClient<any>, 'from'>,
   userId: string,
 ): Promise<UserPreferencesRecord | null> {
   const { data, error } = await client
@@ -218,7 +218,7 @@ export async function getUserPreferences(
 }
 
 export async function upsertUserPreferences(
-  client: Pick<SupabaseClient<Database>, 'from'>,
+  client: Pick<SupabaseClient<any>, 'from'>,
   preferences: Omit<UserPreferencesRecord, 'updatedAt'>,
 ): Promise<UserPreferencesRecord> {
   const { data, error } = await client
@@ -244,7 +244,7 @@ export async function upsertUserPreferences(
 }
 
 export async function createShareToken(
-  client: Pick<SupabaseClient<Database>, 'rpc'>,
+  client: Pick<SupabaseClient<any>, 'rpc'>,
   options?: { hidePrices?: boolean; expiresAt?: string },
 ): Promise<ShareTokenRecord> {
   const { data, error } = await client.rpc('create_share_token', {
@@ -262,7 +262,7 @@ export async function createShareToken(
 }
 
 export async function getSharedCollection(
-  client: Pick<SupabaseClient<Database>, 'rpc'>,
+  client: Pick<SupabaseClient<any>, 'rpc'>,
   token: string,
 ): Promise<SharedCollectionRecord | null> {
   const { data, error } = await client.rpc('get_shared_collection', { p_token: token })

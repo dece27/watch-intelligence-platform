@@ -26,7 +26,7 @@ export interface DealListingRecord {
   updatedAt: string
 }
 
-export interface DealListingInput extends Omit<DealListingRecord, 'dealScore' | 'createdAt' | 'updatedAt'> {
+export interface DealListingInput extends Omit<DealListingRecord, 'id' | 'dealScore' | 'createdAt' | 'updatedAt'> {
   id?: string
 }
 
@@ -108,7 +108,7 @@ export function getDealCacheKey(userId: string, brand = 'all'): string {
 }
 
 export async function listDealListings(
-  client: Pick<SupabaseClient<Database>, 'from'>,
+  client: Pick<SupabaseClient<any>, 'from'>,
   limit = 50,
 ): Promise<DealListingRecord[]> {
   const { data, error } = await client
@@ -124,7 +124,7 @@ export async function listDealListings(
 }
 
 export async function upsertDealListings(
-  client: Pick<SupabaseClient<Database>, 'from'>,
+  client: Pick<SupabaseClient<any>, 'from'>,
   listings: DealListingInput[],
 ): Promise<DealListingRecord[]> {
   const { data, error } = await client
@@ -137,7 +137,7 @@ export async function upsertDealListings(
 }
 
 export async function saveDeal(
-  client: Pick<SupabaseClient<Database>, 'from'>,
+  client: Pick<SupabaseClient<any>, 'from'>,
   userId: string,
   listingId: string,
   listingSnapshot: Json,
@@ -152,7 +152,7 @@ export async function saveDeal(
   return mapSavedDeal(data)
 }
 
-export async function listSavedDeals(client: Pick<SupabaseClient<Database>, 'from'>, userId: string): Promise<SavedDealRecord[]> {
+export async function listSavedDeals(client: Pick<SupabaseClient<any>, 'from'>, userId: string): Promise<SavedDealRecord[]> {
   const { data, error } = await client
     .from('saved_deals')
     .select('*')
@@ -163,7 +163,7 @@ export async function listSavedDeals(client: Pick<SupabaseClient<Database>, 'fro
   return (data ?? []).map(mapSavedDeal)
 }
 
-export async function removeSavedDeal(client: Pick<SupabaseClient<Database>, 'from'>, userId: string, listingId: string): Promise<void> {
+export async function removeSavedDeal(client: Pick<SupabaseClient<any>, 'from'>, userId: string, listingId: string): Promise<void> {
   const { error } = await client
     .from('saved_deals')
     .delete()

@@ -3,7 +3,7 @@ import { Watch } from "@/lib/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
+import { PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, type PieLabelRenderProps } from 'recharts'
 import { TrendUp, TrendDown } from "@phosphor-icons/react"
 import { WhatIfSellCalculator } from "@/components/WhatIfSellCalculator"
 import { TopStoriesWidget } from "@/components/TopStoriesWidget"
@@ -348,7 +348,7 @@ export function PortfolioModule({ watches, preferredCurrency = "USD", onNavigate
                   cx="50%"
                   cy="50%"
                   labelLine={false}
-                  label={({ brand, percent }) => `${brand}: ${(percent * 100).toFixed(0)}%`}
+                  label={({ name, percent }: PieLabelRenderProps) => `${name}: ${(((percent ?? 0) * 100)).toFixed(0)}%`}
                   outerRadius={100}
                   fill="#8884d8"
                   dataKey="value"

@@ -1,5 +1,5 @@
 import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js'
-import type { Database, TableRow } from '@/lib/supabase/types'
+import type { TableRow } from '@/lib/supabase/types'
 
 export interface AiUsageLogRecord {
   id: string
@@ -29,7 +29,7 @@ function mapUsage(row: TableRow<'ai_usage_logs'>): AiUsageLogRecord {
   }
 }
 
-export async function listAiUsageLogs(client: Pick<SupabaseClient<Database>, 'from'>, userId: string): Promise<AiUsageLogRecord[]> {
+export async function listAiUsageLogs(client: Pick<SupabaseClient<any>, 'from'>, userId: string): Promise<AiUsageLogRecord[]> {
   const { data, error } = await client
     .from('ai_usage_logs')
     .select('*')
@@ -42,7 +42,7 @@ export async function listAiUsageLogs(client: Pick<SupabaseClient<Database>, 'fr
 }
 
 export async function recordAiUsage(
-  client: Pick<SupabaseClient<Database>, 'rpc'>,
+  client: Pick<SupabaseClient<any>, 'rpc'>,
   callType: string,
   tokens?: number,
   usageDate?: string,
