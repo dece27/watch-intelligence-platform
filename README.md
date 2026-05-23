@@ -96,7 +96,27 @@ Available scripts:
 - `npm run lint` — run ESLint
 - `npm run build` — run TypeScript build and Vite production build
 - `npm run test` — run Vitest unit tests
+- `npm run db:start` — start the local Supabase stack
+- `npm run db:stop` — stop the local Supabase stack
+- `npm run db:reset` — reset the local Supabase database
+- `npm run db:migrate` — push local Supabase migrations
+- `npm run db:types` — regenerate `src/lib/supabase/types.ts` from the local schema
+- `npm run test:sql` — run SQL-level Supabase tests
+- `npm run test:ts` — run Supabase TypeScript integration tests
+- `npm run test:all` — run both Supabase SQL and TypeScript test suites
 - `npm run preview` — preview production build
+
+### Local Supabase workflow
+
+After creating your local `.env.local`, you can use the built-in Supabase scripts
+to manage the schema and test suite:
+
+```bash
+npm run db:start
+npm run db:migrate
+npm run db:types
+npm run test:all
+```
 
 ### Chrono24 live deals setup (optional)
 
@@ -109,7 +129,7 @@ python server.py
 ```
 
 Then point the frontend to it. You can pass the variable inline or add it to a
-`.env.local` file in the project root:
+gitignored `.env.local` file in the project root:
 
 ```bash
 # inline
@@ -169,6 +189,14 @@ Unit tests are written with Vitest and live in `src/**/__tests__/`.
 
 ```bash
 npm run test
+```
+
+Supabase persistence also has dedicated SQL and TypeScript test suites:
+
+```bash
+npm run test:sql
+npm run test:ts
+npm run test:all
 ```
 
 The Chrono24 wrapper also has its own test suite:
