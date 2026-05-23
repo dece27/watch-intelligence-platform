@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react"
-import { useKV } from "@github/spark/hooks"
 import { Watch, MarketSignal, ChatMessage, Deal, UserPreferences, VaultMetadata } from "@/lib/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -13,6 +12,7 @@ import { callTrackedLlm } from "@/lib/adminAnalytics"
 import { searchChrono24Deals, isChrono24WrapperConfigured } from "@/lib/chrono24-client"
 import { formatCurrency } from "@/lib/currency"
 import { FALLBACK_DEALS } from "@/lib/fallback-deals"
+import { useKV } from "@/lib/useKV"
 
 interface AIAdvisorModuleProps {
   watches: Watch[]

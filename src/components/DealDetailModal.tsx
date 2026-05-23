@@ -5,9 +5,9 @@ import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { toast } from "sonner"
 import { Heart, Plus, Copy, Check } from "@phosphor-icons/react"
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer } from "recharts"
-import { useKV } from "@github/spark/hooks"
 import { callTrackedLlm } from "@/lib/adminAnalytics"
 import { formatCurrency } from "@/lib/currency"
+import { useKV } from "@/lib/useKV"
 
 interface Deal {
   id: string

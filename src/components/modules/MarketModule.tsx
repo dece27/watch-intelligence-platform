@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react"
-import { useKV } from "@github/spark/hooks"
 import { Watch, BrandIndex, PriceAlert } from "@/lib/types"
 import { AuctionResult, fetchRecentAuctionResults } from "@/lib/auction-feeds"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -13,6 +12,7 @@ import { TrendUp, TrendDown, Bell, X, MagnifyingGlass } from "@phosphor-icons/re
 import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend, CartesianGrid } from 'recharts'
 import { toast } from "sonner"
 import { formatCurrency } from "@/lib/currency"
+import { useKV } from "@/lib/useKV"
 
 interface MarketModuleProps {
   watches: Watch[]
