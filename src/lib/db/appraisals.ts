@@ -1,28 +1,21 @@
 import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js'
-import type { Database, TableInsert, TableRow } from '@/lib/supabase/types'
+import type { Database, Json, TableInsert, TableRow } from '@/lib/supabase/types'
 
 export interface AppraisalRecord {
   id: string
   userId: string
-  watchId: string
-  appraisedValue: number
-  replacementValue?: number
-  currency: string
-  appraisalText?: string
-  appraisalPayload: Record<string, unknown>
+  watchIds: string[]
+  purpose: Database['public']['Enums']['appraisal_purpose']
+  appraiserName?: string
+  pdfUrl?: string
+  storagePath?: string
+  totalValue?: number
+  currency?: string
+  reportData?: Json
   generatedAt: string
-  createdAt: string
 }
 
-export interface AppraisalInput {
-  id?: string
-  userId: string
-  watchId: string
-  appraisedValue: number
-  replacementValue?: number
-  currency?: string
-  appraisalText?: string
-  appraisalPayload?: Record<string, unknown>
+export interface AppraisalInput extends Omit<AppraisalRecord, 'generatedAt'> {
   generatedAt?: string
 }
 
@@ -36,14 +29,15 @@ function mapAppraisal(row: TableRow<'appraisals'>): AppraisalRecord {
   return {
     id: row.id,
     userId: row.user_id,
-    watchId: row.watch_id,
-    appraisedValue: row.appraised_value,
-    replacementValue: row.replacement_value ?? undefined,
-    currency: row.currency,
-    appraisalText: row.appraisal_text ?? undefined,
-    appraisalPayload: (row.appraisal_payload as Record<string, unknown>) ?? {},
+    watchIds: row.watch_ids,
+    purpose: row.purpose,
+    appraiserName: row.appraiser_name ?? undefined,
+    pdfUrl: row.pdf_url ?? undefined,
+    storagePath: row.storage_path ?? undefined,
+    totalValue: row.total_value ?? undefined,
+    currency: row.currency ?? undefined,
+    reportData: row.report_data ?? undefined,
     generatedAt: row.generated_at,
-    createdAt: row.created_at,
   }
 }
 
@@ -51,32 +45,25 @@ function toInsert(appraisal: AppraisalInput): TableInsert<'appraisals'> {
   return {
     id: appraisal.id,
     user_id: appraisal.userId,
-    watch_id: appraisal.watchId,
-    appraised_value: appraisal.appraisedValue,
-    replacement_value: appraisal.replacementValue ?? null,
+    watch_ids: appraisal.watchIds,
+    purpose: appraisal.purpose,
+    appraiser_name: appraisal.appraiserName ?? null,
+    pdf_url: appraisal.pdfUrl ?? null,
+    storage_path: appraisal.storagePath ?? null,
+    total_value: appraisal.totalValue ?? null,
     currency: appraisal.currency ?? 'USD',
-    appraisal_text: appraisal.appraisalText ?? null,
-    appraisal_payload: appraisal.appraisalPayload ?? {},
+    report_data: appraisal.reportData ?? null,
     generated_at: appraisal.generatedAt,
   }
 }
 
-export async function listAppraisals(
-  client: Pick<SupabaseClient<Database>, 'from'>,
-  userId: string,
-  watchId?: string,
-): Promise<AppraisalRecord[]> {
-  let query = client
+export async function listAppraisals(client: Pick<SupabaseClient<Database>, 'from'>, userId: string): Promise<AppraisalRecord[]> {
+  const { data, error } = await client
     .from('appraisals')
     .select('*')
     .eq('user_id', userId)
     .order('generated_at', { ascending: false })
 
-  if (watchId) {
-    query = query.eq('watch_id', watchId)
-  }
-
-  const { data, error } = await query
   throwIfError(error)
   return (data ?? []).map(mapAppraisal)
 }

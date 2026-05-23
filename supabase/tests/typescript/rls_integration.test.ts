@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { listPriceAlerts } from '@/lib/db/alerts'
 import { recordAiUsage } from '@/lib/db/ai-usage'
-import { getSharedCollection, saveSharedCollection } from '@/lib/db/user'
+import { createShareToken, getSharedCollection } from '@/lib/db/user'
 
 describe('RLS-oriented integration helpers', () => {
   it('keeps alert queries scoped to the active user id', async () => {
@@ -18,61 +18,68 @@ describe('RLS-oriented integration helpers', () => {
   it('records AI usage through the secured rpc entry point', async () => {
     const rpc = vi.fn().mockResolvedValue({
       data: [{
+        id: 'usage-1',
         user_id: 'user-1',
-        ai_tokens_used: 2048,
-        ai_requests_count: 3,
-        last_used_at: '2024-04-02T00:00:00.000Z',
-        created_at: '2024-04-01T00:00:00.000Z',
-        updated_at: '2024-04-02T00:00:00.000Z',
+        usage_date: '2024-04-02',
+        call_type: 'signal',
+        call_count: 3,
+        tokens_used: 2048,
+        created_at: '2024-04-02T00:00:00.000Z',
       }],
       error: null,
     })
 
-    const usage = await recordAiUsage({ rpc } as never, 512, 2)
+    const usage = await recordAiUsage({ rpc } as never, 'signal', 512, '2024-04-02', 2)
 
-    expect(rpc).toHaveBeenCalledWith('record_ai_usage', { p_tokens: 512, p_requests: 2 })
-    expect(usage.aiRequestsCount).toBe(3)
+    expect(rpc).toHaveBeenCalledWith('record_ai_usage', {
+      p_call_type: 'signal',
+      p_tokens: 512,
+      p_usage_date: '2024-04-02',
+      p_increment: 2,
+    })
+    expect(usage.callCount).toBe(3)
   })
 
-  it('stores and reads public collection shares exclusively through database functions', async () => {
+  it('creates and resolves share tokens through database rpc functions', async () => {
     const rpc = vi
       .fn()
       .mockResolvedValueOnce({
         data: [{
-          slug: 'share-1',
-          owner_user_id: 'user-1',
-          owner_vault_name: 'WatchVault',
-          watches_snapshot: [{ id: 'watch-1', brand: 'Rolex', model: 'Submariner', condition: 'excellent', category: 'sport' }],
+          id: 'share-1',
+          user_id: 'user-1',
+          token: 'token-123',
+          access: 'read_only',
+          hide_prices: true,
+          view_count: 0,
+          last_viewed: null,
+          expires_at: null,
           created_at: '2024-04-01T00:00:00.000Z',
-          updated_at: '2024-04-01T00:00:00.000Z',
         }],
         error: null,
       })
       .mockResolvedValueOnce({
         data: [{
-          slug: 'share-1',
-          owner_user_id: 'user-1',
-          owner_vault_name: 'WatchVault',
-          watches_snapshot: [{ id: 'watch-1', brand: 'Rolex', model: 'Submariner', condition: 'excellent', category: 'sport' }],
-          created_at: '2024-04-01T00:00:00.000Z',
-          updated_at: '2024-04-01T00:00:00.000Z',
+          token: 'token-123',
+          user_id: 'user-1',
+          access: 'read_only',
+          hide_prices: true,
+          display_name: 'WatchVault',
+          view_count: 1,
+          last_viewed: '2024-04-01T00:00:00.000Z',
+          expires_at: null,
+          watches: [{ id: 'watch-1', brand: 'Rolex', reference: '126610LN' }],
         }],
         error: null,
       })
 
-    const saved = await saveSharedCollection(
-      { rpc } as never,
-      'share-1',
-      [{ id: 'watch-1', brand: 'Rolex', model: 'Submariner', condition: 'excellent', category: 'sport' }],
-    )
-    const shared = await getSharedCollection({ rpc } as never, 'share-1')
+    const token = await createShareToken({ rpc } as never)
+    const shared = await getSharedCollection({ rpc } as never, 'token-123')
 
-    expect(rpc).toHaveBeenNthCalledWith(1, 'save_collection_share', {
-      p_slug: 'share-1',
-      p_watches_snapshot: [{ id: 'watch-1', brand: 'Rolex', model: 'Submariner', condition: 'excellent', category: 'sport' }],
+    expect(rpc).toHaveBeenNthCalledWith(1, 'create_share_token', {
+      p_hide_prices: true,
       p_expires_at: null,
     })
-    expect(rpc).toHaveBeenNthCalledWith(2, 'get_shared_collection', { p_slug: 'share-1' })
-    expect(saved.slug).toBe(shared?.slug)
+    expect(rpc).toHaveBeenNthCalledWith(2, 'get_shared_collection', { p_token: 'token-123' })
+    expect(token.token).toBe(shared?.token)
   })
 })

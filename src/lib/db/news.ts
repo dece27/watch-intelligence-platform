@@ -1,14 +1,40 @@
 import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js'
-import type { NewsArticle } from '@/lib/types'
-import type { Database, TableInsert, TableRow } from '@/lib/supabase/types'
+import type { Database, Json, TableInsert, TableRow } from '@/lib/supabase/types'
 import { createCacheKey } from '@/lib/cache/strategy'
 
-export interface CachedNewsFeed {
-  userId: string
-  dependencyHash: string
+export interface NewsCacheRecord {
+  id: string
+  cacheKey: string
+  articles: Json
+  articleCount: number
   cachedAt: string
+  expiresAt?: string
+}
+
+export interface NewsPreferenceRecord {
+  userId: string
+  enabledSources: string[]
+  mutedSources: string[]
+  preferredTags: string[]
+  sortMode: Database['public']['Enums']['news_sort_mode']
   updatedAt: string
-  articles: NewsArticle[]
+}
+
+export interface SavedNewsRecord {
+  id: string
+  userId: string
+  articleId: string
+  article: Json
+  savedAt: string
+}
+
+export interface NewsRelevanceScoreRecord {
+  id: string
+  articleId: string
+  userId: string
+  score?: number
+  reason?: string
+  scoredAt: string
 }
 
 function throwIfError(error: PostgrestError | null): asserts error is null {
@@ -17,117 +43,166 @@ function throwIfError(error: PostgrestError | null): asserts error is null {
   }
 }
 
-function mapArticle(row: TableRow<'news_articles'>): NewsArticle {
+function mapNewsCache(row: TableRow<'news_cache'>): NewsCacheRecord {
   return {
     id: row.id,
-    title: row.title,
-    summary: row.summary,
-    url: row.url,
-    imageUrl: row.image_url,
-    source: row.source,
-    sourceIcon: row.source_icon,
-    publishedAt: row.published_at,
-    brands: row.brands,
-    tags: row.tags,
-    relevanceScore: row.canonical_score,
+    cacheKey: row.cache_key,
+    articles: row.articles,
+    articleCount: row.article_count ?? 0,
+    cachedAt: row.cached_at,
+    expiresAt: row.expires_at ?? undefined,
   }
 }
 
-function toArticleInsert(article: NewsArticle): TableInsert<'news_articles'> {
+function mapNewsPreference(row: TableRow<'news_preferences'>): NewsPreferenceRecord {
   return {
-    id: article.id,
-    title: article.title,
-    summary: article.summary,
-    url: article.url,
-    image_url: article.imageUrl,
-    source: article.source,
-    source_icon: article.sourceIcon,
-    published_at: article.publishedAt,
-    brands: article.brands,
-    tags: article.tags,
-    canonical_score: article.relevanceScore,
+    userId: row.user_id,
+    enabledSources: row.enabled_sources ?? [],
+    mutedSources: row.muted_sources ?? [],
+    preferredTags: row.preferred_tags ?? [],
+    sortMode: row.sort_mode ?? 'relevant',
+    updatedAt: row.updated_at,
   }
 }
 
-export function getNewsCacheKey(userId: string, dependencyHash: string): string {
-  return createCacheKey('news-feed', userId, dependencyHash)
-}
-
-export async function listNewsArticles(
-  client: Pick<SupabaseClient<Database>, 'from'>,
-  brands?: string[],
-  limit = 20,
-): Promise<NewsArticle[]> {
-  let query = client
-    .from('news_articles')
-    .select('*')
-    .order('published_at', { ascending: false })
-    .limit(limit)
-
-  if (brands && brands.length > 0) {
-    query = query.overlaps('brands', brands)
+function mapSavedNews(row: TableRow<'news_saved'>): SavedNewsRecord {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    articleId: row.article_id,
+    article: row.article,
+    savedAt: row.saved_at,
   }
-
-  const { data, error } = await query
-  throwIfError(error)
-  return (data ?? []).map(mapArticle)
 }
 
-export async function upsertNewsArticles(
+function mapScore(row: TableRow<'news_relevance_scores'>): NewsRelevanceScoreRecord {
+  return {
+    id: row.id,
+    articleId: row.article_id,
+    userId: row.user_id,
+    score: row.score ?? undefined,
+    reason: row.reason ?? undefined,
+    scoredAt: row.scored_at,
+  }
+}
+
+function toCacheInsert(cacheKey: string, articles: Json): TableInsert<'news_cache'> {
+  return {
+    cache_key: cacheKey,
+    articles,
+  }
+}
+
+export function getNewsCacheKey(scope = 'feed_all'): string {
+  return createCacheKey('news-feed', undefined, scope)
+}
+
+export async function getNewsCache(
   client: Pick<SupabaseClient<Database>, 'from'>,
-  articles: NewsArticle[],
-): Promise<NewsArticle[]> {
+  cacheKey = 'feed_all',
+): Promise<NewsCacheRecord | null> {
   const { data, error } = await client
-    .from('news_articles')
-    .upsert(articles.map(toArticleInsert), { onConflict: 'url' })
+    .from('news_cache')
     .select('*')
+    .eq('cache_key', cacheKey)
+    .maybeSingle()
 
   throwIfError(error)
-  return (data ?? []).map(mapArticle)
+  return data ? mapNewsCache(data) : null
 }
 
-export async function getCachedNewsFeed(
+export async function upsertNewsCache(
+  client: Pick<SupabaseClient<Database>, 'from'>,
+  cacheKey: string,
+  articles: Json,
+): Promise<NewsCacheRecord> {
+  const { data, error } = await client
+    .from('news_cache')
+    .upsert(toCacheInsert(cacheKey, articles), { onConflict: 'cache_key' })
+    .select('*')
+    .single()
+
+  throwIfError(error)
+  return mapNewsCache(data)
+}
+
+export async function getNewsPreferences(
   client: Pick<SupabaseClient<Database>, 'from'>,
   userId: string,
-): Promise<CachedNewsFeed | null> {
+): Promise<NewsPreferenceRecord | null> {
   const { data, error } = await client
-    .from('user_news_feed_cache')
+    .from('news_preferences')
     .select('*')
     .eq('user_id', userId)
     .maybeSingle()
 
   throwIfError(error)
-  if (!data) {
-    return null
-  }
-
-  return {
-    userId: data.user_id,
-    dependencyHash: data.dependency_hash,
-    cachedAt: data.cached_at,
-    updatedAt: data.updated_at,
-    articles: (data.articles as NewsArticle[]) ?? [],
-  }
+  return data ? mapNewsPreference(data) : null
 }
 
-export async function cacheNewsFeed(
+export async function upsertNewsPreferences(
   client: Pick<SupabaseClient<Database>, 'from'>,
-  userId: string,
-  dependencyHash: string,
-  articles: NewsArticle[],
-): Promise<CachedNewsFeed> {
+  preferences: Omit<NewsPreferenceRecord, 'updatedAt'>,
+): Promise<NewsPreferenceRecord> {
   const { data, error } = await client
-    .from('user_news_feed_cache')
-    .upsert({ user_id: userId, dependency_hash: dependencyHash, articles }, { onConflict: 'user_id' })
+    .from('news_preferences')
+    .upsert(
+      {
+        user_id: preferences.userId,
+        enabled_sources: preferences.enabledSources,
+        muted_sources: preferences.mutedSources,
+        preferred_tags: preferences.preferredTags,
+        sort_mode: preferences.sortMode,
+      },
+      { onConflict: 'user_id' },
+    )
     .select('*')
     .single()
 
   throwIfError(error)
-  return {
-    userId: data.user_id,
-    dependencyHash: data.dependency_hash,
-    cachedAt: data.cached_at,
-    updatedAt: data.updated_at,
-    articles: (data.articles as NewsArticle[]) ?? [],
-  }
+  return mapNewsPreference(data)
+}
+
+export async function scoreNewsArticle(
+  client: Pick<SupabaseClient<Database>, 'from'>,
+  userId: string,
+  articleId: string,
+  score: number,
+  reason?: string,
+): Promise<NewsRelevanceScoreRecord> {
+  const { data, error } = await client
+    .from('news_relevance_scores')
+    .upsert({ user_id: userId, article_id: articleId, score, reason: reason ?? null }, { onConflict: 'article_id,user_id' })
+    .select('*')
+    .single()
+
+  throwIfError(error)
+  return mapScore(data)
+}
+
+export async function saveNewsArticle(
+  client: Pick<SupabaseClient<Database>, 'from'>,
+  userId: string,
+  articleId: string,
+  article: Json,
+): Promise<SavedNewsRecord> {
+  const { data, error } = await client
+    .from('news_saved')
+    .upsert({ user_id: userId, article_id: articleId, article }, { onConflict: 'user_id,article_id' })
+    .select('*')
+    .single()
+
+  throwIfError(error)
+  return mapSavedNews(data)
+}
+
+export async function listSavedNews(client: Pick<SupabaseClient<Database>, 'from'>, userId: string): Promise<SavedNewsRecord[]> {
+  const { data, error } = await client
+    .from('news_saved')
+    .select('*')
+    .eq('user_id', userId)
+    .order('saved_at', { ascending: false })
+
+  throwIfError(error)
+  return (data ?? []).map(mapSavedNews)
 }

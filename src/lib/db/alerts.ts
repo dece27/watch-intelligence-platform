@@ -4,30 +4,27 @@ import type { Database, TableInsert, TableRow, ViewRow } from '@/lib/supabase/ty
 export interface PriceAlertRecord {
   id: string
   userId: string
-  watchId?: string
-  watchRef: string
   brand: string
-  model: string
-  condition: 'above' | 'below'
+  reference: string
+  direction: Database['public']['Enums']['alert_direction']
   targetPrice: number
+  currency?: string
+  isActive: boolean
+  lastChecked?: string
+  triggeredAt?: string
+  triggerPrice?: number
+  notifiedAt?: string
   createdAt: string
   updatedAt: string
 }
 
 export interface ActivePriceAlert extends PriceAlertRecord {
-  currentValue?: number
-  purchasePrice?: number
+  currentPriceUsd?: number
+  marketRecordedAt?: string
 }
 
-export interface PriceAlertInput {
+export interface PriceAlertInput extends Omit<PriceAlertRecord, 'createdAt' | 'updatedAt'> {
   id?: string
-  userId: string
-  watchId?: string
-  watchRef: string
-  brand: string
-  model: string
-  condition: 'above' | 'below'
-  targetPrice: number
 }
 
 function throwIfError(error: PostgrestError | null): asserts error is null {
@@ -40,12 +37,16 @@ function mapAlert(row: TableRow<'price_alerts'>): PriceAlertRecord {
   return {
     id: row.id,
     userId: row.user_id,
-    watchId: row.watch_id ?? undefined,
-    watchRef: row.watch_ref,
     brand: row.brand,
-    model: row.model,
-    condition: row.condition,
+    reference: row.reference,
+    direction: row.direction,
     targetPrice: row.target_price,
+    currency: row.currency ?? undefined,
+    isActive: row.is_active,
+    lastChecked: row.last_checked ?? undefined,
+    triggeredAt: row.triggered_at ?? undefined,
+    triggerPrice: row.trigger_price ?? undefined,
+    notifiedAt: row.notified_at ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -55,16 +56,20 @@ function mapActiveAlert(row: ViewRow<'active_price_alerts'>): ActivePriceAlert {
   return {
     id: row.id,
     userId: row.user_id,
-    watchId: row.watch_id ?? undefined,
-    watchRef: row.watch_ref,
     brand: row.brand,
-    model: row.model,
-    condition: row.condition,
+    reference: row.reference,
+    direction: row.direction,
     targetPrice: row.target_price,
+    currency: row.currency ?? undefined,
+    isActive: row.is_active,
+    lastChecked: row.last_checked ?? undefined,
+    triggeredAt: row.triggered_at ?? undefined,
+    triggerPrice: row.trigger_price ?? undefined,
+    notifiedAt: row.notified_at ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    currentValue: row.current_value ?? undefined,
-    purchasePrice: row.purchase_price ?? undefined,
+    currentPriceUsd: row.current_price_usd ?? undefined,
+    marketRecordedAt: row.market_recorded_at ?? undefined,
   }
 }
 
@@ -72,12 +77,16 @@ function toInsert(alert: PriceAlertInput): TableInsert<'price_alerts'> {
   return {
     id: alert.id,
     user_id: alert.userId,
-    watch_id: alert.watchId ?? null,
-    watch_ref: alert.watchRef,
     brand: alert.brand,
-    model: alert.model,
-    condition: alert.condition,
+    reference: alert.reference,
+    direction: alert.direction,
     target_price: alert.targetPrice,
+    currency: alert.currency ?? 'USD',
+    is_active: alert.isActive,
+    last_checked: alert.lastChecked ?? null,
+    triggered_at: alert.triggeredAt ?? null,
+    trigger_price: alert.triggerPrice ?? null,
+    notified_at: alert.notifiedAt ?? null,
   }
 }
 

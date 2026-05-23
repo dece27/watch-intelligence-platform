@@ -1,31 +1,42 @@
 import { describe, expect, it, vi } from 'vitest'
-import { cacheNewsFeed, getNewsCacheKey, listNewsArticles } from '@/lib/db/news'
+import { getNewsCache, getNewsCacheKey, upsertNewsPreferences } from '@/lib/db/news'
 
 describe('news persistence helpers', () => {
-  it('creates stable personalized cache keys', () => {
-    expect(getNewsCacheKey('user-1', 'hash-123')).toBe('news-feed:user-1:hash-123')
+  it('creates stable cache keys for shared news feeds', () => {
+    expect(getNewsCacheKey('feed_all')).toBe('news-feed:global:feed_all')
   })
 
-  it('filters canonical news by owned brands', async () => {
-    const overlaps = vi.fn().mockResolvedValue({ data: [], error: null })
-    const limit = vi.fn(() => ({ overlaps }))
-    const order = vi.fn(() => ({ limit }))
-    const select = vi.fn(() => ({ order }))
+  it('reads the shared news cache by cache key', async () => {
+    const maybeSingle = vi.fn().mockResolvedValue({
+      data: {
+        id: 'cache-1',
+        cache_key: 'feed_all',
+        articles: [],
+        article_count: 0,
+        cached_at: '2024-04-01T00:00:00.000Z',
+        expires_at: '2024-04-01T00:30:00.000Z',
+      },
+      error: null,
+    })
+    const eq = vi.fn(() => ({ maybeSingle }))
+    const select = vi.fn(() => ({ eq }))
     const from = vi.fn(() => ({ select }))
 
-    await listNewsArticles({ from } as never, ['Rolex'], 5)
+    const cache = await getNewsCache({ from } as never)
 
-    expect(overlaps).toHaveBeenCalledWith('brands', ['Rolex'])
+    expect(eq).toHaveBeenCalledWith('cache_key', 'feed_all')
+    expect(cache?.articleCount).toBe(0)
   })
 
-  it('stores personalized news cache rows by user id', async () => {
+  it('stores personalized news preferences by user id', async () => {
     const single = vi.fn().mockResolvedValue({
       data: {
         user_id: 'user-1',
-        dependency_hash: 'hash-123',
-        cached_at: '2024-04-01T00:00:00.000Z',
+        enabled_sources: ['hodinkee'],
+        muted_sources: [],
+        preferred_tags: ['market'],
+        sort_mode: 'recent',
         updated_at: '2024-04-01T00:00:00.000Z',
-        articles: [{ id: 'article-1', title: 'Headline' }],
       },
       error: null,
     })
@@ -33,24 +44,21 @@ describe('news persistence helpers', () => {
     const upsert = vi.fn(() => ({ select }))
     const from = vi.fn(() => ({ upsert }))
 
-    const cache = await cacheNewsFeed({ from } as never, 'user-1', 'hash-123', [{
-      id: 'article-1',
-      title: 'Headline',
-      summary: 'Summary',
-      url: 'https://example.com/article-1',
-      imageUrl: null,
-      source: 'WatchWire',
-      sourceIcon: 'https://example.com/source.png',
-      publishedAt: '2024-04-01T00:00:00.000Z',
-      brands: ['Rolex'],
-      tags: ['market'],
-      relevanceScore: 8,
-    }])
+    const preferences = await upsertNewsPreferences(
+      { from } as never,
+      {
+        userId: 'user-1',
+        enabledSources: ['hodinkee'],
+        mutedSources: [],
+        preferredTags: ['market'],
+        sortMode: 'recent',
+      },
+    )
 
     expect(upsert).toHaveBeenCalledWith(
-      expect.objectContaining({ user_id: 'user-1', dependency_hash: 'hash-123' }),
+      expect.objectContaining({ user_id: 'user-1', sort_mode: 'recent' }),
       { onConflict: 'user_id' },
     )
-    expect(cache.userId).toBe('user-1')
+    expect(preferences.userId).toBe('user-1')
   })
 })

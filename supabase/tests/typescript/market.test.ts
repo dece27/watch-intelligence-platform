@@ -1,20 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
-import { listAuctionResults, listBrandIndexes, upsertMarketSnapshots } from '@/lib/db/market'
+import { getMarketDataCache, listBrandIndexes, upsertMarketPrices } from '@/lib/db/market'
 
 describe('market persistence helpers', () => {
-  it('maps latest market snapshots into chart-friendly brand indexes', async () => {
+  it('maps latest prices into chart-friendly brand indexes', async () => {
     const order = vi.fn().mockResolvedValue({
       data: [
-        {
-          brand: 'Rolex',
-          snapshot_date: '2024-04-01',
-          current_index: 121.1,
-          sentiment_score: 8.1,
-          price_change_percent: 2.3,
-          source: 'seed',
-          metadata: {},
-          created_at: '2024-04-01T00:00:00.000Z',
-        },
+        { brand: 'Rolex', reference: '126610LN', price_usd: 12110, source: 'seed', condition: 'Excellent', recorded_at: '2024-04-01T00:00:00.000Z' },
       ],
       error: null,
     })
@@ -23,47 +14,48 @@ describe('market persistence helpers', () => {
 
     const indexes = await listBrandIndexes({ from } as never)
 
-    expect(indexes).toEqual([{ brand: 'Rolex', currentIndex: 121.1, trend: [8.1] }])
+    expect(indexes).toEqual([{ brand: 'Rolex', currentIndex: 12110, trend: [12110] }])
   })
 
-  it('upserts market snapshots on the natural brand/date key', async () => {
+  it('inserts market prices as history rows', async () => {
     const select = vi.fn().mockResolvedValue({
       data: [
-        {
-          brand: 'Rolex',
-          snapshot_date: '2024-04-01',
-          current_index: 121.1,
-          sentiment_score: 8.1,
-          price_change_percent: 2.3,
-          source: 'seed',
-          metadata: {},
-          created_at: '2024-04-01T00:00:00.000Z',
-        },
+        { brand: 'Rolex', reference: '126610LN', price_usd: 12110, source: 'seed', condition: 'Excellent', recorded_at: '2024-04-01T00:00:00.000Z' },
       ],
       error: null,
     })
-    const upsert = vi.fn(() => ({ select }))
-    const from = vi.fn(() => ({ upsert }))
+    const insert = vi.fn(() => ({ select }))
+    const from = vi.fn(() => ({ insert }))
 
-    await upsertMarketSnapshots(
+    await upsertMarketPrices(
       { from } as never,
-      [{ brand: 'Rolex', snapshotDate: '2024-04-01', currentIndex: 121.1, sentimentScore: 8.1, priceChangePercent: 2.3 }],
+      [{ brand: 'Rolex', reference: '126610LN', priceUsd: 12110, source: 'seed', condition: 'Excellent' }],
     )
 
-    expect(upsert).toHaveBeenCalledWith(
-      [expect.objectContaining({ brand: 'Rolex', snapshot_date: '2024-04-01' })],
-      { onConflict: 'brand,snapshot_date' },
-    )
+    expect(insert).toHaveBeenCalledWith([
+      expect.objectContaining({ brand: 'Rolex', reference: '126610LN', price_usd: 12110 }),
+    ])
   })
 
-  it('filters auction results by brand when provided', async () => {
-    const limit = vi.fn(() => ({ in: vi.fn().mockResolvedValue({ data: [], error: null }) }))
-    const order = vi.fn(() => ({ limit }))
-    const select = vi.fn(() => ({ order }))
+  it('reads cached market payloads by cache key', async () => {
+    const maybeSingle = vi.fn().mockResolvedValue({
+      data: {
+        id: 'cache-1',
+        cache_key: 'market:rolex:126610ln',
+        data: { priceUsd: 12110 },
+        source: 'seed',
+        computed_at: '2024-04-01T00:00:00.000Z',
+        expires_at: '2024-04-01T00:15:00.000Z',
+      },
+      error: null,
+    })
+    const eq = vi.fn(() => ({ maybeSingle }))
+    const select = vi.fn(() => ({ eq }))
     const from = vi.fn(() => ({ select }))
 
-    await listAuctionResults({ from } as never, ['Rolex'], 10)
+    const cache = await getMarketDataCache({ from } as never, 'market:rolex:126610ln')
 
-    expect(from).toHaveBeenCalledWith('auction_results')
+    expect(eq).toHaveBeenCalledWith('cache_key', 'market:rolex:126610ln')
+    expect(cache?.cacheKey).toBe('market:rolex:126610ln')
   })
 })

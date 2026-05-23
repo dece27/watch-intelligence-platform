@@ -1,16 +1,18 @@
 import { describe, expect, it, vi } from 'vitest'
-import { getPortfolioSummary, listPortfolioBrandAllocations } from '@/lib/db/portfolio'
+import { getPortfolioSummary, listPortfolioBrandAllocations, upsertPortfolioSnapshot } from '@/lib/db/portfolio'
 
 describe('portfolio persistence helpers', () => {
-  it('retrieves a single portfolio summary by user id', async () => {
+  it('retrieves the latest portfolio summary by user id', async () => {
     const maybeSingle = vi.fn().mockResolvedValue({
       data: {
         user_id: 'user-1',
+        snapshot_date: '2024-03-01',
+        total_cost_basis: 28000,
+        total_market_value: 31500,
         watch_count: 3,
-        total_cost: 28000,
-        total_estimated_value: 31500,
-        average_return_percent: 8.4,
-        last_updated_at: '2024-03-01T00:00:00.000Z',
+        brand_breakdown: { Rolex: 2 },
+        return_percent: 12.5,
+        created_at: '2024-03-01T00:00:00.000Z',
       },
       error: null,
     })
@@ -23,11 +25,13 @@ describe('portfolio persistence helpers', () => {
     expect(from).toHaveBeenCalledWith('portfolio_snapshot')
     expect(summary).toEqual({
       userId: 'user-1',
+      snapshotDate: '2024-03-01',
+      totalCostBasis: 28000,
+      totalMarketValue: 31500,
       watchCount: 3,
-      totalCost: 28000,
-      totalEstimatedValue: 31500,
-      averageReturnPercent: 8.4,
-      lastUpdatedAt: '2024-03-01T00:00:00.000Z',
+      brandBreakdown: { Rolex: 2 },
+      returnPercent: 12.5,
+      createdAt: '2024-03-01T00:00:00.000Z',
     })
   })
 
@@ -47,5 +51,40 @@ describe('portfolio persistence helpers', () => {
 
     expect(order).toHaveBeenCalledWith('allocation_percent', { ascending: false })
     expect(allocations.map((entry) => entry.brand)).toEqual(['Rolex', 'Omega'])
+  })
+
+  it('upserts portfolio snapshots on the user/date key', async () => {
+    const single = vi.fn().mockResolvedValue({
+      data: {
+        id: 'snapshot-1',
+        user_id: 'user-1',
+        snapshot_date: '2024-03-01',
+        total_cost_basis: 28000,
+        total_market_value: 31500,
+        watch_count: 3,
+        brand_breakdown: { Rolex: 2 },
+      },
+      error: null,
+    })
+    const select = vi.fn(() => ({ single }))
+    const upsert = vi.fn(() => ({ select }))
+    const from = vi.fn(() => ({ upsert }))
+
+    await upsertPortfolioSnapshot(
+      { from } as never,
+      {
+        userId: 'user-1',
+        snapshotDate: '2024-03-01',
+        totalCostBasis: 28000,
+        totalMarketValue: 31500,
+        watchCount: 3,
+        brandBreakdown: { Rolex: 2 },
+      },
+    )
+
+    expect(upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ user_id: 'user-1', snapshot_date: '2024-03-01' }),
+      { onConflict: 'user_id,snapshot_date' },
+    )
   })
 })

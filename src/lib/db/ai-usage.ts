@@ -1,13 +1,14 @@
 import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js'
 import type { Database, TableRow } from '@/lib/supabase/types'
 
-export interface AiUsageRecord {
+export interface AiUsageLogRecord {
+  id: string
   userId: string
-  aiTokensUsed: number
-  aiRequestsCount: number
-  lastUsedAt?: string
+  usageDate: string
+  callType: string
+  callCount: number
+  tokensUsed?: number
   createdAt: string
-  updatedAt: string
 }
 
 function throwIfError(error: PostgrestError | null): asserts error is null {
@@ -16,36 +17,42 @@ function throwIfError(error: PostgrestError | null): asserts error is null {
   }
 }
 
-function mapUsage(row: TableRow<'ai_usage'>): AiUsageRecord {
+function mapUsage(row: TableRow<'ai_usage_logs'>): AiUsageLogRecord {
   return {
+    id: row.id,
     userId: row.user_id,
-    aiTokensUsed: row.ai_tokens_used,
-    aiRequestsCount: row.ai_requests_count,
-    lastUsedAt: row.last_used_at ?? undefined,
+    usageDate: row.usage_date,
+    callType: row.call_type,
+    callCount: row.call_count,
+    tokensUsed: row.tokens_used ?? undefined,
     createdAt: row.created_at,
-    updatedAt: row.updated_at,
   }
 }
 
-export async function getAiUsage(client: Pick<SupabaseClient<Database>, 'from'>, userId: string): Promise<AiUsageRecord | null> {
+export async function listAiUsageLogs(client: Pick<SupabaseClient<Database>, 'from'>, userId: string): Promise<AiUsageLogRecord[]> {
   const { data, error } = await client
-    .from('ai_usage')
+    .from('ai_usage_logs')
     .select('*')
     .eq('user_id', userId)
-    .maybeSingle()
+    .order('usage_date', { ascending: false })
+    .order('created_at', { ascending: false })
 
   throwIfError(error)
-  return data ? mapUsage(data) : null
+  return (data ?? []).map(mapUsage)
 }
 
 export async function recordAiUsage(
   client: Pick<SupabaseClient<Database>, 'rpc'>,
-  tokens: number,
-  requests = 1,
-): Promise<AiUsageRecord> {
+  callType: string,
+  tokens?: number,
+  usageDate?: string,
+  increment = 1,
+): Promise<AiUsageLogRecord> {
   const { data, error } = await client.rpc('record_ai_usage', {
-    p_tokens: tokens,
-    p_requests: requests,
+    p_call_type: callType,
+    p_tokens: tokens ?? null,
+    p_usage_date: usageDate ?? null,
+    p_increment: increment,
   })
 
   throwIfError(error)

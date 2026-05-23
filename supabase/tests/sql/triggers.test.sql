@@ -24,16 +24,28 @@ values (
   crypt('password', gen_salt('bf')),
   timezone('utc', now()),
   '{"provider":"email","providers":["email"]}',
-  '{"name":"Trigger User","vault_name":"Trigger Vault"}',
+  '{"display_name":"Trigger User","avatar_url":"https://example.com/avatar.png"}',
   timezone('utc', now()),
   timezone('utc', now())
 )
 on conflict (id) do nothing;
 
 select ok(
-  exists(select 1 from public.profiles where id = '33333333-3333-3333-3333-333333333333' and vault_name = 'Trigger Vault'),
-  'auth insert trigger provisions a profile row'
+  exists(
+    select 1
+    from public.profiles p
+    join public.subscriptions s on s.user_id = p.id
+    join public.user_preferences up on up.user_id = p.id
+    join public.news_preferences np on np.user_id = p.id
+    where p.id = '33333333-3333-3333-3333-333333333333'
+      and p.display_name = 'Trigger User'
+  ),
+  'auth insert trigger provisions the profile and dependent default rows'
 );
+
+insert into public.watches (id, user_id, brand, reference)
+values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '33333333-3333-3333-3333-333333333333', 'Rolex', '126610LN')
+on conflict (id) do nothing;
 
 update public.watches
 set notes = 'Updated by trigger test'
@@ -45,12 +57,12 @@ select ok(
 );
 
 update auth.users
-set raw_user_meta_data = '{"name":"Renamed Trigger User","vault_name":"Renamed Vault"}'
+set raw_user_meta_data = '{"display_name":"Renamed Trigger User","avatar_url":"https://example.com/updated-avatar.png"}'
 where id = '33333333-3333-3333-3333-333333333333';
 
 select ok(
-  exists(select 1 from public.profiles where id = '33333333-3333-3333-3333-333333333333' and vault_name = 'Renamed Vault'),
-  'auth update trigger keeps profiles synchronized'
+  exists(select 1 from public.profiles where id = '33333333-3333-3333-3333-333333333333' and display_name = 'Renamed Trigger User'),
+  'auth update trigger keeps profile metadata synchronized'
 );
 
 select * from finish();
