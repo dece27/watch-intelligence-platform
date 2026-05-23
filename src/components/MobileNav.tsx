@@ -16,6 +16,7 @@ interface NavItem {
 interface MobileNavProps {
   activeModule: string
   onModuleChange: (moduleId: string) => void
+  isAdmin?: boolean
 }
 
 // Primary 5-tab items — News replaces the old 6th slot; Market & Appraisal move to More
@@ -33,10 +34,14 @@ const moreItems: NavItem[] = [
   { id: 'appraisal', label: 'Appraisal', icon: '◌' },
 ]
 
-const moreItemIds = new Set(moreItems.map((i) => i.id))
+const adminItems: NavItem[] = [
+  { id: 'admin-dashboard', label: 'Admin Dashboard', icon: '📊' },
+  { id: 'feedback', label: 'Feedback', icon: '💬' },
+]
 
-export function MobileNav({ activeModule, onModuleChange }: MobileNavProps) {
+export function MobileNav({ activeModule, onModuleChange, isAdmin = false }: MobileNavProps) {
   const [moreOpen, setMoreOpen] = useState(false)
+  const visibleMoreItems = isAdmin ? [...moreItems, ...adminItems] : moreItems
 
   const handleMoreSelect = (id: string) => {
     onModuleChange(id)
@@ -44,7 +49,7 @@ export function MobileNav({ activeModule, onModuleChange }: MobileNavProps) {
   }
 
   // The ··· button is highlighted when the active module is one of the "More" items
-  const moreActive = moreItemIds.has(activeModule)
+  const moreActive = visibleMoreItems.some((item) => item.id === activeModule)
 
   return (
     <>
@@ -94,7 +99,7 @@ export function MobileNav({ activeModule, onModuleChange }: MobileNavProps) {
             <DrawerTitle className="text-sm text-muted-foreground font-medium">More</DrawerTitle>
           </DrawerHeader>
           <div className="px-4 pb-6 grid grid-cols-3 gap-3">
-            {moreItems.map((item) => (
+            {visibleMoreItems.map((item) => (
               <button
                 key={item.id}
                 onClick={() => handleMoreSelect(item.id)}
