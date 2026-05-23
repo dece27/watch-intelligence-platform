@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('@/lib/supabase/server', () => ({
-  createClient: vi.fn(),
+vi.mock('@/lib/supabase/client', () => ({
+  getSupabaseClient: vi.fn(),
 }))
 
-import { createClient } from '@/lib/supabase/server'
+import { getSupabaseClient } from '@/lib/supabase/client'
 import { upsertPriceAlert, listPriceAlerts } from '@/lib/db/alerts'
 import { saveDeal } from '@/lib/db/deals'
 import { upsertPortfolioSnapshot } from '@/lib/db/portfolio'
@@ -12,7 +12,7 @@ import { createShareToken, getSharedCollection } from '@/lib/db/user'
 import { createWatch, getWatches } from '@/lib/db/watches'
 import { buildHarnessWatch, createSupabaseTestHarness } from './testSupabaseHarness'
 
-const createClientMock = vi.mocked(createClient)
+const createClientMock = vi.mocked(getSupabaseClient)
 
 describe('RLS-oriented integration helpers', () => {
   beforeEach(() => {

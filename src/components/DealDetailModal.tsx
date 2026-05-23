@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { toast } from "sonner"
 import { Heart, Plus, Copy, Check } from "@phosphor-icons/react"
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer } from "recharts"
-import { callTrackedLlm } from "@/lib/adminAnalytics"
+import { DailyLimitError, callAI, createAICacheKey, hashAIInput } from "@/lib/ai/caller"
 import { formatCurrency } from "@/lib/currency"
 import { useKV } from "@/lib/useKV"
 
@@ -47,11 +47,11 @@ export function DealDetailModal({ deal, open, onOpenChange, onFilterBrand, prefe
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null)
 
   const analyzeWithAI = useCallback(async () => {
+    const fairValue = deal.fairValue || deal.price
+    const savings = deal.price < fairValue ? fairValue - deal.price : 0
+
     setIsLoadingAI(true)
     try {
-      const fairValue = deal.fairValue || deal.price
-      const savings = deal.price < fairValue ? fairValue - deal.price : 0
-      
       const promptText = `You are a luxury watch market analyst. Analyze this deal:
 
 Watch: ${deal.brand} ${deal.model} ${deal.referenceNumber || ''}
@@ -66,7 +66,16 @@ Provide:
 - REASONING: 2-3 sentences on why this is or isn't a good deal
 - RISK: one sentence on the main risk factor`
 
-      const response = await callTrackedLlm(promptText, "gpt-4o-mini")
+      const response = await callAI({
+        prompt: promptText,
+        taskType: 'deal_assessment',
+        cacheKey: createAICacheKey(
+          'deal-detail',
+          deal.id,
+          hashAIInput(`${preferredCurrency}|${deal.price}|${fairValue}|${deal.condition}|${deal.daysListed || 0}`),
+        ),
+        cacheTtlSeconds: 60 * 60 * 12,
+      })
       
       const verdictMatch = response.match(/VERDICT:\s*(EXCELLENT DEAL|GOOD DEAL|FAIR DEAL|OVERPRICED)/i)
       const reasoningMatch = response.match(/REASONING:\s*([^\n]+(?:\n[^\n-]+)*)/i)
@@ -85,10 +94,15 @@ Provide:
           risk: 'Analysis incomplete'
         })
       }
-    } catch {
+    } catch (error) {
+      if (error instanceof DailyLimitError) {
+        toast.info('Daily AI deal-analysis quota reached. Showing a conservative fallback.')
+      }
       setAiAnalysis({
         verdict: 'FAIR DEAL',
-        reasoning: 'Unable to complete analysis. Please verify details manually.',
+        reasoning: savings > 0
+          ? 'This listing appears priced below estimated fair value, but verify condition and completeness before buying.'
+          : 'Pricing looks broadly in line with estimated fair value, so validate condition and seller details before acting.',
         risk: 'Analysis incomplete'
       })
     }

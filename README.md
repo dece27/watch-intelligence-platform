@@ -80,6 +80,7 @@ The goal of this project is to provide a single operating system for watch colle
 - **date-fns** — date formatting and arithmetic
 - **Spark KV** (`window.spark.kv`) — primary KV storage for persisted user and collection data
 - **IndexedDB fallback** (`src/lib/sparkKV.ts`) — used automatically on GitHub Pages and other static deployments where the Spark runtime is not available
+- **Supabase Edge Functions** — secure server-side proxying for GitHub Models API calls
 - **WatchCharts API client** (`src/lib/watchcharts-client.ts`) — optional live market value lookups
 - **Chrono24 FastAPI wrapper** (`chrono24-api/`) — optional Python service for live deal sourcing
 
@@ -158,16 +159,40 @@ VITE_WATCHCHARTS_API_KEY=your_key npm run dev
 
 | Variable | Description |
 |---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL used by browser and server clients |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public Supabase anon key used by browser and server clients |
-| `SUPABASE_SERVICE_ROLE_KEY` | Server-only Supabase service role key for admin/server operations; never expose it to the browser |
+| `VITE_SUPABASE_URL` | Supabase project URL used by the browser client (the app also accepts `NEXT_PUBLIC_SUPABASE_URL` as a fallback) |
+| `VITE_SUPABASE_ANON_KEY` | Public Supabase anon key used by the browser client (the app also accepts `NEXT_PUBLIC_SUPABASE_ANON_KEY` as a fallback) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server-only Supabase service role key for GitHub Actions or Supabase server-side utilities; never expose it to the browser |
+| `SUPABASE_URL` | Optional server-only Supabase URL override for GitHub Actions or other non-browser utilities |
 | `SUPABASE_DB_URL` | Direct database connection string used for CLI tasks such as backups |
+| `GITHUB_TOKEN` | Server-only GitHub personal access token used by `supabase/functions/github-models-proxy` to call GitHub Models |
 | `VITE_CHRONO24_WRAPPER_BASE_URL` | Base URL for the Chrono24 wrapper API |
 | `VITE_CHRONO24_API_HOST` | Alternative name for the Chrono24 wrapper base URL |
 | `VITE_CHRONO24_WRAPPER_API_KEY` | API key for the Chrono24 wrapper (if required) |
 | `VITE_WATCHCHARTS_API_KEY` | API key for WatchCharts market value lookups |
 | `VITE_WATCHCHARTS_BASE_URL` | Override for WatchCharts API base URL |
 | `VITE_BASE_PATH` | Base path for GitHub Pages deployments (set automatically by the deploy workflow) |
+| `RESEND_API_KEY` | Server-only API key used by scheduled workflows that send transactional email notifications |
+| `RESEND_FROM_EMAIL` | Optional sender address override for Resend-powered workflow notifications |
+
+### GitHub repository secrets
+
+In **Settings → Secrets and variables → Actions**, add these repository secrets:
+
+- `NEXT_PUBLIC_SUPABASE_URL` — Supabase project URL used at build time for static frontend workflows
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` — public Supabase anon key used at build time for static frontend workflows
+- `SUPABASE_URL` — same Supabase project URL for GitHub Actions scripts and server-side utilities
+- `SUPABASE_SERVICE_ROLE_KEY` — Supabase service role key for server-side Actions scripts only; never expose it to the browser
+- `RESEND_API_KEY` — Resend API key for alert notification emails
+
+### Supabase Edge Function secrets
+
+Set these in Supabase with `npx supabase secrets set KEY=value`:
+
+- `GITHUB_TOKEN` — PAT with `models:read` scope only
+- `SUPABASE_SERVICE_ROLE_KEY` — service role key for Edge Function admin operations
+- `RESEND_API_KEY` — Resend API key for alert emails sent from Edge Functions
+
+### Local development
 
 Create a local `/home/runner/work/watch-intelligence-platform/watch-intelligence-platform/.env.local`
 file with:
@@ -175,13 +200,16 @@ file with:
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
-SUPABASE_DB_URL=
 ```
 
-For Vercel, add the same four variables in the project settings. Mark
-`SUPABASE_SERVICE_ROLE_KEY` as server-only and do not expose it to the browser
-or any client-side bundle.
+The frontend accepts both `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` and
+`NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`. GitHub Actions in
+this repository use the `NEXT_PUBLIC_` names for frontend builds, while
+server-side scripts and utilities use `SUPABASE_URL` and
+`SUPABASE_SERVICE_ROLE_KEY`. Keep `SUPABASE_SERVICE_ROLE_KEY` server-only and
+never place it in client code.
 
 ## Testing
 
@@ -210,7 +238,7 @@ python -m pytest -q
 ## GitHub Pages deployment
 
 This repository can be deployed to GitHub Pages with the included workflow at
-`.github/workflows/deploy-pages.yml`.
+`.github/workflows/deploy.yml`.
 
 Before the first deployment:
 
@@ -225,6 +253,35 @@ On GitHub Pages the Spark runtime is not available, so the app automatically
 uses the IndexedDB-backed KV fallback (`src/lib/sparkKV.ts`). Shared collection
 links use hash-based routing (`/#/shared/...`) so they resolve correctly under
 any base path.
+
+The workflow copies the Vite `dist/` output into `out/` and publishes
+`.nojekyll`, which prevents GitHub Pages from running Jekyll processing over
+generated asset paths.
+
+## Scheduled automation workflows
+
+The repository also includes GitHub Actions workflows for recurring operational
+tasks:
+
+- `.github/workflows/refresh-news.yml` — refreshes the RSS-backed `news_cache`
+  hourly via `node scripts/refresh-news.mjs`
+- `.github/workflows/portfolio-snapshots.yml` — records daily portfolio
+  snapshots for users with active watches via `node scripts/portfolio-snapshots.mjs`
+- `.github/workflows/check-price-alerts.yml` — checks active price alerts every
+  six hours and sends Resend notifications via `node scripts/check-alerts.mjs`
+
+## Dependency and security automation
+
+The repository also includes:
+
+- `.github/dependabot.yml` — weekly npm dependency updates and monthly GitHub
+  Actions updates
+- `.github/workflows/codeql.yml` — scheduled and PR-triggered CodeQL security
+  analysis for JavaScript/TypeScript
+- `.github/workflows/quality.yml` — CI checks for type checking, linting,
+  static-export compatibility, build, and unit tests
+- `.husky/pre-commit` with `.secretlintrc.json` — local pre-commit checks for
+  Secretlint and `tsc --noEmit`
 
 ## Daily Supabase backup workflow
 

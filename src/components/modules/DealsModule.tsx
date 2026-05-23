@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch"
 import { Heart, MapPin, ArrowsClockwise } from "@phosphor-icons/react"
 import { DealDetailModal } from "@/components/DealDetailModal"
-import { callTrackedLlm } from "@/lib/adminAnalytics"
+import { DailyLimitError, callAI, createAICacheKey, hashAIInput, parseAIJson } from "@/lib/ai/caller"
 import {
   searchChrono24Deals,
   clearChrono24SearchCache,
@@ -34,12 +34,6 @@ const DEAL_SCORE_DIVISOR = 2
 const FALLBACK_QUERY_BRANDS = ["Rolex", "Omega"] as const
 const MAX_BRANDS_TO_QUERY = 2
 const TARGET_LIVE_DEAL_COUNT = 24
-
-const extractJsonPayload = (response: string) => {
-  const trimmed = response.trim()
-  const fenced = trimmed.match(/```(?:[a-z0-9_-]+)?\s*([\s\S]*?)\s*```/i)
-  return fenced ? fenced[1].trim() : trimmed
-}
 
 const toTitleCase = (value: string) =>
   value
@@ -116,7 +110,7 @@ const parseAiRanking = (
   const rankingMap = new Map<string, { matchScore: number; reasoning: string }>()
 
   try {
-    const parsed = JSON.parse(extractJsonPayload(rawResponse)) as Array<Record<string, unknown>>
+    const parsed = parseAIJson<Array<Record<string, unknown>>>(rawResponse)
     if (!Array.isArray(parsed)) return rankingMap
 
     const validIds = new Set(scoredDeals.map((deal) => deal.id))
@@ -328,7 +322,36 @@ Return every deal id exactly once.`
 
       let scoredDeals = heuristicScored
       try {
-        const aiResponse = await callTrackedLlm(rankingPrompt, "gpt-4o-mini", true)
+        const aiResponse = await callAI({
+          prompt: rankingPrompt,
+          jsonMode: true,
+          taskType: 'deal_ranking',
+          cacheKey: createAICacheKey(
+            'deal-ranking',
+            userId || 'anonymous',
+            hashAIInput(JSON.stringify({
+              preferredCurrency,
+              preferences,
+              watches: watches.map((watch) => ({
+                id: watch.id,
+                brand: watch.brand,
+                model: watch.model,
+                category: watch.category,
+                purchasePrice: watch.purchasePrice,
+              })),
+              deals: heuristicScored.map((deal) => ({
+                id: deal.id,
+                brand: deal.brand,
+                model: deal.model,
+                price: deal.price,
+                discount: deal.discount,
+                condition: deal.condition,
+                sellerRating: deal.sellerRating || null,
+              })),
+            })),
+          ),
+          cacheTtlSeconds: 60 * 30,
+        })
         const rankingMap = parseAiRanking(aiResponse, heuristicScored)
 
         if (rankingMap.size > 0) {
@@ -350,7 +373,10 @@ Return every deal id exactly once.`
             }
           })
         }
-      } catch {
+      } catch (error) {
+        if (error instanceof DailyLimitError) {
+          toast.info('Daily AI match quota reached. Showing heuristic ranking instead.')
+        }
         // AI ranking is optional; heuristic ranking remains.
       }
 
@@ -364,7 +390,7 @@ Return every deal id exactly once.`
     } finally {
       setIsLoading(false)
     }
-  }, [preferences, watches])
+  }, [preferences, preferredCurrency, userId, watches])
 
   useEffect(() => {
     if (!preferencesLoaded) return

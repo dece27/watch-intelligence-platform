@@ -1,5 +1,5 @@
 import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js'
-import { createClient } from '@/lib/supabase/server'
+import { getSupabaseClient } from '@/lib/supabase/client'
 import type { Database } from '@/lib/supabase/types'
 
 export type WatchRow = Database['public']['Tables']['watches']['Row']
@@ -50,7 +50,7 @@ function sanitizeSearchTerm(query: string): string {
 }
 
 function getClient(): WatchClient {
-  return createClient()
+  return getSupabaseClient()
 }
 
 /**

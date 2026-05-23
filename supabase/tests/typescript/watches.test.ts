@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('@/lib/supabase/server', () => ({
-  createClient: vi.fn(),
+vi.mock('@/lib/supabase/client', () => ({
+  getSupabaseClient: vi.fn(),
 }))
 
-import { createClient } from '@/lib/supabase/server'
+import { getSupabaseClient } from '@/lib/supabase/client'
 import { createWatch, getWatch, getWatches, searchWatches, softDeleteWatch, updateWatch } from '@/lib/db/watches'
 import { buildHarnessWatch, createSupabaseTestHarness } from './testSupabaseHarness'
 
-const createClientMock = vi.mocked(createClient)
+const createClientMock = vi.mocked(getSupabaseClient)
 
 describe('watch data access helpers', () => {
   beforeEach(() => {

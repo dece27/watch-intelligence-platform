@@ -13,23 +13,28 @@ function readEnv(name: string): string | undefined {
   return viteEnv?.[name] ?? processEnv?.[name]
 }
 
-function requireEnv(name: string): string {
-  const value = readEnv(name)
-  if (!value) {
-    throw new Error(`Missing Supabase environment variable: ${name}`)
+function requireEnv(...names: string[]): string {
+  for (const name of names) {
+    const value = readEnv(name)
+    if (value) {
+      return value
+    }
   }
-  return value
+
+  throw new Error(`Missing Supabase environment variable. Checked: ${names.join(', ')}`)
 }
 
-export function createSupabaseBrowserClient(): SupabaseClient<Database> {
+export function getSupabaseClient(): SupabaseClient<Database> {
   if (browserClient) {
     return browserClient
   }
 
   browserClient = createBrowserClient<Database>(
-    requireEnv('NEXT_PUBLIC_SUPABASE_URL'),
-    requireEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY'),
+    requireEnv('VITE_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_URL'),
+    requireEnv('VITE_SUPABASE_ANON_KEY', 'NEXT_PUBLIC_SUPABASE_ANON_KEY'),
   )
 
   return browserClient
 }
+
+export const createSupabaseBrowserClient = getSupabaseClient

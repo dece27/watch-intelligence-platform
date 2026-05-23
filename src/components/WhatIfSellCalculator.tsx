@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Slider } from "@/components/ui/slider"
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table"
 import { CaretDown, CaretUp, Lightbulb } from "@phosphor-icons/react"
-import { callTrackedLlm } from "@/lib/adminAnalytics"
+import { DailyLimitError, callAI, createAICacheKey, hashAIInput } from "@/lib/ai/caller"
 import { formatCurrency } from "@/lib/currency"
 
 interface WhatIfSellCalculatorProps {
@@ -128,10 +128,23 @@ export function WhatIfSellCalculator({ watches, getMockMarketValue, calculateHea
 
       const promptText = `You are a luxury watch investment advisor. The user is selling a ${selectedWatch.brand} ${selectedWatch.model} and will receive approximately ${formatCurrency(netProceeds.netAfterTax, preferredCurrency)} in net proceeds after tax. Their remaining collection after the sale: ${collectionSummary}. In 3-4 sentences, suggest how they might redeploy these proceeds within the watch market to improve diversification, returns, or collection quality. Be specific about watch categories or references worth considering. Do not give generic advice.`
 
-      const response = await callTrackedLlm(promptText, "gpt-4o-mini")
+      const response = await callAI({
+        prompt: promptText,
+        taskType: 'what_if',
+        cacheKey: createAICacheKey(
+          'what-if-sell',
+          selectedWatch.id,
+          hashAIInput(`${preferredCurrency}|${netProceeds.netAfterTax}|${collectionSummary}`),
+        ),
+        cacheTtlSeconds: 60 * 60 * 12,
+      })
       setLlmSuggestion(response)
-    } catch {
-      setLlmSuggestion("Unable to generate suggestion at this time. Please try again.")
+    } catch (error) {
+      if (error instanceof DailyLimitError) {
+        setLlmSuggestion("The daily AI limit has been reached. As a fallback, prioritize replacing the sold watch with a brand or category missing from the remaining collection so diversification improves instead of shrinking.")
+      } else {
+        setLlmSuggestion("Unable to generate suggestion at this time. Please try again.")
+      }
     } finally {
       setIsLoadingSuggestion(false)
     }
