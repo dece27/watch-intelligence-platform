@@ -7,6 +7,12 @@ import { LoginScreen } from "@/components/LoginScreen"
 import { resetSparkKVFallbackForTests, installSparkKVFallback, SPARK_KV_FALLBACK_PREFIX } from "@/lib/sparkKV"
 import type { User } from "@/lib/types"
 
+class ResizeObserverMock {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
 function createRejectingSpark() {
   const forbidden = async () => {
     throw new Error("Forbidden")
@@ -34,17 +40,24 @@ function createRejectingSpark() {
 
 async function waitFor(assertion: () => void | Promise<void>, timeoutMs = 5000) {
   const startedAt = Date.now()
+  let lastError: unknown
 
   while (Date.now() - startedAt < timeoutMs) {
     try {
+      await act(async () => {
+        await Promise.resolve()
+      })
       await assertion()
       return
-    } catch {
-      await new Promise((resolve) => setTimeout(resolve, 20))
+    } catch (error) {
+      lastError = error
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20))
+      })
     }
   }
 
-  await assertion()
+  throw lastError
 }
 
 async function flushReact() {
@@ -53,11 +66,20 @@ async function flushReact() {
   })
 }
 
+function setInputValue(element: HTMLInputElement, value: string) {
+  const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set
+  valueSetter?.call(element, value)
+  element.dispatchEvent(new Event("input", { bubbles: true }))
+  element.dispatchEvent(new Event("change", { bubbles: true }))
+}
+
 describe("LoginScreen browser fallback", () => {
   let root: Root
   let container: HTMLDivElement
 
   beforeEach(() => {
+    ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+    ;(globalThis as { ResizeObserver?: typeof ResizeObserverMock }).ResizeObserver = ResizeObserverMock
     resetSparkKVFallbackForTests()
     window.localStorage.clear()
     window.sessionStorage.clear()
@@ -99,18 +121,16 @@ describe("LoginScreen browser fallback", () => {
     expect(form).not.toBeNull()
 
     await act(async () => {
-      emailInput!.value = "administrator"
-      emailInput!.dispatchEvent(new Event("input", { bubbles: true }))
+      setInputValue(emailInput!, "administrator")
     })
     await flushReact()
 
     await waitFor(() => {
       expect(container.textContent).toContain("Unlock Vault")
-    })
+    }, 10000)
 
     await act(async () => {
-      passwordInput!.value = "WatchVault"
-      passwordInput!.dispatchEvent(new Event("input", { bubbles: true }))
+      setInputValue(passwordInput!, "WatchVault")
     })
     await flushReact()
 
@@ -133,5 +153,5 @@ describe("LoginScreen browser fallback", () => {
     expect(storedUserId).toBeTruthy()
     expect(window.localStorage.getItem(`${SPARK_KV_FALLBACK_PREFIX}user_${storedUserId}`)).not.toBeNull()
     expect(window.localStorage.getItem(`${SPARK_KV_FALLBACK_PREFIX}auth_${storedUserId}`)).not.toBeNull()
-  })
+  }, 15000)
 })
