@@ -328,6 +328,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                   <Input
                     id="name"
                     type="text"
+                    autoComplete="name"
                     placeholder="Enter your full name"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
@@ -340,6 +341,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                   <Input
                     id="vaultName"
                     type="text"
+                    autoComplete="organization"
                     placeholder="e.g., My Collection, John's Timepieces"
                     value={vaultName}
                     onChange={(e) => setVaultName(e.target.value)}
@@ -375,6 +377,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
               <Input
                 id="password"
                 type={showPassword ? "text" : "password"}
+                autoComplete={isReturningUser || isAdministratorLogin ? "current-password" : "new-password"}
                 placeholder={isReturningUser || isAdministratorLogin ? "Enter your passphrase" : "Create a secure passphrase"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -388,6 +391,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                 <Input
                   id="confirmPassword"
                   type={showPassword ? "text" : "password"}
+                  autoComplete="new-password"
                   placeholder="Confirm your passphrase"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}

@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react"
-import { useKV } from "@github/spark/hooks"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { SharedCollectionRecord, Watch, User, UserPreferences } from "@/lib/types"
 import { DEFAULT_CURRENCY, normalizeCurrency } from "@/lib/currency"
@@ -26,6 +25,7 @@ import {
   sanitizeWatchImageUrl,
   prepareWatchForStorage,
 } from "@/lib/watchPhotoUtils"
+import { useKV } from "@/lib/useKV"
 
 function decodeLegacySharedSlug(value: string): string | null {
   try {
