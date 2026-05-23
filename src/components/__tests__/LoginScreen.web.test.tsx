@@ -288,4 +288,67 @@ describe("LoginScreen browser fallback", () => {
     ).not.toBeNull()
     await expect(window.spark.kv.get(`auth_${storedUserId}`)).resolves.toBeTruthy()
   }, 15000)
+
+  it("creates a brand-new user and stores the account in fallback browser storage", async () => {
+    const onLogin = vi.fn(async (_user: User, _rememberMe: boolean) => {})
+
+    await act(async () => {
+      root.render(<LoginScreen onLogin={onLogin} />)
+    })
+
+    const emailInput = container.querySelector<HTMLInputElement>("#email")
+    const nameInput = container.querySelector<HTMLInputElement>("#name")
+    const vaultNameInput = container.querySelector<HTMLInputElement>("#vaultName")
+    const passwordInput = container.querySelector<HTMLInputElement>("#password")
+    const confirmPasswordInput = container.querySelector<HTMLInputElement>("#confirmPassword")
+    const form = container.querySelector("form")
+
+    expect(emailInput).not.toBeNull()
+    expect(nameInput).not.toBeNull()
+    expect(vaultNameInput).not.toBeNull()
+    expect(passwordInput).not.toBeNull()
+    expect(confirmPasswordInput).not.toBeNull()
+    expect(form).not.toBeNull()
+
+    await act(async () => {
+      setInputValue(emailInput!, "new.user@example.com")
+      setInputValue(nameInput!, "New User")
+      setInputValue(vaultNameInput!, "New Vault")
+      setInputValue(passwordInput!, "SuperSecure42")
+      setInputValue(confirmPasswordInput!, "SuperSecure42")
+    })
+    await flushReact()
+
+    await act(async () => {
+      form!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }))
+    })
+
+    await waitFor(() => {
+      expect(onLogin).toHaveBeenCalledTimes(1)
+    }, 10000)
+
+    const [user, rememberMe] = onLogin.mock.calls[0] as [User, boolean]
+    expect(user.email).toBe("new.user@example.com")
+    expect(user.name).toBe("New User")
+    expect(user.vaultName).toBe("New Vault")
+    expect(rememberMe).toBe(true)
+
+    const storedUserId = JSON.parse(
+      indexedDbMock.read(
+        SPARK_KV_FALLBACK_DB_NAME,
+        "kv",
+        `${SPARK_KV_FALLBACK_PREFIX}user_email_new.user@example.com`
+      ) || "null"
+    ) as string | null
+
+    expect(storedUserId).toBe(user.id)
+    expect(
+      indexedDbMock.read(
+        SPARK_KV_FALLBACK_DB_NAME,
+        "kv",
+        `${SPARK_KV_FALLBACK_PREFIX}user_${storedUserId}`
+      )
+    ).not.toBeNull()
+    await expect(window.spark.kv.get(`auth_${storedUserId}`)).resolves.toBeTruthy()
+  }, 15000)
 })
