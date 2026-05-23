@@ -25,8 +25,10 @@ export const isProtectedAdminUser = (
 }
 
 export async function ensureUserIndexed(userId: string) {
-  const ids = await window.spark.kv.get<string[]>(ALL_USER_IDS_KEY)
-  const allIds = ids || []
+  const ids = await window.spark.kv.get<unknown>(ALL_USER_IDS_KEY)
+  const allIds = Array.isArray(ids)
+    ? ids.filter((id): id is string => typeof id === "string")
+    : []
   if (!allIds.includes(userId)) {
     await window.spark.kv.set(ALL_USER_IDS_KEY, [...allIds, userId])
   }
