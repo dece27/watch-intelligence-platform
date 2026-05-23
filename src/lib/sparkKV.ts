@@ -1,4 +1,6 @@
 const SPARK_KV_FALLBACK_PREFIX = "spark_kv_fallback:"
+const SPARK_KV_FALLBACK_DB_NAME = "watchvault-spark-kv"
+const SPARK_KV_FALLBACK_STORE_NAME = "kv"
 const FALLBACK_USER = {
   avatarUrl: "",
   email: "",
@@ -13,59 +15,167 @@ const memoryFallback = new Map<string, string>()
 
 let sparkKvFallbackInstalled = false
 let shouldUseBrowserStorage = false
+let fallbackDbPromise: Promise<IDBDatabase | null> | null = null
 
-function canUseLocalStorage(): boolean {
-  try {
-    if (typeof window === "undefined" || typeof window.localStorage === "undefined") {
-      return false
+function canUseIndexedDb(): boolean {
+  return typeof window !== "undefined" && typeof window.indexedDB !== "undefined"
+}
+
+function getFallbackStorageKey(key: string): string {
+  return `${SPARK_KV_FALLBACK_PREFIX}${key}`
+}
+
+function openFallbackDb(): Promise<IDBDatabase | null> {
+  if (!canUseIndexedDb()) {
+    return Promise.resolve(null)
+  }
+
+  if (!fallbackDbPromise) {
+    fallbackDbPromise = new Promise((resolve) => {
+      try {
+        const request = window.indexedDB.open(SPARK_KV_FALLBACK_DB_NAME, 1)
+
+        request.onupgradeneeded = () => {
+          const database = request.result
+          if (!database.objectStoreNames.contains(SPARK_KV_FALLBACK_STORE_NAME)) {
+            database.createObjectStore(SPARK_KV_FALLBACK_STORE_NAME)
+          }
+        }
+
+        request.onsuccess = () => {
+          resolve(request.result)
+        }
+
+        request.onerror = () => {
+          resolve(null)
+        }
+      } catch {
+        resolve(null)
+      }
+    })
+  }
+
+  return fallbackDbPromise
+}
+
+async function readIndexedDbValue(key: string): Promise<string | null> {
+  const database = await openFallbackDb()
+  if (!database) {
+    return null
+  }
+
+  return new Promise((resolve) => {
+    try {
+      const transaction = database.transaction(SPARK_KV_FALLBACK_STORE_NAME, "readonly")
+      const request = transaction.objectStore(SPARK_KV_FALLBACK_STORE_NAME).get(getFallbackStorageKey(key))
+
+      request.onsuccess = () => {
+        resolve(typeof request.result === "string" ? request.result : null)
+      }
+      request.onerror = () => {
+        resolve(null)
+      }
+      transaction.onabort = () => {
+        resolve(null)
+      }
+    } catch {
+      resolve(null)
     }
-    const testKey = `${SPARK_KV_FALLBACK_PREFIX}availability`
-    window.localStorage.setItem(testKey, "1")
-    window.localStorage.removeItem(testKey)
-    return true
-  } catch {
+  })
+}
+
+async function writeIndexedDbValue(key: string, value: string): Promise<boolean> {
+  const database = await openFallbackDb()
+  if (!database) {
     return false
   }
+
+  return new Promise((resolve) => {
+    try {
+      const transaction = database.transaction(SPARK_KV_FALLBACK_STORE_NAME, "readwrite")
+      const request = transaction.objectStore(SPARK_KV_FALLBACK_STORE_NAME).put(value, getFallbackStorageKey(key))
+
+      request.onsuccess = () => {
+        resolve(true)
+      }
+      request.onerror = () => {
+        resolve(false)
+      }
+      transaction.onabort = () => {
+        resolve(false)
+      }
+    } catch {
+      resolve(false)
+    }
+  })
 }
 
-function getFallbackItem(key: string): string | null {
-  const storageKey = `${SPARK_KV_FALLBACK_PREFIX}${key}`
-  if (canUseLocalStorage()) {
-    return window.localStorage.getItem(storageKey)
+async function deleteIndexedDbValue(key: string): Promise<boolean> {
+  const database = await openFallbackDb()
+  if (!database) {
+    return false
   }
-  return memoryFallback.get(storageKey) ?? null
+
+  return new Promise((resolve) => {
+    try {
+      const transaction = database.transaction(SPARK_KV_FALLBACK_STORE_NAME, "readwrite")
+      const request = transaction.objectStore(SPARK_KV_FALLBACK_STORE_NAME).delete(getFallbackStorageKey(key))
+
+      request.onsuccess = () => {
+        resolve(true)
+      }
+      request.onerror = () => {
+        resolve(false)
+      }
+      transaction.onabort = () => {
+        resolve(false)
+      }
+    } catch {
+      resolve(false)
+    }
+  })
 }
 
-function setFallbackItem(key: string, value: string) {
-  const storageKey = `${SPARK_KV_FALLBACK_PREFIX}${key}`
-  if (canUseLocalStorage()) {
-    window.localStorage.setItem(storageKey, value)
-    return
+async function readIndexedDbKeys(): Promise<string[]> {
+  const database = await openFallbackDb()
+  if (!database) {
+    return []
   }
-  memoryFallback.set(storageKey, value)
-}
 
-function deleteFallbackItem(key: string) {
-  const storageKey = `${SPARK_KV_FALLBACK_PREFIX}${key}`
-  if (canUseLocalStorage()) {
-    window.localStorage.removeItem(storageKey)
-    return
-  }
-  memoryFallback.delete(storageKey)
+  return new Promise((resolve) => {
+    try {
+      const transaction = database.transaction(SPARK_KV_FALLBACK_STORE_NAME, "readonly")
+      const request = transaction.objectStore(SPARK_KV_FALLBACK_STORE_NAME).getAllKeys()
+
+      request.onsuccess = () => {
+        const keys = Array.isArray(request.result)
+          ? request.result
+              .filter((key): key is string => typeof key === "string" && key.startsWith(SPARK_KV_FALLBACK_PREFIX))
+              .map((key) => key.slice(SPARK_KV_FALLBACK_PREFIX.length))
+          : []
+        resolve(keys)
+      }
+      request.onerror = () => {
+        resolve([])
+      }
+      transaction.onabort = () => {
+        resolve([])
+      }
+    } catch {
+      resolve([])
+    }
+  })
 }
 
 async function getFallbackKeys(): Promise<string[]> {
-  if (canUseLocalStorage()) {
-    return Object.keys(window.localStorage)
-      .filter((key) => key.startsWith(SPARK_KV_FALLBACK_PREFIX))
-      .map((key) => key.slice(SPARK_KV_FALLBACK_PREFIX.length))
-  }
-
-  return Array.from(memoryFallback.keys()).map((key) => key.slice(SPARK_KV_FALLBACK_PREFIX.length))
+  const persistedKeys = await readIndexedDbKeys()
+  const inMemoryKeys = Array.from(memoryFallback.keys()).map((key) => key.slice(SPARK_KV_FALLBACK_PREFIX.length))
+  return Array.from(new Set([...persistedKeys, ...inMemoryKeys]))
 }
 
 async function getFallbackValue<T>(key: string): Promise<T | undefined> {
-  const raw = getFallbackItem(key)
+  const storageKey = getFallbackStorageKey(key)
+  const raw = await readIndexedDbValue(key) ?? memoryFallback.get(storageKey) ?? null
   if (raw === null) {
     return undefined
   }
@@ -74,16 +184,31 @@ async function getFallbackValue<T>(key: string): Promise<T | undefined> {
 }
 
 async function setFallbackValue<T>(key: string, value: T): Promise<void> {
+  const storageKey = getFallbackStorageKey(key)
+
   if (value === undefined) {
-    deleteFallbackItem(key)
+    const deletedFromIndexedDb = await deleteIndexedDbValue(key)
+    if (!deletedFromIndexedDb) {
+      memoryFallback.delete(storageKey)
+    }
     return
   }
 
-  setFallbackItem(key, JSON.stringify(value))
+  const serializedValue = JSON.stringify(value)
+  const persisted = await writeIndexedDbValue(key, serializedValue)
+  if (persisted) {
+    memoryFallback.delete(storageKey)
+    return
+  }
+
+  memoryFallback.set(storageKey, serializedValue)
 }
 
 async function deleteFallbackValue(key: string): Promise<void> {
-  deleteFallbackItem(key)
+  const deletedFromIndexedDb = await deleteIndexedDbValue(key)
+  if (!deletedFromIndexedDb) {
+    memoryFallback.delete(getFallbackStorageKey(key))
+  }
 }
 
 function joinPrompt(strings: TemplateStringsArray, values: unknown[]): string {
@@ -170,7 +295,8 @@ export function installSparkKVFallback() {
 export function resetSparkKVFallbackForTests() {
   sparkKvFallbackInstalled = false
   shouldUseBrowserStorage = false
+  fallbackDbPromise = null
   memoryFallback.clear()
 }
 
-export { SPARK_KV_FALLBACK_PREFIX }
+export { SPARK_KV_FALLBACK_DB_NAME, SPARK_KV_FALLBACK_PREFIX }

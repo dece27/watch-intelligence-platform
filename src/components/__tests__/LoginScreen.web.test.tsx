@@ -4,13 +4,130 @@ import { act } from "react"
 import { createRoot, Root } from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { LoginScreen } from "@/components/LoginScreen"
-import { resetSparkKVFallbackForTests, installSparkKVFallback, SPARK_KV_FALLBACK_PREFIX } from "@/lib/sparkKV"
+import {
+  resetSparkKVFallbackForTests,
+  installSparkKVFallback,
+  SPARK_KV_FALLBACK_DB_NAME,
+  SPARK_KV_FALLBACK_PREFIX,
+} from "@/lib/sparkKV"
 import type { User } from "@/lib/types"
 
 class ResizeObserverMock {
   observe() {}
   unobserve() {}
   disconnect() {}
+}
+
+function createIndexedDbMock() {
+  const databases = new Map<string, Map<string, Map<string, string>>>()
+
+  const createRequest = <T,>(executor: () => T) => {
+    const request = {
+      result: undefined as T | undefined,
+      onsuccess: null as ((event: Event) => void) | null,
+      onerror: null as ((event: Event) => void) | null,
+    }
+
+    queueMicrotask(() => {
+      try {
+        request.result = executor()
+        request.onsuccess?.(new Event("success"))
+      } catch {
+        request.onerror?.(new Event("error"))
+      }
+    })
+
+    return request as unknown as IDBRequest<T>
+  }
+
+  class FakeObjectStore {
+    constructor(private readonly records: Map<string, string>) {}
+
+    get(key: IDBValidKey) {
+      return createRequest(() => this.records.get(String(key)))
+    }
+
+    put(value: unknown, key: IDBValidKey) {
+      return createRequest(() => {
+        this.records.set(String(key), String(value))
+        return key
+      })
+    }
+
+    delete(key: IDBValidKey) {
+      return createRequest(() => {
+        this.records.delete(String(key))
+        return undefined
+      })
+    }
+
+    getAllKeys() {
+      return createRequest(() => Array.from(this.records.keys()))
+    }
+  }
+
+  class FakeTransaction {
+    onabort: ((event: Event) => void) | null = null
+
+    constructor(private readonly stores: Map<string, Map<string, string>>) {}
+
+    objectStore(name: string) {
+      if (!this.stores.has(name)) {
+        this.stores.set(name, new Map())
+      }
+      return new FakeObjectStore(this.stores.get(name)!)
+    }
+  }
+
+  class FakeDatabase {
+    readonly objectStoreNames = {
+      contains: (name: string) => this.stores.has(name),
+    }
+
+    constructor(private readonly stores: Map<string, Map<string, string>>) {}
+
+    createObjectStore(name: string) {
+      if (!this.stores.has(name)) {
+        this.stores.set(name, new Map())
+      }
+      return new FakeObjectStore(this.stores.get(name)!)
+    }
+
+    transaction(_storeName: string, _mode: IDBTransactionMode) {
+      return new FakeTransaction(this.stores) as unknown as IDBTransaction
+    }
+  }
+
+  return {
+    factory: {
+      open: (name: string) => {
+        const request = {
+          result: undefined as IDBDatabase | undefined,
+          onsuccess: null as ((event: Event) => void) | null,
+          onerror: null as ((event: Event) => void) | null,
+          onupgradeneeded: null as ((event: Event) => void) | null,
+        }
+
+        queueMicrotask(() => {
+          const databaseStores = databases.get(name) ?? new Map<string, Map<string, string>>()
+          const isNewDatabase = !databases.has(name)
+          databases.set(name, databaseStores)
+
+          request.result = new FakeDatabase(databaseStores) as unknown as IDBDatabase
+
+          if (isNewDatabase) {
+            request.onupgradeneeded?.(new Event("upgradeneeded"))
+          }
+          request.onsuccess?.(new Event("success"))
+        })
+
+        return request as unknown as IDBOpenDBRequest
+      },
+    } as IDBFactory,
+    read(dbName: string, storeName: string, key: string) {
+      return databases.get(dbName)?.get(storeName)?.get(key) ?? null
+    },
+  }
 }
 
 function createRejectingSpark() {
@@ -76,12 +193,14 @@ function setInputValue(element: HTMLInputElement, value: string) {
 describe("LoginScreen browser fallback", () => {
   let root: Root
   let container: HTMLDivElement
+  let indexedDbMock: ReturnType<typeof createIndexedDbMock>
 
   beforeEach(() => {
     ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
     ;(globalThis as { ResizeObserver?: typeof ResizeObserverMock }).ResizeObserver = ResizeObserverMock
+    indexedDbMock = createIndexedDbMock()
+    ;(window as Window & { indexedDB: IDBFactory }).indexedDB = indexedDbMock.factory
     resetSparkKVFallbackForTests()
-    window.localStorage.clear()
     window.sessionStorage.clear()
     window.spark = createRejectingSpark()
     installSparkKVFallback()
@@ -97,7 +216,6 @@ describe("LoginScreen browser fallback", () => {
       root.unmount()
     })
     resetSparkKVFallbackForTests()
-    window.localStorage.clear()
     window.sessionStorage.clear()
   })
 
@@ -109,7 +227,13 @@ describe("LoginScreen browser fallback", () => {
     })
 
     await waitFor(() => {
-      expect(window.localStorage.getItem(`${SPARK_KV_FALLBACK_PREFIX}user_email_administrator`)).not.toBeNull()
+      expect(
+        indexedDbMock.read(
+          SPARK_KV_FALLBACK_DB_NAME,
+          "kv",
+          `${SPARK_KV_FALLBACK_PREFIX}user_email_administrator`
+        )
+      ).not.toBeNull()
     })
 
     const emailInput = container.querySelector<HTMLInputElement>("#email")
@@ -147,11 +271,21 @@ describe("LoginScreen browser fallback", () => {
     expect(rememberMe).toBe(true)
 
     const storedUserId = JSON.parse(
-      window.localStorage.getItem(`${SPARK_KV_FALLBACK_PREFIX}user_email_administrator`) || "null"
+      indexedDbMock.read(
+        SPARK_KV_FALLBACK_DB_NAME,
+        "kv",
+        `${SPARK_KV_FALLBACK_PREFIX}user_email_administrator`
+      ) || "null"
     ) as string | null
 
     expect(storedUserId).toBeTruthy()
-    expect(window.localStorage.getItem(`${SPARK_KV_FALLBACK_PREFIX}user_${storedUserId}`)).not.toBeNull()
-    expect(window.localStorage.getItem(`${SPARK_KV_FALLBACK_PREFIX}auth_${storedUserId}`)).not.toBeNull()
+    expect(
+      indexedDbMock.read(
+        SPARK_KV_FALLBACK_DB_NAME,
+        "kv",
+        `${SPARK_KV_FALLBACK_PREFIX}user_${storedUserId}`
+      )
+    ).not.toBeNull()
+    await expect(window.spark.kv.get(`auth_${storedUserId}`)).resolves.toBeTruthy()
   }, 15000)
 })
