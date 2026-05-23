@@ -6,165 +6,112 @@ vi.mock('@/lib/supabase/server', () => ({
 
 import { createClient } from '@/lib/supabase/server'
 import { createWatch, getWatch, getWatches, searchWatches, softDeleteWatch, updateWatch } from '@/lib/db/watches'
+import { buildHarnessWatch, createSupabaseTestHarness } from './testSupabaseHarness'
 
 const createClientMock = vi.mocked(createClient)
-
-function buildWatchRow(overrides: Record<string, unknown> = {}) {
-  return {
-    id: 'watch-1',
-    user_id: 'user-1',
-    brand: 'Rolex',
-    model: 'GMT-Master II',
-    reference: '126710BLRO',
-    year: 2022,
-    condition: 'Excellent',
-    has_box: true,
-    has_papers: true,
-    purchase_price: 15000,
-    purchase_date: '2024-01-01',
-    purchase_currency: 'USD',
-    serial_number: null,
-    notes: 'Pepsi bezel',
-    cover_photo_url: 'https://example.com/front.jpg',
-    is_sold: false,
-    sold_price: null,
-    sold_date: null,
-    deleted_at: null,
-    created_at: '2024-01-01T00:00:00.000Z',
-    updated_at: '2024-01-02T00:00:00.000Z',
-    ...overrides,
-  }
-}
 
 describe('watch data access helpers', () => {
   beforeEach(() => {
     createClientMock.mockReset()
   })
 
-  it('lists watches with pagination and optional brand filtering', async () => {
-    const range = vi.fn().mockResolvedValue({ data: [buildWatchRow()], error: null })
-    const builder = {
-      eq: vi.fn(() => builder),
-      is: vi.fn(() => builder),
-      order: vi.fn(() => builder),
-      range,
-    }
-    const select = vi.fn(() => builder)
-    const from = vi.fn(() => ({ select }))
+  it('returns an empty collection when the active user has no watches', async () => {
+    const harness = createSupabaseTestHarness()
+    const watchClients = harness.createWatchesClientFactory('user-a')
+    createClientMock.mockImplementation(() => watchClients.createClient() as never)
 
-    createClientMock.mockReturnValue({ from } as never)
-
-    const result = await getWatches('user-1', { limit: 10, offset: 20, brand: 'Rolex' })
-
-    expect(from).toHaveBeenCalledWith('watches')
-    expect(builder.eq).toHaveBeenCalledWith('user_id', 'user-1')
-    expect(builder.eq).toHaveBeenCalledWith('brand', 'Rolex')
-    expect(builder.is).toHaveBeenCalledWith('deleted_at', null)
-    expect(builder.range).toHaveBeenCalledWith(20, 29)
-    expect(result).toEqual([buildWatchRow()])
+    await expect(getWatches('user-a', { limit: 5, offset: 0 })).resolves.toEqual([])
   })
 
-  it('fetches a single visible watch', async () => {
-    const maybeSingle = vi.fn().mockResolvedValue({ data: buildWatchRow(), error: null })
-    const builder = {
-      eq: vi.fn(() => builder),
-      is: vi.fn(() => builder),
-      maybeSingle,
-    }
-    const select = vi.fn(() => builder)
-    const from = vi.fn(() => ({ select }))
+  it('supports happy path CRUD and search flows', async () => {
+    const harness = createSupabaseTestHarness()
+    const watchClients = harness.createWatchesClientFactory('user-a')
+    createClientMock.mockImplementation(() => watchClients.createClient() as never)
 
-    createClientMock.mockReturnValue({ from } as never)
-
-    const result = await getWatch('watch-1')
-
-    expect(builder.eq).toHaveBeenCalledWith('id', 'watch-1')
-    expect(builder.is).toHaveBeenCalledWith('deleted_at', null)
-    expect(result?.reference).toBe('126710BLRO')
-  })
-
-  it('creates a watch using the inserted row payload', async () => {
-    const single = vi.fn().mockResolvedValue({ data: buildWatchRow({ brand: 'Omega' }), error: null })
-    const select = vi.fn(() => ({ single }))
-    const insert = vi.fn(() => ({ select }))
-    const from = vi.fn(() => ({ insert }))
-
-    createClientMock.mockReturnValue({ from } as never)
-
-    await createWatch({
-      user_id: 'user-1',
+    const created = await createWatch({
+      user_id: 'user-a',
       brand: 'Omega',
       model: 'Speedmaster',
       reference: '310.30.42.50.01.001',
+      notes: 'Moonwatch',
     })
 
-    expect(insert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        user_id: 'user-1',
-        brand: 'Omega',
-        reference: '310.30.42.50.01.001',
-      }),
-    )
+    expect(created.user_id).toBe('user-a')
+    expect(created.brand).toBe('Omega')
+
+    const fetched = await getWatch(created.id)
+    expect(fetched?.reference).toBe('310.30.42.50.01.001')
+
+    const updated = await updateWatch(created.id, { notes: 'Updated note', brand: 'Omega' })
+    expect(updated.notes).toBe('Updated note')
+
+    const searchResults = await searchWatches('user-a', 'updated note')
+    expect(searchResults.map((row) => row.id)).toContain(created.id)
   })
 
-  it('updates a non-deleted watch by id', async () => {
-    const maybeSingle = vi.fn().mockResolvedValue({ data: buildWatchRow({ brand: 'Omega' }), error: null })
-    const select = vi.fn(() => ({ maybeSingle }))
-    const builder = {
-      eq: vi.fn(() => builder),
-      is: vi.fn(() => builder),
-      select,
-    }
-    const update = vi.fn(() => builder)
-    const from = vi.fn(() => ({ update }))
+  it('paginates the first five watches for offset zero', async () => {
+    const harness = createSupabaseTestHarness({
+      watches: Array.from({ length: 10 }, (_, index) => buildHarnessWatch({
+        id: `watch-${index + 1}`,
+        user_id: 'user-a',
+        reference: `REF-${index + 1}`,
+        updated_at: new Date(Date.UTC(2024, 0, 10 - index)).toISOString(),
+      })),
+    })
+    const watchClients = harness.createWatchesClientFactory('user-a')
+    createClientMock.mockImplementation(() => watchClients.createClient() as never)
 
-    createClientMock.mockReturnValue({ from } as never)
+    const firstPage = await getWatches('user-a', { limit: 5, offset: 0 })
 
-    await updateWatch('watch-1', { brand: 'Omega' })
-
-    expect(update).toHaveBeenCalledWith({ brand: 'Omega' })
-    expect(builder.eq).toHaveBeenCalledWith('id', 'watch-1')
-    expect(builder.is).toHaveBeenCalledWith('deleted_at', null)
+    expect(firstPage).toHaveLength(5)
+    expect(firstPage.map((row) => row.reference)).toEqual(['REF-1', 'REF-2', 'REF-3', 'REF-4', 'REF-5'])
   })
 
-  it('soft deletes a watch by timestamping deleted_at', async () => {
-    const maybeSingle = vi.fn().mockResolvedValue({ data: buildWatchRow({ deleted_at: '2024-03-01T00:00:00.000Z' }), error: null })
-    const select = vi.fn(() => ({ maybeSingle }))
-    const builder = {
-      eq: vi.fn(() => builder),
-      is: vi.fn(() => builder),
-      select,
-    }
-    const update = vi.fn(() => builder)
-    const from = vi.fn(() => ({ update }))
+  it('paginates the second five watches for offset five', async () => {
+    const harness = createSupabaseTestHarness({
+      watches: Array.from({ length: 10 }, (_, index) => buildHarnessWatch({
+        id: `watch-${index + 1}`,
+        user_id: 'user-a',
+        reference: `REF-${index + 1}`,
+        updated_at: new Date(Date.UTC(2024, 0, 10 - index)).toISOString(),
+      })),
+    })
+    const watchClients = harness.createWatchesClientFactory('user-a')
+    createClientMock.mockImplementation(() => watchClients.createClient() as never)
 
-    createClientMock.mockReturnValue({ from } as never)
+    const secondPage = await getWatches('user-a', { limit: 5, offset: 5 })
 
-    const result = await softDeleteWatch('watch-1')
-
-    expect(update).toHaveBeenCalledWith(expect.objectContaining({ deleted_at: expect.any(String) }))
-    expect(result.deleted_at).toBe('2024-03-01T00:00:00.000Z')
+    expect(secondPage).toHaveLength(5)
+    expect(secondPage.map((row) => row.reference)).toEqual(['REF-6', 'REF-7', 'REF-8', 'REF-9', 'REF-10'])
   })
 
-  it('searches watches with bounded pagination', async () => {
-    const range = vi.fn().mockResolvedValue({ data: [buildWatchRow()], error: null })
-    const builder = {
-      eq: vi.fn(() => builder),
-      is: vi.fn(() => builder),
-      or: vi.fn(() => builder),
-      order: vi.fn(() => builder),
-      range,
-    }
-    const select = vi.fn(() => builder)
-    const from = vi.fn(() => ({ select }))
+  it('makes a soft-deleted watch invisible to subsequent collection reads', async () => {
+    const harness = createSupabaseTestHarness({
+      watches: [buildHarnessWatch({ id: 'watch-soft-delete', user_id: 'user-a', reference: 'SOFT-1' })],
+    })
+    const watchClients = harness.createWatchesClientFactory('user-a')
+    createClientMock.mockImplementation(() => watchClients.createClient() as never)
 
-    createClientMock.mockReturnValue({ from } as never)
+    await softDeleteWatch('watch-soft-delete')
 
-    await searchWatches('user-1', 'Pepsi, bezel')
+    await expect(getWatches('user-a', { limit: 10, offset: 0 })).resolves.toEqual([])
+    await expect(getWatch('watch-soft-delete')).resolves.toBeNull()
+  })
 
-    expect(builder.or).toHaveBeenCalledWith(
-      expect.stringContaining('brand.ilike.%Pepsi bezel%'),
-    )
-    expect(builder.range).toHaveBeenCalledWith(0, 24)
+  it('enforces cross-user isolation for list and get operations', async () => {
+    const harness = createSupabaseTestHarness({
+      watches: [
+        buildHarnessWatch({ id: 'watch-a', user_id: 'user-a', reference: 'A-REF' }),
+        buildHarnessWatch({ id: 'watch-b', user_id: 'user-b', reference: 'B-REF' }),
+      ],
+    })
+    const watchClients = harness.createWatchesClientFactory('user-b')
+    createClientMock.mockImplementation(() => watchClients.createClient() as never)
+
+    const watches = await getWatches('user-a', { limit: 10, offset: 0 })
+    const hiddenWatch = await getWatch('watch-a')
+
+    expect(watches).toEqual([])
+    expect(hiddenWatch).toBeNull()
   })
 })
