@@ -206,5 +206,26 @@ describe("Administrator login flow", () => {
       expect(auth).toBeDefined()
       await expect(verifyPassword("WatchVault", auth)).resolves.toBe(true)
     })
+
+    it("self-heals and authenticates when the administrator email key is temporarily missing", async () => {
+      const { ensureDefaultAccount, DEFAULT_ACCOUNT_EMAIL } = await import(
+        "@/lib/defaultAccount"
+      )
+      const store: KvStore = new Map()
+      ;(globalThis as { window?: unknown }).window = createSparkWindow(store)
+
+      await ensureDefaultAccount()
+      store.delete(`user_email_${DEFAULT_ACCOUNT_EMAIL}`)
+      expect(store.get(`user_email_${DEFAULT_ACCOUNT_EMAIL}`)).toBeUndefined()
+
+      await ensureDefaultAccount()
+
+      const repairedUserId = store.get(`user_email_${DEFAULT_ACCOUNT_EMAIL}`) as string
+      expect(repairedUserId).toBeDefined()
+
+      const repairedAuth = store.get(`auth_${repairedUserId}`) as AuthRecord
+      expect(repairedAuth).toBeDefined()
+      await expect(verifyPassword("WatchVault", repairedAuth)).resolves.toBe(true)
+    })
   })
 })

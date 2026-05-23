@@ -77,8 +77,17 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
             // from partial registration failures or incomplete admin resets
             const userProfile = await window.spark.kv.get<User>(`user_${existingUserId}`)
             if (!userProfile) {
-              await window.spark.kv.delete(emailKey)
-              setIsReturningUser(false)
+              if (normalizedEmail === ADMIN_LOGIN_IDENTIFIER) {
+                await ensureDefaultAccount()
+                const repairedUserId = await window.spark.kv.get<string>(emailKey)
+                const repairedProfile = repairedUserId
+                  ? await window.spark.kv.get<User>(`user_${repairedUserId}`)
+                  : null
+                setIsReturningUser(Boolean(repairedUserId && repairedProfile))
+              } else {
+                await window.spark.kv.delete(emailKey)
+                setIsReturningUser(false)
+              }
             } else {
               setIsReturningUser(true)
             }
@@ -142,7 +151,12 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
         // Non-fatal: if the account was already set up, login can still proceed.
       }
       const emailKey = `user_email_${normalizedLoginIdentifier}`
-      const existingUserId = await window.spark.kv.get<string>(emailKey)
+      let existingUserId = await window.spark.kv.get<string>(emailKey)
+
+      if (!existingUserId && normalizedLoginIdentifier === ADMIN_LOGIN_IDENTIFIER) {
+        await ensureDefaultAccount()
+        existingUserId = await window.spark.kv.get<string>(emailKey)
+      }
 
       if (existingUserId) {
         const user = await window.spark.kv.get<User>(`user_${existingUserId}`)
