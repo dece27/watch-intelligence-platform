@@ -14,7 +14,7 @@ export type AppraisalPurpose = 'insurance' | 'estate' | 'collateral' | 'personal
 export type NewsSortMode = 'recent' | 'relevant'
 export type ShareAccess = 'read_only'
 
-export interface Database {
+interface DatabaseGenerated {
   public: {
     Tables: {
       profiles: {
@@ -29,6 +29,7 @@ export interface Database {
           created_at: string
           updated_at: string
         }
+
         Insert: {
           id: string
           display_name?: string | null
@@ -907,6 +908,17 @@ export interface Database {
       news_sort_mode: NewsSortMode
       share_access: ShareAccess
     }
+  }
+}
+
+type AddRelationships<T> = {
+  [K in keyof T]: T[K] extends object ? T[K] & { Relationships: [] } : T[K]
+}
+
+export type Database = Omit<DatabaseGenerated, 'public'> & {
+  public: Omit<DatabaseGenerated['public'], 'Tables' | 'Views'> & {
+    Tables: AddRelationships<DatabaseGenerated['public']['Tables']>
+    Views: AddRelationships<DatabaseGenerated['public']['Views']>
   }
 }
 
