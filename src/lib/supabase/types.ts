@@ -806,6 +806,18 @@ export interface Database {
           market_recorded_at: string | null
         }
       }
+      v_collection_summary: {
+        Row: {
+          user_id: string
+          active_count: number
+          sold_count: number
+          total_cost_basis: number | null
+          brand_count: number
+          full_set_count: number
+          earliest_purchase: string | null
+          latest_purchase: string | null
+        }
+      }
     }
     Functions: {
       check_and_increment_ai_usage: {
@@ -837,6 +849,20 @@ export interface Database {
           last_viewed: string | null
           expires_at: string | null
           watches: Json
+        }[]
+      }
+      get_my_collection_summary: {
+        Args: Record<PropertyKey, never>
+        Returns: Database['public']['Views']['v_collection_summary']['Row'][]
+      }
+      get_portfolio_trend: {
+        Args: {
+          p_days?: number | null
+        }
+        Returns: {
+          snapshot_date: string
+          total_market_value: number
+          total_cost_basis: number
         }[]
       }
       record_ai_usage: {

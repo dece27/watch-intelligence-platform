@@ -84,3 +84,53 @@ left join public.latest_market_prices lmp
   on lmp.brand = pa.brand
  and lmp.reference = pa.reference
 where pa.is_active = true;
+
+create or replace view public.v_collection_summary
+with (security_invoker = true)
+as
+select
+  w.user_id,
+  count(*) filter (where w.is_sold = false)::integer as active_count,
+  count(*) filter (where w.is_sold = true)::integer as sold_count,
+  sum(w.purchase_price) filter (where w.is_sold = false) as total_cost_basis,
+  count(distinct w.brand)::integer as brand_count,
+  count(*) filter (where w.has_box and w.has_papers)::integer as full_set_count,
+  min(w.purchase_date) as earliest_purchase,
+  max(w.purchase_date) as latest_purchase
+from public.watches w
+where w.deleted_at is null
+group by w.user_id;
+
+create or replace function public.get_my_collection_summary()
+returns setof public.v_collection_summary
+language sql
+security definer
+set search_path = public
+as $$
+  select *
+  from public.v_collection_summary
+  where user_id = auth.uid();
+$$;
+
+create or replace function public.get_portfolio_trend(p_days integer default 365)
+returns table (
+  snapshot_date date,
+  total_market_value decimal,
+  total_cost_basis decimal
+)
+language sql
+security definer
+set search_path = public
+as $$
+  select
+    ps.snapshot_date,
+    ps.total_market_value,
+    ps.total_cost_basis
+  from public.portfolio_snapshots ps
+  where ps.user_id = auth.uid()
+    and ps.snapshot_date >= current_date - greatest(coalesce(p_days, 365), 0)
+  order by ps.snapshot_date asc;
+$$;
+
+grant execute on function public.get_my_collection_summary() to authenticated;
+grant execute on function public.get_portfolio_trend(integer) to authenticated;
