@@ -102,6 +102,35 @@ ${colorConfig
 
 const ChartTooltip = RechartsPrimitive.Tooltip
 
+type ChartTooltipItem = {
+  name?: string
+  dataKey?: string
+  value?: number | string
+  color?: string
+  payload?: Record<string, unknown>
+}
+
+interface ChartTooltipContentProps extends ComponentProps<"div"> {
+  active?: boolean
+  payload?: ChartTooltipItem[]
+  indicator?: "line" | "dot" | "dashed"
+  hideLabel?: boolean
+  hideIndicator?: boolean
+  label?: ReactNode
+  labelFormatter?: (value: ReactNode, payload?: ChartTooltipItem[]) => ReactNode
+  labelClassName?: string
+  formatter?: (
+    value: number | string,
+    name: string,
+    item: ChartTooltipItem,
+    index: number,
+    payload?: Record<string, unknown>,
+  ) => ReactNode
+  color?: string
+  nameKey?: string
+  labelKey?: string
+}
+
 function ChartTooltipContent({
   active,
   payload,
@@ -116,14 +145,7 @@ function ChartTooltipContent({
   color,
   nameKey,
   labelKey,
-}: ComponentProps<typeof RechartsPrimitive.Tooltip> &
-  ComponentProps<"div"> & {
-    hideLabel?: boolean
-    hideIndicator?: boolean
-    indicator?: "line" | "dot" | "dashed"
-    nameKey?: string
-    labelKey?: string
-  }) {
+}: ChartTooltipContentProps) {
   const { config } = useChart()
 
   const tooltipLabel = useMemo(() => {
@@ -180,7 +202,11 @@ function ChartTooltipContent({
         {payload.map((item, index) => {
           const key = `${nameKey || item.name || item.dataKey || "value"}`
           const itemConfig = getPayloadConfigFromPayload(config, item, key)
-          const indicatorColor = color || item.payload.fill || item.color
+          const indicatorColor = color
+            || (item.payload && typeof item.payload === "object" && "fill" in item.payload
+              ? String(item.payload.fill ?? "")
+              : undefined)
+            || item.color
 
           return (
             <div
@@ -254,11 +280,12 @@ function ChartLegendContent({
   payload,
   verticalAlign = "bottom",
   nameKey,
-}: ComponentProps<"div"> &
-  Pick<RechartsPrimitive.LegendProps, "payload" | "verticalAlign"> & {
-    hideIcon?: boolean
-    nameKey?: string
-  }) {
+}: ComponentProps<"div"> & {
+  hideIcon?: boolean
+  nameKey?: string
+  payload?: Array<{ dataKey?: string; value?: string; color?: string }>
+  verticalAlign?: "top" | "bottom"
+}) {
   const { config } = useChart()
 
   if (!payload?.length) {

@@ -68,7 +68,7 @@ describe("DealsModule browser regression", () => {
 
   beforeEach(() => {
     ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
-    ;(globalThis as { ResizeObserver?: typeof ResizeObserverMock }).ResizeObserver = ResizeObserverMock
+    ;(globalThis as unknown as { ResizeObserver?: typeof ResizeObserverMock }).ResizeObserver = ResizeObserverMock
 
     kvStore = new Map<string, unknown>()
 
@@ -93,7 +93,7 @@ describe("DealsModule browser regression", () => {
 
     window.spark = {
       kv: {
-        get: vi.fn(async (key: string) => (kvStore.has(key) ? kvStore.get(key) : null)),
+        get: (async <T,>(key: string) => (kvStore.has(key) ? (kvStore.get(key) as T) : undefined)),
         set: vi.fn(async (key: string, value: unknown) => {
           kvStore.set(key, value)
         }),
@@ -103,12 +103,12 @@ describe("DealsModule browser regression", () => {
         keys: vi.fn(async () => Array.from(kvStore.keys())),
       },
       llm: vi.fn(async () => ""),
-      llmPrompt: (strings: TemplateStringsArray, ...values: unknown[]) =>
+      llmPrompt: (strings: string[], ...values: unknown[]) =>
         strings.reduce((result, segment, index) => result + segment + String(values[index] ?? ""), ""),
       user: vi.fn(async () => ({
         avatarUrl: "",
         email: "administrator",
-        id: "user-1",
+        id: 1,
         isOwner: true,
         login: "administrator",
       })),
