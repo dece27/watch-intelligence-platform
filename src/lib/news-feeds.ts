@@ -90,15 +90,18 @@ async function sha256Hash(input: string): Promise<string> {
     .join('')
 }
 
+const HTML_ENTITIES: Record<string, string> = {
+  '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"',
+  '&#039;': "'", '&apos;': "'", '&nbsp;': ' ',
+}
+
 function cleanHtml(html: string): string {
-  // Strip HTML tags first, then decode entities via DOMParser (single-pass, no double-unescape risk)
-  const stripped = html.replace(/<[^>]+>/g, ' ')
-  try {
-    const doc = new DOMParser().parseFromString(stripped, 'text/html')
-    return (doc.body.textContent ?? stripped).replace(/\s+/g, ' ').trim()
-  } catch {
-    return stripped.replace(/\s+/g, ' ').trim()
-  }
+  return html
+    .replace(/<[^>]+>/g, ' ')
+    // Replace known entities; map any other &...; sequences to a space to avoid unknown output
+    .replace(/&[a-zA-Z0-9#]+;/g, (e) => HTML_ENTITIES[e] ?? ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 function extractImageFromItem(item: Element, rawContent: string): string | null {
