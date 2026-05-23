@@ -174,23 +174,42 @@ VITE_WATCHCHARTS_API_KEY=your_key npm run dev
 | `RESEND_API_KEY` | Server-only API key used by scheduled workflows that send transactional email notifications |
 | `RESEND_FROM_EMAIL` | Optional sender address override for Resend-powered workflow notifications |
 
+### GitHub repository secrets
+
+In **Settings → Secrets and variables → Actions**, add these repository secrets:
+
+- `NEXT_PUBLIC_SUPABASE_URL` — Supabase project URL used at build time for static frontend workflows
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` — public Supabase anon key used at build time for static frontend workflows
+- `SUPABASE_URL` — same Supabase project URL for GitHub Actions scripts and server-side utilities
+- `SUPABASE_SERVICE_ROLE_KEY` — Supabase service role key for server-side Actions scripts only; never expose it to the browser
+- `RESEND_API_KEY` — Resend API key for alert notification emails
+
+### Supabase Edge Function secrets
+
+Set these in Supabase with `npx supabase secrets set KEY=value`:
+
+- `GITHUB_TOKEN` — PAT with `models:read` scope only
+- `SUPABASE_SERVICE_ROLE_KEY` — service role key for Edge Function admin operations
+- `RESEND_API_KEY` — Resend API key for alert emails sent from Edge Functions
+
+### Local development
+
 Create a local `/home/runner/work/watch-intelligence-platform/watch-intelligence-platform/.env.local`
 file with:
 
 ```bash
-VITE_SUPABASE_URL=
-VITE_SUPABASE_ANON_KEY=
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
-SUPABASE_DB_URL=
 ```
 
-For GitHub Pages or other static builds, only the `VITE_` variables are needed
-in the frontend build. Keep `SUPABASE_SERVICE_ROLE_KEY` server-only and use it
-only from GitHub Actions, scripts, or Supabase server-side utilities such as
-`supabase/utils/admin.ts`. For AI features, deploy the Supabase Edge Function at
-`supabase/functions/github-models-proxy` and set both `GITHUB_TOKEN` and
-`SUPABASE_SERVICE_ROLE_KEY` in the Supabase project secrets so the PAT stays
-server-side and the proxy can persist AI response caches in Supabase.
+The frontend accepts both `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` and
+`NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`. GitHub Actions in
+this repository use the `NEXT_PUBLIC_` names for frontend builds, while
+server-side scripts and utilities use `SUPABASE_URL` and
+`SUPABASE_SERVICE_ROLE_KEY`. Keep `SUPABASE_SERVICE_ROLE_KEY` server-only and
+never place it in client code.
 
 ## Testing
 
