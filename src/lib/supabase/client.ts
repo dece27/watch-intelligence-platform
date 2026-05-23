@@ -27,8 +27,8 @@ export function createSupabaseBrowserClient(): SupabaseClient<Database> {
   }
 
   browserClient = createBrowserClient<Database>(
-    requireEnv('NEXT_PUBLIC_SUPABASE_URL'),
-    requireEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY'),
+    requireEnv('VITE_SUPABASE_URL'),
+    requireEnv('VITE_SUPABASE_ANON_KEY'),
   )
 
   return browserClient

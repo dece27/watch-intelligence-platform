@@ -158,8 +158,8 @@ VITE_WATCHCHARTS_API_KEY=your_key npm run dev
 
 | Variable | Description |
 |---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL used by browser and server clients |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public Supabase anon key used by browser and server clients |
+| `VITE_SUPABASE_URL` | Supabase project URL used by browser and server clients |
+| `VITE_SUPABASE_ANON_KEY` | Public Supabase anon key used by browser and server clients |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-only Supabase service role key for admin/server operations; never expose it to the browser |
 | `SUPABASE_DB_URL` | Direct database connection string used for CLI tasks such as backups |
 | `VITE_CHRONO24_WRAPPER_BASE_URL` | Base URL for the Chrono24 wrapper API |
@@ -173,8 +173,8 @@ Create a local `/home/runner/work/watch-intelligence-platform/watch-intelligence
 file with:
 
 ```bash
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 SUPABASE_DB_URL=
 ```

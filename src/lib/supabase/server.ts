@@ -1,12 +1,6 @@
-import { createServerClient } from '@supabase/ssr'
-import type { CookieOptions, SupabaseClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/types'
-
-type NextCookieStore = {
-  getAll(): Array<{ name: string; value: string }>
-  set(name: string, value: string, options?: CookieOptions): void
-}
 
 function readEnv(name: string): string | undefined {
   const viteEnv = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env
@@ -26,44 +20,28 @@ function requireEnv(name: string): string {
   return value
 }
 
-function getCookieStore(): NextCookieStore {
-  return cookies() as unknown as NextCookieStore
-}
-
 /**
- * Creates a per-request Supabase server client backed by the active Next.js cookie store.
+ * Creates a Supabase client with the anon key.
+ * Suitable for server-side scripts and Supabase Edge Functions where the
+ * caller provides its own auth token.
  */
 export function createClient(): SupabaseClient<Database> {
-  const cookieStore = getCookieStore()
-
-  return createServerClient<Database>(
-    requireEnv('NEXT_PUBLIC_SUPABASE_URL'),
-    requireEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY'),
-    {
-      cookies: {
-        getAll: () => cookieStore.getAll(),
-        setAll: (cookieValues) => {
-          cookieValues.forEach(({ name, value, options }) => {
-            cookieStore.set(name, value, options)
-          })
-        },
-      },
-    },
+  return createSupabaseClient<Database>(
+    requireEnv('VITE_SUPABASE_URL'),
+    requireEnv('VITE_SUPABASE_ANON_KEY'),
   )
 }
 
 /**
- * Creates a service-role Supabase server client without request cookie persistence.
+ * Creates a service-role Supabase client that bypasses RLS.
+ * For use in trusted server-side contexts only — never expose the service role
+ * key to the browser or any client-side bundle.
  */
 export function createAdminClient(): SupabaseClient<Database> {
-  return createServerClient<Database>(
-    requireEnv('NEXT_PUBLIC_SUPABASE_URL'),
+  return createSupabaseClient<Database>(
+    requireEnv('VITE_SUPABASE_URL'),
     requireEnv('SUPABASE_SERVICE_ROLE_KEY'),
     {
-      cookies: {
-        getAll: () => [],
-        setAll: () => undefined,
-      },
       auth: {
         autoRefreshToken: false,
         persistSession: false,
