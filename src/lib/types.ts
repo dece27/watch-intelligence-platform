@@ -151,3 +151,22 @@ export interface VaultMetadata {
   watchCount: number
   totalValue: number
 }
+
+export interface NewsArticle {
+  id: string
+  title: string
+  summary: string
+  url: string
+  imageUrl: string | null
+  source: string
+  sourceIcon: string
+  publishedAt: string
+  brands: string[]
+  tags: string[]
+  relevanceScore: number
+}
+
+export interface NewsCacheRecord {
+  articles: Omit<NewsArticle, 'relevanceScore'>[]
+  cachedAt: string
+}
