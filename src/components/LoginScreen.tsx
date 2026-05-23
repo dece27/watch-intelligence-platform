@@ -159,8 +159,18 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
       }
 
       if (existingUserId) {
-        const user = await window.spark.kv.get<User>(`user_${existingUserId}`)
-        const auth = await window.spark.kv.get<AuthRecord>(`auth_${existingUserId}`)
+        let user = await window.spark.kv.get<User>(`user_${existingUserId}`)
+        let auth = await window.spark.kv.get<AuthRecord>(`auth_${existingUserId}`)
+
+        if ((!user || !auth) && normalizedLoginIdentifier === ADMIN_LOGIN_IDENTIFIER) {
+          await ensureDefaultAccount()
+          const repairedUserId = await window.spark.kv.get<string>(emailKey)
+          if (repairedUserId) {
+            existingUserId = repairedUserId
+            user = await window.spark.kv.get<User>(`user_${repairedUserId}`)
+            auth = await window.spark.kv.get<AuthRecord>(`auth_${repairedUserId}`)
+          }
+        }
 
         if (!user || !auth) {
           setError("Your account data could not be loaded. Please contact support.")
@@ -173,7 +183,31 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
           return
         }
 
-        const isValidPassword = await verifyPassword(password.trim(), auth)
+        let isValidPassword = false
+        try {
+          isValidPassword = await verifyPassword(password.trim(), auth)
+        } catch (verifyError) {
+          if (normalizedLoginIdentifier !== ADMIN_LOGIN_IDENTIFIER) {
+            throw verifyError
+          }
+
+          console.warn("Administrator auth record was invalid; attempting repair.", verifyError)
+          await ensureDefaultAccount()
+          const repairedUserId = await window.spark.kv.get<string>(emailKey)
+          if (!repairedUserId) {
+            throw verifyError
+          }
+          const repairedUser = await window.spark.kv.get<User>(`user_${repairedUserId}`)
+          const repairedAuth = await window.spark.kv.get<AuthRecord>(`auth_${repairedUserId}`)
+          if (!repairedUser || !repairedAuth) {
+            throw verifyError
+          }
+
+          existingUserId = repairedUserId
+          user = repairedUser
+          auth = repairedAuth
+          isValidPassword = await verifyPassword(password.trim(), repairedAuth)
+        }
         if (!isValidPassword) {
           const failedAttempts = (auth.failedAttempts || 0) + 1
           const shouldLock = failedAttempts >= 5

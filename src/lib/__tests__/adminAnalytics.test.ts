@@ -54,6 +54,17 @@ describe('adminAnalytics helpers', () => {
     expect(sparkWindow.spark.kv.set).toHaveBeenCalledTimes(1)
   })
 
+  it('repairs malformed all_user_ids values while indexing users', async () => {
+    const store: KvStore = new Map([
+      ['all_user_ids', { stale: true }],
+    ])
+    ;(globalThis as { window?: unknown }).window = createSparkWindow(store)
+
+    await ensureUserIndexed('user-2')
+
+    expect(store.get('all_user_ids')).toEqual(['user-2'])
+  })
+
   it('records and accumulates AI usage counters', async () => {
     const store: KvStore = new Map([
       [
