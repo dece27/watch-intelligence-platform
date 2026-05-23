@@ -1,10 +1,11 @@
 import { createServerClient } from '@supabase/ssr'
 import type { CookieOptions, SupabaseClient } from '@supabase/supabase-js'
+import { cookies } from 'next/headers'
 import type { Database } from '@/lib/supabase/types'
 
-export interface SupabaseCookieAdapter {
+type NextCookieStore = {
   getAll(): Array<{ name: string; value: string }>
-  setAll(cookies: Array<{ name: string; value: string; options?: CookieOptions }>): void
+  set(name: string, value: string, options?: CookieOptions): void
 }
 
 function readEnv(name: string): string | undefined {
@@ -21,15 +22,52 @@ function requireEnv(name: string): string {
   if (!value) {
     throw new Error(`Missing Supabase environment variable: ${name}`)
   }
+
   return value
 }
 
-export function createSupabaseServerClient(cookies: SupabaseCookieAdapter): SupabaseClient<Database> {
+function getCookieStore(): NextCookieStore {
+  return cookies() as unknown as NextCookieStore
+}
+
+/**
+ * Creates a per-request Supabase server client backed by the active Next.js cookie store.
+ */
+export function createClient(): SupabaseClient<Database> {
+  const cookieStore = getCookieStore()
+
   return createServerClient<Database>(
     requireEnv('NEXT_PUBLIC_SUPABASE_URL'),
     requireEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY'),
     {
-      cookies,
+      cookies: {
+        getAll: () => cookieStore.getAll(),
+        setAll: (cookieValues) => {
+          cookieValues.forEach(({ name, value, options }) => {
+            cookieStore.set(name, value, options)
+          })
+        },
+      },
+    },
+  )
+}
+
+/**
+ * Creates a service-role Supabase server client without request cookie persistence.
+ */
+export function createAdminClient(): SupabaseClient<Database> {
+  return createServerClient<Database>(
+    requireEnv('NEXT_PUBLIC_SUPABASE_URL'),
+    requireEnv('SUPABASE_SERVICE_ROLE_KEY'),
+    {
+      cookies: {
+        getAll: () => [],
+        setAll: () => undefined,
+      },
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
     },
   )
 }
