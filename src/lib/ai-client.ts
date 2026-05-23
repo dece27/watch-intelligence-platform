@@ -22,11 +22,19 @@ interface AiGatewayResponse {
  *
  * Signature is intentionally compatible with `window.spark.llm` so it can
  * be used as a drop-in fallback.
+ *
+ * @param prompt   - The user prompt to send to the model.
+ * @param model    - Optional explicit model name; ignored when callType is provided.
+ * @param jsonMode - Request JSON output from the model.
+ * @param callType - Task identifier used by the gateway for model routing and usage recording.
+ * @param userId   - Optional user ID forwarded for server-side usage recording.
  */
 export async function callGitHubModelsAI(
   prompt: string,
   model = "gpt-4o-mini",
   jsonMode = false,
+  callType?: string,
+  userId?: string,
 ): Promise<string> {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
   const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -44,7 +52,7 @@ export async function callGitHubModelsAI(
       "Content-Type": "application/json",
       Authorization: `Bearer ${supabaseAnonKey}`,
     },
-    body: JSON.stringify({ prompt, model, jsonMode }),
+    body: JSON.stringify({ prompt, model, jsonMode, callType, userId }),
   })
 
   if (!response.ok) {
