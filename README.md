@@ -158,9 +158,10 @@ VITE_WATCHCHARTS_API_KEY=your_key npm run dev
 
 | Variable | Description |
 |---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL used by browser and server clients |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public Supabase anon key used by browser and server clients |
-| `SUPABASE_SERVICE_ROLE_KEY` | Server-only Supabase service role key for admin/server operations; never expose it to the browser |
+| `VITE_SUPABASE_URL` | Supabase project URL used by the browser client (the app also accepts `NEXT_PUBLIC_SUPABASE_URL` as a fallback) |
+| `VITE_SUPABASE_ANON_KEY` | Public Supabase anon key used by the browser client (the app also accepts `NEXT_PUBLIC_SUPABASE_ANON_KEY` as a fallback) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server-only Supabase service role key for GitHub Actions or Supabase server-side utilities; never expose it to the browser |
+| `SUPABASE_URL` | Optional server-only Supabase URL override for GitHub Actions or other non-browser utilities |
 | `SUPABASE_DB_URL` | Direct database connection string used for CLI tasks such as backups |
 | `VITE_CHRONO24_WRAPPER_BASE_URL` | Base URL for the Chrono24 wrapper API |
 | `VITE_CHRONO24_API_HOST` | Alternative name for the Chrono24 wrapper base URL |
@@ -173,15 +174,16 @@ Create a local `/home/runner/work/watch-intelligence-platform/watch-intelligence
 file with:
 
 ```bash
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 SUPABASE_DB_URL=
 ```
 
-For Vercel, add the same four variables in the project settings. Mark
-`SUPABASE_SERVICE_ROLE_KEY` as server-only and do not expose it to the browser
-or any client-side bundle.
+For GitHub Pages or other static builds, only the `VITE_` variables are needed
+in the frontend build. Keep `SUPABASE_SERVICE_ROLE_KEY` server-only and use it
+only from GitHub Actions, scripts, or Supabase server-side utilities such as
+`supabase/utils/admin.ts`.
 
 ## Testing
 
@@ -225,6 +227,9 @@ On GitHub Pages the Spark runtime is not available, so the app automatically
 uses the IndexedDB-backed KV fallback (`src/lib/sparkKV.ts`). Shared collection
 links use hash-based routing (`/#/shared/...`) so they resolve correctly under
 any base path.
+
+The build also publishes `public/.nojekyll`, which prevents GitHub Pages from
+running Jekyll processing over generated asset paths.
 
 ## Daily Supabase backup workflow
 
