@@ -205,12 +205,20 @@ function App() {
     setCurrentUser(user)
     if (rememberMe) {
       await setPersistedUser(user)
-      sessionStorage.removeItem("currentUserSession")
+      try {
+        sessionStorage.removeItem("currentUserSession")
+      } catch {
+        // sessionStorage may be unavailable in sandboxed environments
+      }
       return
     }
 
     await setPersistedUser(null)
-    sessionStorage.setItem("currentUserSession", JSON.stringify(user))
+    try {
+      sessionStorage.setItem("currentUserSession", JSON.stringify(user))
+    } catch {
+      // sessionStorage may be unavailable in sandboxed environments
+    }
   }
 
   const handleLogout = async () => {
@@ -226,7 +234,11 @@ function App() {
     }
 
     await setPersistedUser(null)
-    sessionStorage.removeItem("currentUserSession")
+    try {
+      sessionStorage.removeItem("currentUserSession")
+    } catch {
+      // sessionStorage may be unavailable in sandboxed environments
+    }
     setCurrentUser(null)
     setActiveModule('collection')
   }
