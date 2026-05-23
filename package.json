@@ -18,7 +18,8 @@
     "test:ts": "vitest run supabase/tests/typescript",
     "test:all": "npm run test:sql && npm run test:ts",
     "optimize": "vite optimize",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "prepare": "husky"
   },
   "dependencies": {
     "@github/spark": "^0.39.0",
@@ -90,6 +91,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.21.0",
+    "@secretlint/secretlint-rule-preset-recommend": "^13.0.2",
     "@supabase/auth-helpers-nextjs": "^0.15.0",
     "@tailwindcss/postcss": "^4.1.8",
     "@types/react": "^19.0.10",
@@ -100,7 +102,9 @@
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.19",
     "globals": "^17.6.0",
+    "husky": "^9.1.7",
     "jsdom": "^29.1.1",
+    "secretlint": "^13.0.2",
     "supabase": "^2.101.0",
     "tailwindcss": "^4.1.11",
     "typescript": "~5.7.2",

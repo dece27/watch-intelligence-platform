@@ -1,0 +1,49 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npx eslint . --ext .ts,.tsx --max-warnings 0
+
+      - name: Verify zero API routes remain
+        run: |
+          count=$(find app/api -name '*.ts' 2>/dev/null | wc -l | tr -d ' ')
+          if [ "$count" != "0" ]; then
+            echo "ERROR: $count API route files still exist — must be 0 for static export"
+            exit 1
+          fi
+          echo "✓ Zero API routes — static export compatible"
+
+      - name: Build static export
+        run: npm run build
+        env:
+          NODE_ENV: production
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+
+      - name: Run unit tests
+        run: npm test -- --passWithNoTests

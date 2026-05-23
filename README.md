@@ -251,6 +251,19 @@ tasks:
 - `.github/workflows/check-price-alerts.yml` — checks active price alerts every
   six hours and sends Resend notifications via `node scripts/check-alerts.mjs`
 
+## Dependency and security automation
+
+The repository also includes:
+
+- `.github/dependabot.yml` — weekly npm dependency updates and monthly GitHub
+  Actions updates
+- `.github/workflows/codeql.yml` — scheduled and PR-triggered CodeQL security
+  analysis for JavaScript/TypeScript
+- `.github/workflows/quality.yml` — CI checks for type checking, linting,
+  static-export compatibility, build, and unit tests
+- `.husky/pre-commit` with `.secretlintrc.json` — local pre-commit checks for
+  Secretlint and `tsc --noEmit`
+
 ## Daily Supabase backup workflow
 
 The repository includes a scheduled backup workflow at
