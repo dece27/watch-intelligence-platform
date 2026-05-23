@@ -138,12 +138,30 @@ VITE_WATCHCHARTS_API_KEY=your_key npm run dev
 
 | Variable | Description |
 |---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL used by browser and server clients |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public Supabase anon key used by browser and server clients |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server-only Supabase service role key for admin/server operations; never expose it to the browser |
+| `SUPABASE_DB_URL` | Direct database connection string used for CLI tasks such as backups |
 | `VITE_CHRONO24_WRAPPER_BASE_URL` | Base URL for the Chrono24 wrapper API |
 | `VITE_CHRONO24_API_HOST` | Alternative name for the Chrono24 wrapper base URL |
 | `VITE_CHRONO24_WRAPPER_API_KEY` | API key for the Chrono24 wrapper (if required) |
 | `VITE_WATCHCHARTS_API_KEY` | API key for WatchCharts market value lookups |
 | `VITE_WATCHCHARTS_BASE_URL` | Override for WatchCharts API base URL |
 | `VITE_BASE_PATH` | Base path for GitHub Pages deployments (set automatically by the deploy workflow) |
+
+Create a local `/home/runner/work/watch-intelligence-platform/watch-intelligence-platform/.env.local`
+file with:
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+SUPABASE_DB_URL=
+```
+
+For Vercel, add the same four variables in the project settings. Mark
+`SUPABASE_SERVICE_ROLE_KEY` as server-only and do not expose it to the browser
+or any client-side bundle.
 
 ## Testing
 
