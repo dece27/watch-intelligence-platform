@@ -808,6 +808,14 @@ export interface Database {
       }
     }
     Functions: {
+      check_and_increment_ai_usage: {
+        Args: {
+          p_user_id: string
+          p_call_type: string
+          p_plan: SubscriptionPlan
+        }
+        Returns: boolean
+      }
       create_share_token: {
         Args: {
           p_hide_prices?: boolean | null
@@ -839,6 +847,29 @@ export interface Database {
           p_increment?: number | null
         }
         Returns: Database['public']['Tables']['ai_usage_logs']['Row'][]
+      }
+      record_share_view: {
+        Args: {
+          p_token: string
+        }
+        Returns: boolean
+      }
+      soft_delete_watch: {
+        Args: {
+          p_watch_id: string
+          p_user_id: string
+        }
+        Returns: undefined
+      }
+      upsert_portfolio_snapshot: {
+        Args: {
+          p_user_id: string
+          p_total_cost: number
+          p_total_value: number
+          p_watch_count: number
+          p_brand_breakdown: Json
+        }
+        Returns: undefined
       }
     }
     Enums: {

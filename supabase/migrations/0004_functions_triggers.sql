@@ -251,6 +251,114 @@ begin
 end;
 $$;
 
+create or replace function public.check_and_increment_ai_usage(
+  p_user_id uuid,
+  p_call_type text,
+  p_plan public.subscription_plan
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  daily_limit integer;
+  current_count integer;
+begin
+  daily_limit := case p_plan
+    when 'free' then 10
+    when 'enthusiast' then 100
+    else 99999
+  end;
+
+  select coalesce(sum(call_count), 0)
+  into current_count
+  from public.ai_usage_logs
+  where user_id = p_user_id
+    and usage_date = current_date;
+
+  if current_count >= daily_limit then
+    return false;
+  end if;
+
+  insert into public.ai_usage_logs (user_id, usage_date, call_type, call_count)
+  values (p_user_id, current_date, p_call_type, 1)
+  on conflict (user_id, usage_date, call_type) do update
+  set call_count = public.ai_usage_logs.call_count + 1;
+
+  return true;
+end;
+$$;
+
+create or replace function public.upsert_portfolio_snapshot(
+  p_user_id uuid,
+  p_total_cost decimal,
+  p_total_value decimal,
+  p_watch_count smallint,
+  p_brand_breakdown jsonb
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.portfolio_snapshots (
+    user_id,
+    snapshot_date,
+    total_cost_basis,
+    total_market_value,
+    watch_count,
+    brand_breakdown
+  )
+  values (
+    p_user_id,
+    current_date,
+    p_total_cost,
+    p_total_value,
+    p_watch_count,
+    p_brand_breakdown
+  )
+  on conflict (user_id, snapshot_date) do update
+  set total_cost_basis = excluded.total_cost_basis,
+      total_market_value = excluded.total_market_value,
+      watch_count = excluded.watch_count,
+      brand_breakdown = excluded.brand_breakdown;
+end;
+$$;
+
+create or replace function public.soft_delete_watch(p_watch_id uuid, p_user_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.watches
+  set deleted_at = timezone('utc', now())
+  where id = p_watch_id
+    and user_id = p_user_id
+    and deleted_at is null;
+end;
+$$;
+
+create or replace function public.record_share_view(p_token text)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.share_tokens
+  set view_count = coalesce(view_count, 0) + 1,
+      last_viewed = timezone('utc', now())
+  where token = p_token
+    and (expires_at is null or expires_at > timezone('utc', now()));
+
+  return found;
+end;
+$$;
+
 drop trigger if exists set_profiles_updated_at on public.profiles;
 create trigger set_profiles_updated_at
 before update on public.profiles
@@ -314,3 +422,7 @@ for each row execute function public.sync_profile_from_auth_user();
 grant execute on function public.create_share_token(boolean, timestamptz) to authenticated;
 grant execute on function public.get_shared_collection(text) to anon, authenticated;
 grant execute on function public.record_ai_usage(text, integer, date, integer) to authenticated;
+grant execute on function public.check_and_increment_ai_usage(uuid, text, public.subscription_plan) to authenticated;
+grant execute on function public.upsert_portfolio_snapshot(uuid, decimal, decimal, smallint, jsonb) to authenticated;
+grant execute on function public.soft_delete_watch(uuid, uuid) to authenticated;
+grant execute on function public.record_share_view(text) to anon, authenticated;
