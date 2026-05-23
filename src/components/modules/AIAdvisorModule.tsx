@@ -6,9 +6,11 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Progress } from "@/components/ui/progress"
 import { Sparkle, PaperPlaneTilt, Image as ImageIcon, Plus, Fire, Star, ShoppingCart, TrendUp, TrendDown, FileArrowUp } from "@phosphor-icons/react"
 import { toast } from "sonner"
 import { DailyLimitError, callAI, createAICacheKey, getTodayCacheBucket, hashAIInput, parseAIJson } from "@/lib/ai/caller"
+import { useAIQuota } from "@/lib/ai/useAIQuota"
 import { searchChrono24Deals, isChrono24WrapperConfigured } from "@/lib/chrono24-client"
 import { formatCurrency } from "@/lib/currency"
 import { FALLBACK_DEALS } from "@/lib/fallback-deals"
@@ -224,6 +226,7 @@ const STARTER_QUESTIONS = [
 ]
 
 export function AIAdvisorModule({ watches, userId, preferredCurrency = "USD" }: AIAdvisorModuleProps) {
+  const quota = useAIQuota()
   const [chatInput, setChatInput] = useState('')
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -683,6 +686,30 @@ Respond in valid JSON format:
         <h1 className="text-3xl font-semibold">AI Signal Engine</h1>
         <p className="text-muted-foreground mt-1">Intelligent insights powered by advanced AI</p>
       </div>
+
+      {!quota.loading && (
+        <Card className="bg-card border-border">
+          <CardContent className="pt-6 space-y-3">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-sm font-medium">Daily AI quota</h2>
+                <p className="text-sm text-muted-foreground">
+                  {quota.remaining} of {quota.limit} requests remaining today
+                </p>
+              </div>
+              <Badge
+                variant="outline"
+                className={quota.remaining === 0
+                  ? 'border-destructive/40 bg-destructive/10 text-destructive'
+                  : 'border-primary/30 bg-primary/10 text-primary'}
+              >
+                {quota.used}/{quota.limit} used
+              </Badge>
+            </div>
+            <Progress value={quota.percentUsed} aria-label="Daily AI quota usage" />
+          </CardContent>
+        </Card>
+      )}
 
       {dealOfDay && (
         <Card className="bg-card border-2 border-primary shadow-lg">
