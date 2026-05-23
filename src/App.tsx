@@ -13,6 +13,7 @@ import { MarketModule } from "@/components/modules/MarketModule"
 import { AIAdvisorModule } from "@/components/modules/AIAdvisorModule"
 import { DealsModule } from "@/components/modules/DealsModule"
 import { AppraisalModule } from "@/components/modules/AppraisalModule"
+import { NewsModule } from "@/components/modules/NewsModule"
 import { FeedbackDashboard } from "@/components/FeedbackDashboard"
 import { AdminDashboard } from "@/components/AdminDashboard"
 import { Toaster } from "@/components/ui/sonner"
@@ -320,7 +321,7 @@ function App() {
           />
         )
       case 'portfolio':
-        return <PortfolioModule watches={watchList} preferredCurrency={preferredCurrency} />
+        return <PortfolioModule watches={watchList} preferredCurrency={preferredCurrency} onNavigateToNews={() => setActiveModule('news')} />
       case 'market':
         return <MarketModule watches={watchList} preferredCurrency={preferredCurrency} />
       case 'ai-advisor':
@@ -329,6 +330,8 @@ function App() {
         return <DealsModule watches={watchList} userId={currentUser?.id || ""} preferredCurrency={preferredCurrency} />
       case 'appraisal':
         return <AppraisalModule watches={watchList} preferredCurrency={preferredCurrency} />
+      case 'news':
+        return <NewsModule watches={watchList} />
       case 'feedback':
         return isAdmin ? (
           <FeedbackDashboard />

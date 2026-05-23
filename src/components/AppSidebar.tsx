@@ -16,6 +16,7 @@ const navItems: NavItem[] = [
   { id: 'collection', label: 'Collection', icon: '◈' },
   { id: 'portfolio', label: 'Portfolio', icon: '◎' },
   { id: 'market', label: 'Market', icon: '◉' },
+  { id: 'news', label: 'News', icon: '◷' },
   { id: 'ai-advisor', label: 'AI Advisor', icon: '◍' },
   { id: 'deals', label: 'Deals', icon: '◫' },
   { id: 'appraisal', label: 'Appraisal', icon: '◌' },

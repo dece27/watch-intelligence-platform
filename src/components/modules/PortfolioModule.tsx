@@ -6,12 +6,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { TrendUp, TrendDown } from "@phosphor-icons/react"
 import { WhatIfSellCalculator } from "@/components/WhatIfSellCalculator"
+import { TopStoriesWidget } from "@/components/TopStoriesWidget"
 import { watchChartsClient } from "@/lib/watchcharts-client"
 import { formatCurrency } from "@/lib/currency"
 
 interface PortfolioModuleProps {
   watches: Watch[]
   preferredCurrency?: string
+  onNavigateToNews?: () => void
 }
 
 function getEstimatedMarketValue(watch: Watch): number {
@@ -101,7 +103,7 @@ function calculateHealthScore(watches: Watch[]): number {
   return Math.round(healthScore)
 }
 
-export function PortfolioModule({ watches, preferredCurrency = "USD" }: PortfolioModuleProps) {
+export function PortfolioModule({ watches, preferredCurrency = "USD", onNavigateToNews }: PortfolioModuleProps) {
   const [sortField, setSortField] = useState<'brand' | 'roi' | 'value' | 'holdPeriod'>('roi')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
   const [liveMarketValues, setLiveMarketValues] = useState<Record<string, number>>({})
@@ -329,6 +331,9 @@ export function PortfolioModule({ watches, preferredCurrency = "USD" }: Portfoli
           </CardContent>
         </Card>
       </div>
+
+      {/* Top Stories widget — just below the header stats row */}
+      <TopStoriesWidget watches={watches} onViewAll={onNavigateToNews} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="bg-card border-border">
