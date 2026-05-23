@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Dialog, DialogContent } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { toast } from "sonner"
 import { Heart, Plus, Copy, Check } from "@phosphor-icons/react"
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer } from "recharts"
@@ -37,9 +37,11 @@ interface DealDetailModalProps {
   preferredCurrency?: string
 }
 
+const EMPTY_DEAL_IDS: string[] = []
+
 export function DealDetailModal({ deal, open, onOpenChange, onFilterBrand, preferredCurrency = "USD" }: DealDetailModalProps) {
-  const [savedDeals, setSavedDeals] = useKV<string[]>("saved-deals", [])
-  const [watchlist, setWatchlist] = useKV<string[]>("deal-watchlist", [])
+  const [savedDeals, setSavedDeals] = useKV<string[]>("saved-deals", EMPTY_DEAL_IDS)
+  const [watchlist, setWatchlist] = useKV<string[]>("deal-watchlist", EMPTY_DEAL_IDS)
   const [copied, setCopied] = useState(false)
   const [isLoadingAI, setIsLoadingAI] = useState(false)
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null)
@@ -115,8 +117,15 @@ Provide:
   const fairValue = deal.fairValue || deal.price
   const savings = deal.price < fairValue ? fairValue - deal.price : 0
   const savingsPercent = ((savings / fairValue) * 100).toFixed(0)
-  
-  const daysListed = deal.daysListed || Math.floor(Math.random() * 45) + 1
+
+  const dealSeed = useMemo(
+    () => deal.id.split("").reduce((seed, char, index) => seed + (char.charCodeAt(0) * (index + 1)), 0),
+    [deal.id]
+  )
+  const daysListed = useMemo(() => {
+    if (typeof deal.daysListed === "number" && deal.daysListed > 0) return deal.daysListed
+    return (dealSeed % 45) + 1
+  }, [deal.daysListed, dealSeed])
   const avgDaysToSell = 28
   const urgencyText = 
     daysListed < 7 
@@ -125,10 +134,17 @@ Provide:
       ? `Listed over a month - seller may be motivated to negotiate.`
       : `Good timing - seller may be open to reasonable offers.`
 
-  const priceHistory = Array.from({ length: Math.min(daysListed, 30) }, (_, i) => ({
-    day: i + 1,
-    price: deal.price + (Math.random() * 500 - 250)
-  }))
+  const priceHistory = useMemo(
+    () =>
+      Array.from({ length: Math.min(daysListed, 30) }, (_, i) => {
+        const shift = (((dealSeed + (i * 37)) % 500) - 250)
+        return {
+          day: i + 1,
+          price: deal.price + shift,
+        }
+      }),
+    [daysListed, deal.price, dealSeed]
+  )
 
   const offerAmount = Math.round(fairValue * 0.92)
   const vsMarket = ((offerAmount - fairValue) / fairValue * 100).toFixed(1)
@@ -173,6 +189,8 @@ Provide:
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-5xl max-h-[90vh] p-0 bg-background/95 backdrop-blur-xl border-white/[0.08]">
+        <DialogTitle className="sr-only">{deal.brand} {deal.model} deal details</DialogTitle>
+        <DialogDescription className="sr-only">Detailed pricing, AI analysis, market intelligence, and suggested offer for the selected deal.</DialogDescription>
         <div className="max-h-[85vh] overflow-y-auto px-6 py-6 space-y-6">
           <div>
             <h2 className="text-xl md:text-2xl font-semibold mb-1">
