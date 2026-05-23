@@ -136,13 +136,13 @@ function createRejectingSpark() {
   }
 
   return {
-    llmPrompt: (strings: TemplateStringsArray, ...values: unknown[]) =>
+    llmPrompt: (strings: string[], ...values: unknown[]) =>
       strings.reduce((result, segment, index) => result + segment + String(values[index] ?? ""), ""),
     llm: vi.fn(async () => ""),
     user: vi.fn(async () => ({
       avatarUrl: "",
       email: "",
-      id: "",
+      id: 0,
       isOwner: false,
       login: "",
     })),
@@ -197,7 +197,7 @@ describe("LoginScreen browser fallback", () => {
 
   beforeEach(() => {
     ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
-    ;(globalThis as { ResizeObserver?: typeof ResizeObserverMock }).ResizeObserver = ResizeObserverMock
+    ;(globalThis as unknown as { ResizeObserver?: typeof ResizeObserverMock }).ResizeObserver = ResizeObserverMock
     indexedDbMock = createIndexedDbMock()
     ;(window as Window & { indexedDB: IDBFactory }).indexedDB = indexedDbMock.factory
     resetSparkKVFallbackForTests()

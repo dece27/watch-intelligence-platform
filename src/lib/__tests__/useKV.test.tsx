@@ -48,23 +48,23 @@ describe("useKV", () => {
 
   it("does not let an in-flight initial load overwrite a newer local value", async () => {
     const pendingGet = deferred<string | undefined>()
-    const kvGet = vi.fn(() => pendingGet.promise)
+    const kvGet = vi.fn((_key: string) => pendingGet.promise)
     const kvSet = vi.fn(async () => {})
 
     window.spark = {
-      llmPrompt: (strings: TemplateStringsArray, ...values: unknown[]) =>
+      llmPrompt: (strings: string[], ...values: unknown[]) =>
         strings.reduce((result, segment, index) => result + segment + String(values[index] ?? ""), ""),
       llm: vi.fn(async () => ""),
       user: vi.fn(async () => ({
         avatarUrl: "",
         email: "",
-        id: "",
+        id: 0,
         isOwner: false,
         login: "",
       })),
       kv: {
         keys: vi.fn(async () => []),
-        get: kvGet,
+        get: (async <T,>(key: string) => kvGet(key) as Promise<T | undefined>),
         set: kvSet,
         delete: vi.fn(async () => {}),
       },

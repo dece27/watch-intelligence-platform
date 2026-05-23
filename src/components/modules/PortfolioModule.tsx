@@ -348,7 +348,13 @@ export function PortfolioModule({ watches, preferredCurrency = "USD", onNavigate
                   cx="50%"
                   cy="50%"
                   labelLine={false}
-                  label={({ brand, percent }) => `${brand}: ${(percent * 100).toFixed(0)}%`}
+                  label={({ payload, percent }) => {
+                    const brand = typeof payload === "object" && payload !== null && "brand" in payload
+                      ? String((payload as { brand?: unknown }).brand ?? "Unknown")
+                      : "Unknown"
+                    const safePercent = typeof percent === "number" ? percent : 0
+                    return `${brand}: ${(safePercent * 100).toFixed(0)}%`
+                  }}
                   outerRadius={100}
                   fill="#8884d8"
                   dataKey="value"

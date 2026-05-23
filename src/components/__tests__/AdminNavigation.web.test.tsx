@@ -40,7 +40,7 @@ describe("Admin navigation visibility", () => {
 
   beforeEach(() => {
     ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
-    ;(globalThis as { ResizeObserver?: typeof ResizeObserverMock }).ResizeObserver = ResizeObserverMock
+    ;(globalThis as unknown as { ResizeObserver?: typeof ResizeObserverMock }).ResizeObserver = ResizeObserverMock
     ;(window as Window & { matchMedia?: (query: string) => MediaQueryList }).matchMedia =
       vi.fn().mockImplementation((query: string) => ({
         matches: false,

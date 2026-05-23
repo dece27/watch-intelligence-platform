@@ -26,9 +26,7 @@ export interface DealListingRecord {
   updatedAt: string
 }
 
-export interface DealListingInput extends Omit<DealListingRecord, 'dealScore' | 'createdAt' | 'updatedAt'> {
-  id?: string
-}
+export type DealListingInput = Omit<DealListingRecord, 'id' | 'dealScore' | 'createdAt' | 'updatedAt'> & { id?: string }
 
 export interface SavedDealRecord {
   id: string
