@@ -180,6 +180,28 @@ uses the IndexedDB-backed KV fallback (`src/lib/sparkKV.ts`). Shared collection
 links use hash-based routing (`/#/shared/...`) so they resolve correctly under
 any base path.
 
+## Daily Supabase backup workflow
+
+The repository includes a scheduled backup workflow at
+`.github/workflows/db-backup.yml`. It runs daily at **02:00 UTC**, dumps the
+Supabase database, compresses the dump, uploads it to Cloudflare R2, deletes
+remote backups older than 30 days, and sends a Resend alert email if the job
+fails.
+
+Configure these GitHub **Actions secrets** before enabling it:
+
+- `SUPABASE_DB_URL`
+- `CLOUDFLARE_R2_ACCESS_KEY`
+- `CLOUDFLARE_R2_SECRET_KEY`
+- `RESEND_API_KEY`
+
+Also configure these GitHub **Actions variables**:
+
+- `CLOUDFLARE_R2_ACCOUNT_ID`
+- `CLOUDFLARE_R2_BUCKET`
+- `BACKUP_ALERT_EMAIL_TO`
+- `BACKUP_ALERT_EMAIL_FROM` (optional; defaults to `onboarding@resend.dev`)
+
 ## License
 
 This repository is licensed under the MIT License.
