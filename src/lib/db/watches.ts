@@ -30,7 +30,9 @@ function assertPagination(limit: number, offset: number): void {
 
 function throwDatabaseError(action: string, error: PostgrestError | null): void {
   if (error) {
-    throw new Error(`Failed to ${action}: ${error.message}`, { cause: error })
+    const wrappedError = new Error(`Failed to ${action}: ${error.message}`)
+    ;(wrappedError as Error & { cause?: unknown }).cause = error
+    throw wrappedError
   }
 }
 

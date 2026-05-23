@@ -1,5 +1,6 @@
 import { callAI } from '@/lib/ai/caller'
 export { recordAiUsage } from '@/lib/ai/usage'
+export type { UserAIUsage } from '@/lib/ai/usage'
 import type { User } from "@/lib/types"
 import type { GitHubModelsTaskType } from '@/lib/github-models-proxy'
 
