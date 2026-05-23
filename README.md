@@ -171,6 +171,8 @@ VITE_WATCHCHARTS_API_KEY=your_key npm run dev
 | `VITE_WATCHCHARTS_API_KEY` | API key for WatchCharts market value lookups |
 | `VITE_WATCHCHARTS_BASE_URL` | Override for WatchCharts API base URL |
 | `VITE_BASE_PATH` | Base path for GitHub Pages deployments (set automatically by the deploy workflow) |
+| `RESEND_API_KEY` | Server-only API key used by scheduled workflows that send transactional email notifications |
+| `RESEND_FROM_EMAIL` | Optional sender address override for Resend-powered workflow notifications |
 
 Create a local `/home/runner/work/watch-intelligence-platform/watch-intelligence-platform/.env.local`
 file with:
@@ -217,7 +219,7 @@ python -m pytest -q
 ## GitHub Pages deployment
 
 This repository can be deployed to GitHub Pages with the included workflow at
-`.github/workflows/deploy-pages.yml`.
+`.github/workflows/deploy.yml`.
 
 Before the first deployment:
 
@@ -233,8 +235,21 @@ uses the IndexedDB-backed KV fallback (`src/lib/sparkKV.ts`). Shared collection
 links use hash-based routing (`/#/shared/...`) so they resolve correctly under
 any base path.
 
-The build also publishes `public/.nojekyll`, which prevents GitHub Pages from
-running Jekyll processing over generated asset paths.
+The workflow copies the Vite `dist/` output into `out/` and publishes
+`.nojekyll`, which prevents GitHub Pages from running Jekyll processing over
+generated asset paths.
+
+## Scheduled automation workflows
+
+The repository also includes GitHub Actions workflows for recurring operational
+tasks:
+
+- `.github/workflows/refresh-news.yml` — refreshes the RSS-backed `news_cache`
+  hourly via `node scripts/refresh-news.mjs`
+- `.github/workflows/portfolio-snapshots.yml` — records daily portfolio
+  snapshots for users with active watches via `node scripts/portfolio-snapshots.mjs`
+- `.github/workflows/check-price-alerts.yml` — checks active price alerts every
+  six hours and sends Resend notifications via `node scripts/check-alerts.mjs`
 
 ## Daily Supabase backup workflow
 
