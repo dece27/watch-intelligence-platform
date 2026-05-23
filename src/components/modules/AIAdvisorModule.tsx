@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { Watch, MarketSignal, ChatMessage, Deal, UserPreferences, VaultMetadata } from "@/lib/types"
+import { Watch, MarketSignal, ChatMessage, Deal } from "@/lib/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Sparkle, PaperPlaneTilt, Image as ImageIcon, Plus, Fire, Star, ShoppingCart, TrendUp, TrendDown, FileArrowUp } from "@phosphor-icons/react"
 import { toast } from "sonner"
-import { callTrackedLlm } from "@/lib/adminAnalytics"
+import { DailyLimitError, callAI, createAICacheKey, getTodayCacheBucket, hashAIInput, parseAIJson } from "@/lib/ai/caller"
 import { searchChrono24Deals, isChrono24WrapperConfigured } from "@/lib/chrono24-client"
 import { formatCurrency } from "@/lib/currency"
 import { FALLBACK_DEALS } from "@/lib/fallback-deals"
@@ -41,21 +41,11 @@ const IDENTIFIER_MAX_DIMENSION = 800
 const IDENTIFIER_MAX_OUTPUT_KB = 500
 const IDENTIFIER_COMPRESSION_QUALITY = 0.75
 const IDENTIFIER_ALLOWED_DATA_URL_PATTERN = /^data:image\/(?:jpeg|jpg|png|webp|gif);base64,[a-z0-9+/]+=*$/i
-const USER_PREFERENCES_PREFIX = "user_preferences_"
-const VAULT_METADATA_PREFIX = "vaultMetadata_"
-const AI_SIGNAL_ENGINE_CACHE_PREFIX = "ai_signal_engine_cache_"
-
-interface AiSignalEngineCache {
-  dependencyHash: string
-  signals?: MarketSignal[]
-  rebalanceAnalysis?: RebalanceAnalysis
-  dealAssessments?: Record<string, string>
-  updatedAt: string
-}
-
-const getUserPreferencesKey = (userId: string) => `${USER_PREFERENCES_PREFIX}${userId}`
-const getVaultMetadataKey = (userId: string) => `${VAULT_METADATA_PREFIX}${userId}`
-const getAiSignalEngineCacheKey = (userId: string) => `${AI_SIGNAL_ENGINE_CACHE_PREFIX}${userId || "anonymous"}`
+const SIGNAL_CACHE_TTL_SECONDS = 60 * 60 * 24
+const CHAT_CACHE_TTL_SECONDS = 60 * 30
+const IDENTIFY_CACHE_TTL_SECONDS = 60 * 60 * 24 * 7
+const DEAL_ASSESSMENT_CACHE_TTL_SECONDS = 60 * 60 * 12
+const REBALANCE_CACHE_TTL_SECONDS = 60 * 60 * 12
 
 const getNormalizedWatchesForDependency = (watches: Watch[]) =>
   [...watches]
@@ -76,22 +66,14 @@ const getNormalizedWatchesForDependency = (watches: Watch[]) =>
 
 const getDependencyHash = (
   watches: Watch[],
-  preferences: UserPreferences | null,
-  vaultMetadata: VaultMetadata | null,
   preferredCurrency: string
 ) => {
   const derivedTotalValue = watches.reduce((sum, watch) => sum + (watch.currentValue || watch.purchasePrice), 0)
   return JSON.stringify({
     watches: getNormalizedWatchesForDependency(watches),
-    dealsPreferences: preferences?.deals || null,
     preferredCurrency,
-    vault: {
-      watchCount: watches.length,
-      totalValue: derivedTotalValue,
-      vaultName: vaultMetadata?.vaultName || "",
-      metadataWatchCount: vaultMetadata?.watchCount ?? null,
-      metadataTotalValue: vaultMetadata?.totalValue ?? null,
-    },
+    watchCount: watches.length,
+    totalValue: derivedTotalValue,
   })
 }
 
@@ -165,6 +147,75 @@ const getSafeIdentifierImageSource = (value: string) => {
   }
 }
 
+const SIGNAL_SYSTEM = `You are a luxury watch market analyst. Given a watch from a collector's portfolio, return a JSON object with: { signal: "BUY_MORE" | "HOLD" | "CONSIDER_SELLING", reasoning: string, confidence: "High" | "Medium" | "Low" }. 2025-2026 market context: Rolex stable-recovering, Patek +6% YTD, AP +4% YTD, Grand Seiko +12.8% YTD. Return ONLY valid JSON, no markdown.`
+
+const normalizeSignalType = (value?: string): MarketSignal['type'] => {
+  const normalized = value?.trim().toUpperCase()
+  if (normalized === 'BUY_MORE' || normalized === 'BUY') return 'buy'
+  if (normalized === 'CONSIDER_SELLING' || normalized === 'SELL') return 'sell'
+  return 'hold'
+}
+
+const normalizeSignalConfidence = (value?: string): MarketSignal['confidence'] => {
+  const normalized = value?.trim().toLowerCase()
+  if (normalized === 'high') return 'high'
+  if (normalized === 'low') return 'low'
+  return 'medium'
+}
+
+const buildSignalFallback = (watch: Watch): MarketSignal => ({
+  type: 'hold',
+  title: `${watch.brand} ${watch.model}`,
+  reasoning: "Unable to generate signal at this time. Monitor market conditions and reassess.",
+  confidence: 'medium',
+  watchId: watch.id,
+})
+
+const buildChatQuotaFallback = (watchCount: number) =>
+  watchCount > 0
+    ? "The daily AI limit has been reached, so here's a conservative fallback: hold your strongest references, avoid impulsive flips, and prioritize diversification before adding another piece."
+    : "The daily AI limit has been reached. Add a few watches to your vault and try again later for a personalized recommendation."
+
+const buildDealAssessmentFallback = (deal: Deal, preferredCurrency: string) => {
+  const fairValue = deal.fairValue || deal.price
+  const savings = fairValue > deal.price ? fairValue - deal.price : 0
+  if (savings > 0) {
+    return `${deal.brand} ${deal.model} appears attractively priced at ${formatCurrency(deal.price, preferredCurrency, { sourceCurrency: deal.currency || "USD" })}, roughly ${formatCurrency(savings, preferredCurrency, { sourceCurrency: deal.currency || "USD" })} below fair value. Confirm condition details and seller quality before acting.`
+  }
+
+  return `${deal.brand} ${deal.model} is priced close to its estimated fair value, so this looks more like a selective buy than a clear bargain. Verify condition, service history, and completeness before moving forward.`
+}
+
+const buildFallbackRebalanceAnalysis = (watches: Watch[]): RebalanceAnalysis => {
+  const totalValue = watches.reduce((sum, watch) => sum + (watch.currentValue || watch.purchasePrice), 0)
+  const brandBreakdown = watches.reduce<Record<string, number>>((acc, watch) => {
+    acc[watch.brand] = (acc[watch.brand] || 0) + (watch.currentValue || watch.purchasePrice)
+    return acc
+  }, {})
+  const [topBrand = 'Collection', topValue = 0] = Object.entries(brandBreakdown).sort((a, b) => b[1] - a[1])[0] || []
+  const topBrandShare = totalValue > 0 ? Math.round((topValue / totalValue) * 100) : 0
+  const uniqueBrands = Object.keys(brandBreakdown).length
+
+  return {
+    concentrationRisk:
+      topBrandShare >= 50
+        ? `${topBrand} accounts for about ${topBrandShare}% of portfolio value, so concentration risk is elevated.`
+        : `No single brand dominates the collection, which keeps concentration risk manageable.`,
+    sell:
+      topBrandShare >= 50
+        ? `Consider trimming one ${topBrand} reference if you want to reduce concentration and free capital for diversification.`
+        : DEFAULT_NO_SELL_ACTION,
+    buy:
+      uniqueBrands <= 2
+        ? 'Consider adding a high-liquidity reference from a brand you do not already own to improve diversification.'
+        : DEFAULT_NO_BUY_ACTION,
+    strategicScore: {
+      score: Math.max(3, Math.min(8, 4 + uniqueBrands - Math.floor(topBrandShare / 25))),
+      explanation: 'Fallback score based on brand diversification and concentration while the live AI quota is unavailable.',
+    },
+  }
+}
+
 const STARTER_QUESTIONS = [
   "What should I add to diversify my collection?",
   "Which of my watches has the best investment potential?",
@@ -192,47 +243,6 @@ export function AIAdvisorModule({ watches, userId, preferredCurrency = "USD" }: 
   const identifierInputValue = IDENTIFIER_ALLOWED_DATA_URL_PATTERN.test(identifierImage) ? '' : identifierImage
   const identifierPreviewImage = IDENTIFIER_ALLOWED_DATA_URL_PATTERN.test(safeIdentifierImage) ? safeIdentifierImage : ''
 
-  const getAiCacheContext = async () => {
-    const cacheKey = getAiSignalEngineCacheKey(userId)
-    try {
-      const [preferences, vaultMetadata, cache] = await Promise.all([
-        userId ? window.spark.kv.get<UserPreferences>(getUserPreferencesKey(userId)) : Promise.resolve(null),
-        userId ? window.spark.kv.get<VaultMetadata>(getVaultMetadataKey(userId)) : Promise.resolve(null),
-        window.spark.kv.get<AiSignalEngineCache>(cacheKey),
-      ])
-
-      return {
-        cacheKey,
-        dependencyHash: getDependencyHash(watches, preferences ?? null, vaultMetadata ?? null, preferredCurrency),
-        cache,
-      }
-    } catch {
-      return {
-        cacheKey,
-        dependencyHash: getDependencyHash(watches, null, null, preferredCurrency),
-        cache: null,
-      }
-    }
-  }
-
-  const saveAiCache = async (
-    cacheKey: string,
-    dependencyHash: string,
-    updates: Partial<AiSignalEngineCache>,
-    existingCache?: AiSignalEngineCache | null
-  ) => {
-    try {
-      await window.spark.kv.set(cacheKey, {
-        ...(existingCache || {}),
-        ...updates,
-        dependencyHash,
-        updatedAt: new Date().toISOString(),
-      } satisfies AiSignalEngineCache)
-    } catch {
-      // Silent cache write failure; module remains functional.
-    }
-  }
-
   useEffect(() => {
     if (watches.length === 0) {
       setSignals([])
@@ -258,57 +268,52 @@ export function AIAdvisorModule({ watches, userId, preferredCurrency = "USD" }: 
     
     setIsLoadingSignals(true)
     try {
-      const { cacheKey, dependencyHash, cache } = await getAiCacheContext()
-      if (cache?.dependencyHash === dependencyHash && cache.signals?.length) {
-        setSignals(cache.signals)
-        return
-      }
-
+      const today = getTodayCacheBucket()
       const signalsPromises = watches.slice(0, 5).map(async (watch) => {
-        const promptText = `You are a luxury watch investment advisor. Analyze this watch and provide a trading signal.
+        const watchSummary = JSON.stringify({
+          id: watch.id,
+          brand: watch.brand,
+          model: watch.model,
+          referenceNumber: watch.referenceNumber || null,
+          year: watch.year || null,
+          purchasePrice: watch.purchasePrice,
+          currentValue: watch.currentValue || watch.purchasePrice,
+          condition: watch.condition,
+          preferredCurrency,
+        })
+        const promptText = `${SIGNAL_SYSTEM}
 
-Watch: ${watch.brand} ${watch.model}
-Purchase Price: ${formatCurrency(watch.purchasePrice, preferredCurrency)}
-Current Estimated Value: ${formatCurrency(watch.currentValue || watch.purchasePrice, preferredCurrency)}
-Condition: ${watch.condition}
-Year: ${watch.year || 'Unknown'}
-
-Provide a BUY, HOLD, or SELL signal with:
-1. A 2-sentence reasoning explaining your recommendation
-2. Confidence level (high, medium, or low)
-
-Respond in valid JSON format:
-{
-  "signal": "buy|hold|sell",
-  "reasoning": "Your 2-sentence explanation here",
-  "confidence": "high|medium|low"
-}`
+Portfolio watch:
+${watchSummary}`
 
         try {
-          const response = await callTrackedLlm(promptText, 'auto', true, 'signal')
-          const parsed = JSON.parse(response)
+          const response = await callAI({
+            prompt: promptText,
+            jsonMode: true,
+            taskType: 'signal',
+            cacheKey: createAICacheKey('signal', watch.id, today, hashAIInput(watchSummary)),
+            cacheTtlSeconds: SIGNAL_CACHE_TTL_SECONDS,
+          })
+          const parsed = parseAIJson<{ signal?: string; reasoning?: string; confidence?: string }>(response)
           
           return {
-            type: parsed.signal as 'buy' | 'hold' | 'sell',
+            type: normalizeSignalType(parsed.signal),
             title: `${watch.brand} ${watch.model}`,
-            reasoning: parsed.reasoning,
-            confidence: parsed.confidence as 'high' | 'medium' | 'low',
+            reasoning: parsed.reasoning?.trim() || buildSignalFallback(watch).reasoning,
+            confidence: normalizeSignalConfidence(parsed.confidence),
             watchId: watch.id
           }
-        } catch {
-          return {
-            type: 'hold' as const,
-            title: `${watch.brand} ${watch.model}`,
-            reasoning: "Unable to generate signal at this time. Monitor market conditions and reassess.",
-            confidence: 'medium' as const,
-            watchId: watch.id
+        } catch (error) {
+          if (error instanceof DailyLimitError) {
+            return buildSignalFallback(watch)
           }
+
+          return buildSignalFallback(watch)
         }
       })
 
       const generatedSignals = await Promise.all(signalsPromises)
       setSignals(generatedSignals)
-      await saveAiCache(cacheKey, dependencyHash, { signals: generatedSignals }, cache)
     } catch {
       toast.error("Failed to generate signals")
     } finally {
@@ -335,12 +340,21 @@ User question: ${userMessage}
 
 Provide expert, concise advice (2-3 paragraphs max) about their collection, watch market trends, or collecting strategy. Be specific and reference their actual watches when relevant. Focus on actionable insights.`
 
-      const response = await callTrackedLlm(promptText, 'auto', false, 'chat')
+      const response = await callAI({
+        prompt: promptText,
+        taskType: 'chat',
+        cacheKey: createAICacheKey('chat', userId || 'anonymous', hashAIInput(`${preferredCurrency}|${collectionSummary}|${userMessage}`)),
+        cacheTtlSeconds: CHAT_CACHE_TTL_SECONDS,
+      })
       
       setMessages(prev => [...prev, { role: 'assistant', content: response }])
-    } catch {
-      toast.error('Failed to get AI response')
-      setMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, I encountered an error. Please try again.' }])
+    } catch (error) {
+      if (error instanceof DailyLimitError) {
+        setMessages(prev => [...prev, { role: 'assistant', content: buildChatQuotaFallback(watches.length) }])
+      } else {
+        toast.error('Failed to get AI response')
+        setMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, I encountered an error. Please try again.' }])
+      }
     } finally {
       setIsLoading(false)
     }
@@ -454,15 +468,23 @@ Respond in valid JSON format:
   "features": "2-3 sentences describing key identifying features"
 }`
 
-      const response = await callTrackedLlm(promptText, 'auto', true, 'identify')
-      const parsed = JSON.parse(response)
+      const response = await callAI({
+        prompt: promptText,
+        jsonMode: true,
+        taskType: 'identify',
+        cacheKey: createAICacheKey('identify', hashAIInput(safeIdentifierImage)),
+        cacheTtlSeconds: IDENTIFY_CACHE_TTL_SECONDS,
+      })
+      const parsed = parseAIJson<Record<string, unknown>>(response)
       
       setIdentifiedWatch({
         ...parsed,
         imageUrl: safeIdentifierImage
       })
-    } catch {
-      toast.error("Failed to identify watch")
+    } catch (error) {
+      if (!(error instanceof DailyLimitError)) {
+        toast.error("Failed to identify watch")
+      }
       setIdentifiedWatch({
         brand: "Luxury Watch",
         model: "Model Unknown",
@@ -484,6 +506,7 @@ Respond in valid JSON format:
 
   const loadDealOfDay = async () => {
     setIsLoadingDeal(true)
+    let assessedDeal: Deal | null = null
     try {
       let listings: Deal[] = []
       let usedLiveData = false
@@ -546,27 +569,27 @@ Respond in valid JSON format:
 
       listingsWithScores.sort((a, b) => b.dealScore - a.dealScore)
       const topDeal = listingsWithScores[0]
+      assessedDeal = topDeal
       setDealOfDay(topDeal)
-
-      const { cacheKey, dependencyHash, cache } = await getAiCacheContext()
-      const cachedAssessment = cache?.dependencyHash === dependencyHash ? cache.dealAssessments?.[topDeal.id] : undefined
-      if (cachedAssessment) {
-        setDealAssessment(cachedAssessment)
-        return
-      }
 
       const assessmentPrompt = `In exactly 2 sentences, explain why this watch is today's best deal: ${topDeal.brand} ${topDeal.model} ${topDeal.referenceNumber || ''}, ${topDeal.year || 'unknown year'}, ${topDeal.condition}, asking ${formatCurrency(topDeal.price, preferredCurrency, { sourceCurrency: topDeal.currency || "USD" })} vs fair market value of ${formatCurrency(topDeal.fairValue || topDeal.price, preferredCurrency, { sourceCurrency: topDeal.currency || "USD" })}. Be specific about what makes the price attractive and who should consider buying it.`
 
 
-      const assessment = await callTrackedLlm(assessmentPrompt, 'auto', false, 'deal_assessment')
+      const assessment = await callAI({
+        prompt: assessmentPrompt,
+        taskType: 'deal_assessment',
+        cacheKey: createAICacheKey(
+          'deal-of-day',
+          topDeal.id,
+          hashAIInput(`${preferredCurrency}|${topDeal.price}|${topDeal.fairValue || topDeal.price}|${topDeal.condition}|${topDeal.daysListed || 0}`),
+        ),
+        cacheTtlSeconds: DEAL_ASSESSMENT_CACHE_TTL_SECONDS,
+      })
       setDealAssessment(assessment)
-      await saveAiCache(cacheKey, dependencyHash, {
-        dealAssessments: {
-          ...(cache?.dealAssessments || {}),
-          [topDeal.id]: assessment,
-        },
-      }, cache)
     } catch (error) {
+      if (assessedDeal) {
+        setDealAssessment(buildDealAssessmentFallback(assessedDeal, preferredCurrency))
+      }
       console.error("Failed to load deal of day:", error)
       setIsLiveDealData(false)
     } finally {
@@ -589,12 +612,6 @@ Respond in valid JSON format:
     
     setIsLoadingRebalance(true)
     try {
-      const { cacheKey, dependencyHash, cache } = await getAiCacheContext()
-      if (cache?.dependencyHash === dependencyHash && cache.rebalanceAnalysis) {
-        setRebalanceAnalysis(cache.rebalanceAnalysis)
-        return
-      }
-
       const totalValue = watches.reduce((sum, w) => sum + (w.currentValue || w.purchasePrice), 0)
       
       const brandBreakdown: Record<string, number> = {}
@@ -639,12 +656,21 @@ Respond in valid JSON format:
   }
 }`
 
-      const response = await callTrackedLlm(promptText, 'auto', true, 'rebalancing')
+      const response = await callAI({
+        prompt: promptText,
+        jsonMode: true,
+        taskType: 'rebalancing',
+        cacheKey: createAICacheKey('rebalancing', userId || 'anonymous', hashAIInput(getDependencyHash(watches, preferredCurrency))),
+        cacheTtlSeconds: REBALANCE_CACHE_TTL_SECONDS,
+      })
       const parsedAnalysis = parseRebalanceAnalysis(response)
       setRebalanceAnalysis(parsedAnalysis)
-      await saveAiCache(cacheKey, dependencyHash, { rebalanceAnalysis: parsedAnalysis }, cache)
     } catch (error) {
-      toast.error("Failed to generate rebalancing analysis")
+      if (error instanceof DailyLimitError) {
+        setRebalanceAnalysis(buildFallbackRebalanceAnalysis(watches))
+      } else {
+        toast.error("Failed to generate rebalancing analysis")
+      }
       console.error(error)
     } finally {
       setIsLoadingRebalance(false)

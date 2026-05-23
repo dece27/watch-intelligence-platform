@@ -3,8 +3,11 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 const GITHUB_TOKEN = Deno.env.get('GITHUB_TOKEN')!
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 const ENDPOINT = 'https://models.inference.ai.azure.com/chat/completions'
 const AUTO_MODEL = 'auto'
+const DEFAULT_CACHE_TTL_SECONDS = 60 * 60 * 6
+const MAX_CACHE_TTL_SECONDS = 60 * 60 * 24 * 7
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -27,6 +30,18 @@ type GitHubModelsRequest = {
   model?: unknown
   jsonMode?: unknown
   taskType?: unknown
+  cacheKey?: unknown
+  cacheTtlSeconds?: unknown
+}
+
+type CachedAiPayload = {
+  content: string
+  model: string
+  usage: {
+    promptTokens: number
+    completionTokens: number
+    totalTokens: number
+  }
 }
 
 function jsonResponse(status: number, body: unknown) {
@@ -41,6 +56,90 @@ function jsonResponse(status: number, body: unknown) {
 
 function estimateTokens(text: string) {
   return Math.ceil(new TextEncoder().encode(text).length / 4)
+}
+
+function resolveUsageCallType(taskType: string) {
+  switch (taskType) {
+    case 'what_if':
+      return 'chat'
+    case 'deal_ranking':
+      return 'deal_assessment'
+    default:
+      return taskType
+  }
+}
+
+function getServiceRoleClient() {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    return null
+  }
+
+  return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  })
+}
+
+async function getCachedResponse(cacheKey: string): Promise<CachedAiPayload | null> {
+  const supabase = getServiceRoleClient()
+  if (!supabase) {
+    return null
+  }
+
+  const { data, error } = await supabase
+    .from('market_data_cache')
+    .select('data, expires_at')
+    .eq('cache_key', cacheKey)
+    .gt('expires_at', new Date().toISOString())
+    .maybeSingle()
+
+  if (error) {
+    console.error('Failed to read AI cache', error)
+    return null
+  }
+
+  const payload = data?.data
+  if (!payload || typeof payload !== 'object') {
+    return null
+  }
+
+  const cached = payload as Partial<CachedAiPayload>
+  if (
+    typeof cached.content !== 'string' ||
+    typeof cached.model !== 'string' ||
+    !cached.usage ||
+    typeof cached.usage.totalTokens !== 'number'
+  ) {
+    return null
+  }
+
+  return cached as CachedAiPayload
+}
+
+async function setCachedResponse(cacheKey: string, cacheTtlSeconds: number, payload: CachedAiPayload) {
+  const supabase = getServiceRoleClient()
+  if (!supabase) {
+    return
+  }
+
+  const expiresAt = new Date(Date.now() + (cacheTtlSeconds * 1000)).toISOString()
+  const { error } = await supabase
+    .from('market_data_cache')
+    .upsert(
+      {
+        cache_key: cacheKey,
+        data: payload,
+        source: 'github_models_proxy',
+        expires_at: expiresAt,
+      },
+      { onConflict: 'cache_key' },
+    )
+
+  if (error) {
+    console.error('Failed to write AI cache', error)
+  }
 }
 
 function resolveModel(taskType: string, requestedModel?: string) {
@@ -96,7 +195,7 @@ async function recordUsageIfAuthenticated(req: Request, taskType: string, totalT
   })
 
   await supabase.rpc('record_ai_usage', {
-    p_call_type: taskType,
+    p_call_type: resolveUsageCallType(taskType),
     p_tokens: totalTokens,
     p_usage_date: null,
     p_increment: 1,
@@ -129,9 +228,24 @@ Deno.serve(async (req) => {
   const taskType = typeof body.taskType === 'string' && body.taskType.trim()
     ? body.taskType.trim()
     : 'general'
+  const cacheKey = typeof body.cacheKey === 'string' ? body.cacheKey.trim() : ''
+  const rawCacheTtl = typeof body.cacheTtlSeconds === 'number' ? body.cacheTtlSeconds : DEFAULT_CACHE_TTL_SECONDS
+  const cacheTtlSeconds = Math.min(Math.max(Math.round(rawCacheTtl), 0), MAX_CACHE_TTL_SECONDS)
 
   if (!prompt) {
     return jsonResponse(400, { error: 'Prompt is required.' })
+  }
+
+  if (cacheKey) {
+    const cached = await getCachedResponse(cacheKey)
+    if (cached) {
+      return jsonResponse(200, {
+        content: cached.content,
+        model: cached.model,
+        usage: cached.usage,
+        cached: true,
+      })
+    }
   }
 
   const model = resolveModel(taskType, requestedModel)
@@ -157,6 +271,13 @@ Deno.serve(async (req) => {
 
   if (!upstreamResponse.ok) {
     const errorText = await upstreamResponse.text()
+    if (upstreamResponse.status === 429 || /rate limit|quota/i.test(errorText)) {
+      return jsonResponse(429, {
+        error: 'Daily GitHub Models quota exhausted.',
+        errorCode: 'daily_limit_exhausted',
+      })
+    }
+
     return jsonResponse(upstreamResponse.status, {
       error: `GitHub Models request failed: ${errorText || upstreamResponse.statusText}`,
     })
@@ -184,15 +305,21 @@ Deno.serve(async (req) => {
         : estimateTokens(prompt) + estimateTokens(content),
   }
 
+  const responsePayload = {
+    content,
+    model,
+    usage,
+  }
+
+  if (cacheKey && cacheTtlSeconds > 0) {
+    await setCachedResponse(cacheKey, cacheTtlSeconds, responsePayload)
+  }
+
   try {
     await recordUsageIfAuthenticated(req, taskType, usage.totalTokens)
   } catch (error) {
     console.error('Failed to record AI usage', error)
   }
 
-  return jsonResponse(200, {
-    content,
-    model,
-    usage,
-  })
+  return jsonResponse(200, responsePayload)
 })

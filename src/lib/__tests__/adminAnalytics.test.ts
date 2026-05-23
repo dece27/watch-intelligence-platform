@@ -104,12 +104,12 @@ describe('adminAnalytics helpers', () => {
 
     await expect(callTrackedLlm('hello', 'gpt-model', true)).resolves.toBe('tracked-answer')
 
-    expect(callGitHubModelsProxy).toHaveBeenCalledWith({
+    expect(callGitHubModelsProxy).toHaveBeenCalledWith(expect.objectContaining({
       prompt: 'hello',
       model: 'gpt-model',
       jsonMode: true,
       taskType: 'general',
-    })
+    }))
     expect(store.has('ai_usage_persisted-user')).toBe(true)
   })
 
@@ -143,11 +143,11 @@ describe('adminAnalytics helpers', () => {
 
     await callTrackedLlm('rank these deals', 'auto', true, 'deal_ranking')
 
-    expect(callGitHubModelsProxy).toHaveBeenLastCalledWith({
+    expect(callGitHubModelsProxy).toHaveBeenLastCalledWith(expect.objectContaining({
       prompt: 'rank these deals',
       model: 'auto',
       jsonMode: true,
       taskType: 'deal_ranking',
-    })
+    }))
   })
 })

@@ -186,8 +186,9 @@ For GitHub Pages or other static builds, only the `VITE_` variables are needed
 in the frontend build. Keep `SUPABASE_SERVICE_ROLE_KEY` server-only and use it
 only from GitHub Actions, scripts, or Supabase server-side utilities such as
 `supabase/utils/admin.ts`. For AI features, deploy the Supabase Edge Function at
-`supabase/functions/github-models-proxy` and set `GITHUB_TOKEN` in the Supabase
-project secrets so the PAT never reaches the browser bundle.
+`supabase/functions/github-models-proxy` and set both `GITHUB_TOKEN` and
+`SUPABASE_SERVICE_ROLE_KEY` in the Supabase project secrets so the PAT stays
+server-side and the proxy can persist AI response caches in Supabase.
 
 ## Testing
 
