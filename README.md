@@ -96,7 +96,27 @@ Available scripts:
 - `npm run lint` — run ESLint
 - `npm run build` — run TypeScript build and Vite production build
 - `npm run test` — run Vitest unit tests
+- `npm run db:start` — start the local Supabase stack
+- `npm run db:stop` — stop the local Supabase stack
+- `npm run db:reset` — reset the local Supabase database
+- `npm run db:migrate` — push local Supabase migrations
+- `npm run db:types` — regenerate `src/lib/supabase/types.ts` from the local schema
+- `npm run test:sql` — run SQL-level Supabase tests
+- `npm run test:ts` — run Supabase TypeScript integration tests
+- `npm run test:all` — run both Supabase SQL and TypeScript test suites
 - `npm run preview` — preview production build
+
+### Local Supabase workflow
+
+After creating your local `.env.local`, you can use the built-in Supabase scripts
+to manage the schema and test suite:
+
+```bash
+npm run db:start
+npm run db:migrate
+npm run db:types
+npm run test:all
+```
 
 ### Chrono24 live deals setup (optional)
 
@@ -109,7 +129,7 @@ python server.py
 ```
 
 Then point the frontend to it. You can pass the variable inline or add it to a
-`.env.local` file in the project root:
+gitignored `.env.local` file in the project root:
 
 ```bash
 # inline
@@ -138,6 +158,10 @@ VITE_WATCHCHARTS_API_KEY=your_key npm run dev
 
 | Variable | Description |
 |---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL used by browser and server clients |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public Supabase anon key used by browser and server clients |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server-only Supabase service role key for admin/server operations; never expose it to the browser |
+| `SUPABASE_DB_URL` | Direct database connection string used for CLI tasks such as backups |
 | `VITE_CHRONO24_WRAPPER_BASE_URL` | Base URL for the Chrono24 wrapper API |
 | `VITE_CHRONO24_API_HOST` | Alternative name for the Chrono24 wrapper base URL |
 | `VITE_CHRONO24_WRAPPER_API_KEY` | API key for the Chrono24 wrapper (if required) |
@@ -145,12 +169,34 @@ VITE_WATCHCHARTS_API_KEY=your_key npm run dev
 | `VITE_WATCHCHARTS_BASE_URL` | Override for WatchCharts API base URL |
 | `VITE_BASE_PATH` | Base path for GitHub Pages deployments (set automatically by the deploy workflow) |
 
+Create a local `/home/runner/work/watch-intelligence-platform/watch-intelligence-platform/.env.local`
+file with:
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+SUPABASE_DB_URL=
+```
+
+For Vercel, add the same four variables in the project settings. Mark
+`SUPABASE_SERVICE_ROLE_KEY` as server-only and do not expose it to the browser
+or any client-side bundle.
+
 ## Testing
 
 Unit tests are written with Vitest and live in `src/**/__tests__/`.
 
 ```bash
 npm run test
+```
+
+Supabase persistence also has dedicated SQL and TypeScript test suites:
+
+```bash
+npm run test:sql
+npm run test:ts
+npm run test:all
 ```
 
 The Chrono24 wrapper also has its own test suite:
@@ -179,6 +225,28 @@ On GitHub Pages the Spark runtime is not available, so the app automatically
 uses the IndexedDB-backed KV fallback (`src/lib/sparkKV.ts`). Shared collection
 links use hash-based routing (`/#/shared/...`) so they resolve correctly under
 any base path.
+
+## Daily Supabase backup workflow
+
+The repository includes a scheduled backup workflow at
+`.github/workflows/db-backup.yml`. It runs daily at **02:00 UTC**, dumps the
+Supabase database, compresses the dump, uploads it to Cloudflare R2, deletes
+remote backups older than 30 days, and sends a Resend alert email if the job
+fails.
+
+Configure these GitHub **Actions secrets** before enabling it:
+
+- `SUPABASE_DB_URL`
+- `CLOUDFLARE_R2_ACCESS_KEY`
+- `CLOUDFLARE_R2_SECRET_KEY`
+- `RESEND_API_KEY`
+
+Also configure these GitHub **Actions variables**:
+
+- `CLOUDFLARE_R2_ACCOUNT_ID`
+- `CLOUDFLARE_R2_BUCKET`
+- `BACKUP_ALERT_EMAIL_TO`
+- `BACKUP_ALERT_EMAIL_FROM` (optional; defaults to `onboarding@resend.dev`)
 
 ## License
 

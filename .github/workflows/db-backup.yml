@@ -1,0 +1,83 @@
+name: Daily Supabase DB Backup
+
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    env:
+      RCLONE_CONFIG_R2_TYPE: s3
+      RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+      RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY }}
+      RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_SECRET_KEY }}
+      RCLONE_CONFIG_R2_ENDPOINT: https://${{ vars.CLOUDFLARE_R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+      R2_REMOTE_PATH: r2:${{ vars.CLOUDFLARE_R2_BUCKET }}/supabase-db
+      BACKUP_ALERT_EMAIL_TO: ${{ vars.BACKUP_ALERT_EMAIL_TO }}
+      BACKUP_ALERT_EMAIL_FROM: ${{ vars.BACKUP_ALERT_EMAIL_FROM }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Install rclone
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rclone
+
+      - name: Dump database backup
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          BACKUP_DATE="$(date -u +%Y%m%d)"
+          BACKUP_FILE="backup_${BACKUP_DATE}.sql"
+          npx supabase db dump --db-url "$SUPABASE_DB_URL" > "$BACKUP_FILE"
+          echo "BACKUP_FILE=$BACKUP_FILE" >> "$GITHUB_ENV"
+
+      - name: Gzip backup file
+        run: |
+          gzip -f "$BACKUP_FILE"
+          echo "BACKUP_ARCHIVE=${BACKUP_FILE}.gz" >> "$GITHUB_ENV"
+
+      - name: Upload backup to Cloudflare R2
+        run: |
+          rclone copy "$BACKUP_ARCHIVE" "$R2_REMOTE_PATH/" --immutable
+
+      - name: Delete R2 backups older than 30 days
+        run: |
+          rclone delete "$R2_REMOTE_PATH/" --min-age 30d
+          rclone rmdirs "$R2_REMOTE_PATH/" --leave-root
+
+      - name: Send failure alert via Resend
+        if: failure()
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+        run: |
+          FROM_EMAIL="${BACKUP_ALERT_EMAIL_FROM:-onboarding@resend.dev}"
+          TO_EMAIL="${BACKUP_ALERT_EMAIL_TO:-}"
+          if [ -z "$TO_EMAIL" ]; then
+            echo "BACKUP_ALERT_EMAIL_TO repository variable is required to send Resend alerts."
+            exit 1
+          fi
+
+          curl --fail-with-body --silent --show-error \
+            -X POST https://api.resend.com/emails \
+            -H "Authorization: Bearer $RESEND_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d @- <<EOF
+          {
+            "from": "$FROM_EMAIL",
+            "to": ["$TO_EMAIL"],
+            "subject": "Daily Supabase backup failed: ${{ github.repository }}",
+            "html": "<p>The scheduled database backup workflow failed.</p><p><strong>Repository:</strong> ${{ github.repository }}</p><p><strong>Run:</strong> <a href=\"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\">View workflow run</a></p>"
+          }
+          EOF
