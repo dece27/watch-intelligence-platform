@@ -285,7 +285,7 @@ Respond in valid JSON format:
 }`
 
         try {
-          const response = await callTrackedLlm(promptText, 'gpt-4o-mini', true)
+          const response = await callTrackedLlm(promptText, 'auto', true, 'signal')
           const parsed = JSON.parse(response)
           
           return {
@@ -335,7 +335,7 @@ User question: ${userMessage}
 
 Provide expert, concise advice (2-3 paragraphs max) about their collection, watch market trends, or collecting strategy. Be specific and reference their actual watches when relevant. Focus on actionable insights.`
 
-      const response = await callTrackedLlm(promptText, 'gpt-4o-mini')
+      const response = await callTrackedLlm(promptText, 'auto', false, 'chat')
       
       setMessages(prev => [...prev, { role: 'assistant', content: response }])
     } catch {
@@ -454,7 +454,7 @@ Respond in valid JSON format:
   "features": "2-3 sentences describing key identifying features"
 }`
 
-      const response = await callTrackedLlm(promptText, 'gpt-4o-mini', true)
+      const response = await callTrackedLlm(promptText, 'auto', true, 'identify')
       const parsed = JSON.parse(response)
       
       setIdentifiedWatch({
@@ -558,7 +558,7 @@ Respond in valid JSON format:
       const assessmentPrompt = `In exactly 2 sentences, explain why this watch is today's best deal: ${topDeal.brand} ${topDeal.model} ${topDeal.referenceNumber || ''}, ${topDeal.year || 'unknown year'}, ${topDeal.condition}, asking ${formatCurrency(topDeal.price, preferredCurrency, { sourceCurrency: topDeal.currency || "USD" })} vs fair market value of ${formatCurrency(topDeal.fairValue || topDeal.price, preferredCurrency, { sourceCurrency: topDeal.currency || "USD" })}. Be specific about what makes the price attractive and who should consider buying it.`
 
 
-      const assessment = await callTrackedLlm(assessmentPrompt, 'gpt-4o-mini')
+      const assessment = await callTrackedLlm(assessmentPrompt, 'auto', false, 'deal_assessment')
       setDealAssessment(assessment)
       await saveAiCache(cacheKey, dependencyHash, {
         dealAssessments: {
@@ -639,7 +639,7 @@ Respond in valid JSON format:
   }
 }`
 
-      const response = await callTrackedLlm(promptText, 'gpt-4o-mini', true)
+      const response = await callTrackedLlm(promptText, 'auto', true, 'rebalancing')
       const parsedAnalysis = parseRebalanceAnalysis(response)
       setRebalanceAnalysis(parsedAnalysis)
       await saveAiCache(cacheKey, dependencyHash, { rebalanceAnalysis: parsedAnalysis }, cache)

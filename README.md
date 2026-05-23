@@ -80,6 +80,7 @@ The goal of this project is to provide a single operating system for watch colle
 - **date-fns** — date formatting and arithmetic
 - **Spark KV** (`window.spark.kv`) — primary KV storage for persisted user and collection data
 - **IndexedDB fallback** (`src/lib/sparkKV.ts`) — used automatically on GitHub Pages and other static deployments where the Spark runtime is not available
+- **Supabase Edge Functions** — secure server-side proxying for GitHub Models API calls
 - **WatchCharts API client** (`src/lib/watchcharts-client.ts`) — optional live market value lookups
 - **Chrono24 FastAPI wrapper** (`chrono24-api/`) — optional Python service for live deal sourcing
 
@@ -163,6 +164,7 @@ VITE_WATCHCHARTS_API_KEY=your_key npm run dev
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-only Supabase service role key for GitHub Actions or Supabase server-side utilities; never expose it to the browser |
 | `SUPABASE_URL` | Optional server-only Supabase URL override for GitHub Actions or other non-browser utilities |
 | `SUPABASE_DB_URL` | Direct database connection string used for CLI tasks such as backups |
+| `GITHUB_TOKEN` | Server-only GitHub personal access token used by `supabase/functions/github-models-proxy` to call GitHub Models |
 | `VITE_CHRONO24_WRAPPER_BASE_URL` | Base URL for the Chrono24 wrapper API |
 | `VITE_CHRONO24_API_HOST` | Alternative name for the Chrono24 wrapper base URL |
 | `VITE_CHRONO24_WRAPPER_API_KEY` | API key for the Chrono24 wrapper (if required) |
@@ -183,7 +185,9 @@ SUPABASE_DB_URL=
 For GitHub Pages or other static builds, only the `VITE_` variables are needed
 in the frontend build. Keep `SUPABASE_SERVICE_ROLE_KEY` server-only and use it
 only from GitHub Actions, scripts, or Supabase server-side utilities such as
-`supabase/utils/admin.ts`.
+`supabase/utils/admin.ts`. For AI features, deploy the Supabase Edge Function at
+`supabase/functions/github-models-proxy` and set `GITHUB_TOKEN` in the Supabase
+project secrets so the PAT never reaches the browser bundle.
 
 ## Testing
 

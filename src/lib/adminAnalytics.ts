@@ -1,4 +1,5 @@
 import { User } from "@/lib/types"
+import { callGitHubModelsProxy, type GitHubModelsTaskType } from '@/lib/github-models-proxy'
 
 export const ADMIN_EMAIL = "administrator"
 export const LEGACY_ADMIN_EMAILS = ["dec.davide@gmail.com"]
@@ -67,8 +68,13 @@ export async function recordAiUsage(userId: string, prompt: string, response: st
   } satisfies UserAIUsage)
 }
 
-export async function callTrackedLlm(prompt: string, model: string, jsonMode?: boolean) {
-  const response = await window.spark.llm(prompt, model, jsonMode)
+export async function callTrackedLlm(
+  prompt: string,
+  model = 'auto',
+  jsonMode?: boolean,
+  taskType: GitHubModelsTaskType = 'general',
+) {
+  const response = await callGitHubModelsProxy({ prompt, model, jsonMode, taskType })
   const userId = await resolveCurrentUserId()
   if (userId) {
     await recordAiUsage(userId, prompt, response)

@@ -66,7 +66,7 @@ Provide:
 - REASONING: 2-3 sentences on why this is or isn't a good deal
 - RISK: one sentence on the main risk factor`
 
-      const response = await callTrackedLlm(promptText, "gpt-4o-mini")
+      const response = await callTrackedLlm(promptText, 'auto', false, 'deal_assessment')
       
       const verdictMatch = response.match(/VERDICT:\s*(EXCELLENT DEAL|GOOD DEAL|FAIR DEAL|OVERPRICED)/i)
       const reasoningMatch = response.match(/REASONING:\s*([^\n]+(?:\n[^\n-]+)*)/i)

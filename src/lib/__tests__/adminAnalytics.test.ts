@@ -6,10 +6,15 @@ import {
   isAdminEmail,
   recordAiUsage,
 } from '@/lib/adminAnalytics'
+import { callGitHubModelsProxy } from '@/lib/github-models-proxy'
+
+vi.mock('@/lib/github-models-proxy', () => ({
+  callGitHubModelsProxy: vi.fn(),
+}))
 
 type KvStore = Map<string, unknown>
 
-function createSparkWindow(store: KvStore, llmResponse = 'model-response') {
+function createSparkWindow(store: KvStore) {
   return {
     spark: {
       kv: {
@@ -18,7 +23,6 @@ function createSparkWindow(store: KvStore, llmResponse = 'model-response') {
           store.set(key, value)
         }),
       },
-      llm: vi.fn(async () => llmResponse),
     },
   }
 }
@@ -26,6 +30,7 @@ function createSparkWindow(store: KvStore, llmResponse = 'model-response') {
 describe('adminAnalytics helpers', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    vi.mocked(callGitHubModelsProxy).mockResolvedValue('tracked-answer')
     ;(globalThis as { sessionStorage?: Storage }).sessionStorage = {
       getItem: vi.fn(() => null),
       setItem: vi.fn(),
@@ -94,12 +99,17 @@ describe('adminAnalytics helpers', () => {
 
   it('tracks LLM usage for persisted current user', async () => {
     const store: KvStore = new Map([['currentUser', { id: 'persisted-user' }]])
-    const sparkWindow = createSparkWindow(store, 'tracked-answer')
+    const sparkWindow = createSparkWindow(store)
     ;(globalThis as { window?: unknown }).window = sparkWindow
 
     await expect(callTrackedLlm('hello', 'gpt-model', true)).resolves.toBe('tracked-answer')
 
-    expect(sparkWindow.spark.llm).toHaveBeenCalledWith('hello', 'gpt-model', true)
+    expect(callGitHubModelsProxy).toHaveBeenCalledWith({
+      prompt: 'hello',
+      model: 'gpt-model',
+      jsonMode: true,
+      taskType: 'general',
+    })
     expect(store.has('ai_usage_persisted-user')).toBe(true)
   })
 
@@ -125,5 +135,19 @@ describe('adminAnalytics helpers', () => {
 
     expect(Array.from(store.keys())).not.toContain('ai_usage_')
     expect(Array.from(store.keys()).find((key) => key.startsWith('ai_usage_'))).toBeUndefined()
+  })
+
+  it('forwards the requested task type to the GitHub Models proxy', async () => {
+    const store: KvStore = new Map([['currentUser', { id: 'persisted-user' }]])
+    ;(globalThis as { window?: unknown }).window = createSparkWindow(store)
+
+    await callTrackedLlm('rank these deals', 'auto', true, 'deal_ranking')
+
+    expect(callGitHubModelsProxy).toHaveBeenLastCalledWith({
+      prompt: 'rank these deals',
+      model: 'auto',
+      jsonMode: true,
+      taskType: 'deal_ranking',
+    })
   })
 })

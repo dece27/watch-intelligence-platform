@@ -328,7 +328,7 @@ Return every deal id exactly once.`
 
       let scoredDeals = heuristicScored
       try {
-        const aiResponse = await callTrackedLlm(rankingPrompt, "gpt-4o-mini", true)
+        const aiResponse = await callTrackedLlm(rankingPrompt, 'auto', true, 'deal_ranking')
         const rankingMap = parseAiRanking(aiResponse, heuristicScored)
 
         if (rankingMap.size > 0) {
