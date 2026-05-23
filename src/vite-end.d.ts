@@ -30,6 +30,8 @@ interface ImportMetaEnv {
 	readonly VITE_DEFAULT_ACCOUNT_PASSWORD_HASH?: string
 	readonly VITE_DEFAULT_ACCOUNT_SALT?: string
 	readonly VITE_DEFAULT_ACCOUNT_ITERATIONS?: string
+	readonly VITE_SUPABASE_URL?: string
+	readonly VITE_SUPABASE_ANON_KEY?: string
 }
 
 interface ImportMeta {

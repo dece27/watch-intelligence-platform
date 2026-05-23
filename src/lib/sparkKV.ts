@@ -1,3 +1,5 @@
+import { callGitHubModelsAI } from "@/lib/ai-client"
+
 const SPARK_KV_FALLBACK_PREFIX = "spark_kv_fallback:"
 const SPARK_KV_FALLBACK_DB_NAME = "watchvault-spark-kv"
 const SPARK_KV_FALLBACK_STORE_NAME = "kv"
@@ -282,9 +284,7 @@ export function installSparkKVFallback() {
 
   window.spark = {
     llmPrompt: originalSpark?.llmPrompt ?? ((strings, ...values) => joinPrompt(strings, values)),
-    llm: originalSpark?.llm ?? (async () => {
-      throw new Error("Spark AI features are unavailable in this deployment.")
-    }),
+    llm: originalSpark?.llm ?? callGitHubModelsAI,
     user: originalSpark?.user ?? (async () => FALLBACK_USER),
     kv,
   }
