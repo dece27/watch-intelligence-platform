@@ -39,6 +39,14 @@ describe('ai caller helpers', () => {
     expect(parseAIJson<{ signal: string }>('```json\n{"signal":"HOLD"}\n```')).toEqual({ signal: 'HOLD' })
   })
 
+  it('recovers JSON objects wrapped with extra text', () => {
+    expect(parseAIJson<{ signal: string }>('AI result: {"signal":"BUY_MORE"} thanks')).toEqual({ signal: 'BUY_MORE' })
+  })
+
+  it('recovers JSON arrays wrapped with extra text', () => {
+    expect(parseAIJson<Array<{ id: string }>>('Ranking output: [{"id":"deal-1"}] done')).toEqual([{ id: 'deal-1' }])
+  })
+
   it('forwards cache settings and records usage for the active user', async () => {
     const store: KvStore = new Map([['currentUser', { id: 'user-1' }]])
     ;(globalThis as { window?: unknown }).window = createSparkWindow(store)
