@@ -157,7 +157,8 @@ const readCachedDeals = (params: Chrono24SearchParams, returnStale = false): Dea
     if (!Array.isArray(parsed.deals)) return null
     if (!returnStale && parsed.expiresAt < Date.now()) return null
     return parsed.deals
-  } catch {
+  } catch (error) {
+    console.warn("Failed to read Chrono24 cached deals from localStorage.", error)
     return null
   }
 }
@@ -172,8 +173,8 @@ const writeCachedDeals = (params: Chrono24SearchParams, deals: Deal[]) => {
     }
 
     window.localStorage.setItem(getSearchCacheKey(params), JSON.stringify(payload))
-  } catch {
-    // Ignore storage failures and continue with live fetch results.
+  } catch (error) {
+    console.warn("Failed to persist Chrono24 cached deals to localStorage.", error)
   }
 }
 
@@ -183,7 +184,8 @@ const getPreferredEndpoint = () => {
   try {
     const stored = window.localStorage.getItem(PREFERRED_ENDPOINT_STORAGE_KEY)
     return stored && SEARCH_ENDPOINTS.includes(stored) ? stored : null
-  } catch {
+  } catch (error) {
+    console.warn("Failed to read preferred Chrono24 endpoint from localStorage.", error)
     return null
   }
 }
@@ -193,8 +195,8 @@ const setPreferredEndpoint = (endpoint: string) => {
 
   try {
     window.localStorage.setItem(PREFERRED_ENDPOINT_STORAGE_KEY, endpoint)
-  } catch {
-    // Ignore storage failures and continue trying endpoints in memory order.
+  } catch (error) {
+    console.warn("Failed to persist preferred Chrono24 endpoint to localStorage.", error)
   }
 }
 
@@ -336,7 +338,8 @@ const mapChrono24Listing = (item: unknown, index: number): Deal | null => {
       const parsed = new URL(sourceUrl)
       const pathSegment = parsed.pathname.split("/").filter(Boolean).pop()
       stableUrlIdentifier = pathSegment || `${parsed.origin}${parsed.pathname}`
-    } catch {
+    } catch (error) {
+      console.warn("Failed to parse Chrono24 listing source URL.", error)
       stableUrlIdentifier = sourceUrl.split(/[?#]/)[0] || null
     }
   }
@@ -460,8 +463,8 @@ export const clearChrono24SearchCache = (): void => {
       }
     }
     keysToRemove.forEach((key) => window.localStorage.removeItem(key))
-  } catch {
-    // Ignore storage errors — the live fetch will proceed regardless.
+  } catch (error) {
+    console.warn("Failed to clear Chrono24 search cache from localStorage.", error)
   }
 }
 

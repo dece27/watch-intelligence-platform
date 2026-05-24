@@ -68,11 +68,11 @@ export class WatchChartsClient {
     }
   }
 
-  private async request<T>(method: string, path: string, params?: Record<string, any>): Promise<T> {
+  private async request<T>(method: string, path: string, params?: object): Promise<T> {
     const url = new URL(path, this.baseURL)
     
     if (params && method === 'GET') {
-      Object.entries(params).forEach(([key, value]) => {
+      Object.entries(params as Record<string, unknown>).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
           url.searchParams.append(key, String(value))
         }
@@ -89,16 +89,13 @@ export class WatchChartsClient {
         signal: controller.signal,
       })
 
-      clearTimeout(timeoutId)
-
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`)
       }
 
       return await response.json()
-    } catch (error) {
+    } finally {
       clearTimeout(timeoutId)
-      throw error
     }
   }
 

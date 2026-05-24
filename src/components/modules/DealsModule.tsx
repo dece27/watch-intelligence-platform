@@ -16,7 +16,6 @@ import {
   isChrono24WrapperConfigured,
 } from "@/lib/chrono24-client"
 import { convertCurrency, formatCurrency, normalizeCurrency } from "@/lib/currency"
-import { FALLBACK_DEALS } from "@/lib/fallback-deals"
 import { toast } from "sonner"
 
 interface DealsModuleProps {
@@ -126,7 +125,8 @@ const parseAiRanking = (
         reasoning: reasoning || "Ranked highly for portfolio fit.",
       })
     }
-  } catch {
+  } catch (error) {
+    console.error("[DealsModule] Failed to parse AI ranking response.", error)
     return rankingMap
   }
 
@@ -171,8 +171,9 @@ export function DealsModule({ watches, userId, preferredCurrency = "USD" }: Deal
         } else {
           setPreferences(defaults)
         }
-      } catch {
+      } catch (error) {
         if (!active) return
+        console.error("[DealsModule] Failed to load stored deal preferences.", error)
         setPreferences(defaults)
       } finally {
         if (active) setPreferencesLoaded(true)
@@ -198,8 +199,8 @@ export function DealsModule({ watches, userId, preferredCurrency = "USD" }: Deal
           deals: preferences,
           updatedAt: new Date().toISOString(),
         } satisfies UserPreferences)
-      } catch {
-        // Silent persistence failure; UI remains functional.
+      } catch (error) {
+        console.error("[DealsModule] Failed to persist deal preferences.", error)
       }
     }, PREFERENCES_PERSIST_DEBOUNCE_MS)
 
@@ -234,12 +235,10 @@ export function DealsModule({ watches, userId, preferredCurrency = "USD" }: Deal
       clearChrono24SearchCache()
     }
 
-    // When no Chrono24 wrapper is configured, silently fall back to static deals
-    // without showing any error banner (matches AIAdvisorModule pattern).
     if (!isChrono24WrapperConfigured) {
-      const fallbackDeals = FALLBACK_DEALS.map((deal) => scoreHeuristically(deal, watches, preferences))
-      setDeals(fallbackDeals)
+      setDeals([])
       setIsLiveData(false)
+      setErrorMessage("Chrono24 API is not configured. Configure the wrapper URL and retry.")
       setIsLoading(false)
       return
     }
@@ -270,6 +269,7 @@ export function DealsModule({ watches, userId, preferredCurrency = "USD" }: Deal
             break
           }
         } catch (error) {
+          console.error(`[DealsModule] Failed to fetch Chrono24 deals for brand "${brand}".`, error)
           fetchErrors.push(error instanceof Error ? error.message : String(error))
         }
       }
@@ -377,6 +377,8 @@ Return every deal id exactly once.`
       } catch (error) {
         if (error instanceof DailyLimitError) {
           toast.info('Daily AI match quota reached. Showing heuristic ranking instead.')
+        } else {
+          console.error("[DealsModule] AI ranking request failed; using heuristic ranking.", error)
         }
         // AI ranking is optional; heuristic ranking remains.
       }
@@ -384,8 +386,7 @@ Return every deal id exactly once.`
       setDeals(scoredDeals)
       setIsLiveData(true)
     } catch (error) {
-      const fallbackDeals = FALLBACK_DEALS.map((deal) => scoreHeuristically(deal, watches, preferences))
-      setDeals(fallbackDeals)
+      setDeals([])
       setIsLiveData(false)
       setErrorMessage(error instanceof Error ? error.message : "Chrono24 data unavailable")
     } finally {
@@ -480,7 +481,7 @@ Return every deal id exactly once.`
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="outline" className={isLiveData ? "border-success/40 text-success" : ""}>
-            {isLiveData ? "Live Chrono24 Data" : "Fallback Deals"}
+            {isLiveData ? "Live Chrono24 Data" : "Live Data Unavailable"}
           </Badge>
           <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isLoading}>
             <ArrowsClockwise className="mr-2" size={16} />

@@ -13,7 +13,6 @@ import { DailyLimitError, callAI, createAICacheKey, getTodayCacheBucket, hashAII
 import { useAIQuota } from "@/lib/ai/useAIQuota"
 import { searchChrono24Deals, isChrono24WrapperConfigured } from "@/lib/chrono24-client"
 import { formatCurrency } from "@/lib/currency"
-import { FALLBACK_DEALS } from "@/lib/fallback-deals"
 import { useKV } from "@/lib/useKV"
 
 interface AIAdvisorModuleProps {
@@ -30,6 +29,15 @@ interface RebalanceAnalysis {
     score: number
     explanation: string
   }
+}
+
+interface IdentifiedWatch {
+  brand: string
+  model: string
+  reference: string
+  value: number
+  features: string
+  imageUrl: string
 }
 
 const DEFAULT_STRATEGIC_SCORE = 5
@@ -98,7 +106,8 @@ const parseJsonObjectWithRecovery = (response: string): Record<string, unknown> 
 
   try {
     return parseCandidate(normalizedPayload)
-  } catch {
+  } catch (error) {
+    console.warn("[AIAdvisorModule] Failed to parse direct JSON object response; retrying with permissive extraction.", error)
     // Fall through to a more permissive extraction mode below.
   }
 
@@ -170,7 +179,8 @@ const getSafeIdentifierImageSource = (value: string) => {
   try {
     const parsedUrl = new URL(trimmed)
     return parsedUrl.protocol === 'https:' ? parsedUrl.href : ''
-  } catch {
+  } catch (error) {
+    console.warn("[AIAdvisorModule] Invalid identifier image URL provided.", error)
     return ''
   }
 }
@@ -260,10 +270,11 @@ export function AIAdvisorModule({ watches, userId, preferredCurrency = "USD" }: 
   const [isLoadingSignals, setIsLoadingSignals] = useState(false)
   const [identifierImage, setIdentifierImage] = useState('')
   const [isIdentifying, setIsIdentifying] = useState(false)
-  const [identifiedWatch, setIdentifiedWatch] = useState<any>(null)
+  const [identifiedWatch, setIdentifiedWatch] = useState<IdentifiedWatch | null>(null)
   const [rebalanceAnalysis, setRebalanceAnalysis] = useState<RebalanceAnalysis | null>(null)
   const [isLoadingRebalance, setIsLoadingRebalance] = useState(false)
   const [dealOfDay, setDealOfDay] = useState<Deal | null>(null)
+  const [dealOfDayError, setDealOfDayError] = useState<string | null>(null)
   const [dealAssessment, setDealAssessment] = useState<string>('')
   const [isLoadingDeal, setIsLoadingDeal] = useState(false)
   const [mockListings, setMockListings] = useKV<Deal[]>("mockListings", [])
@@ -343,7 +354,8 @@ ${watchSummary}`
 
       const generatedSignals = await Promise.all(signalsPromises)
       setSignals(generatedSignals)
-    } catch {
+    } catch (error) {
+      console.error("[AIAdvisorModule] Failed to generate portfolio signals.", error)
       toast.error("Failed to generate signals")
     } finally {
       setIsLoadingSignals(false)
@@ -505,9 +517,29 @@ Respond in valid JSON format:
         cacheTtlSeconds: IDENTIFY_CACHE_TTL_SECONDS,
       })
       const parsed = parseAIJson<Record<string, unknown>>(response)
-      
+
+      const parsedBrand = typeof parsed.brand === "string" && parsed.brand.trim().length > 0
+        ? parsed.brand.trim()
+        : "Luxury Watch"
+      const parsedModel = typeof parsed.model === "string" && parsed.model.trim().length > 0
+        ? parsed.model.trim()
+        : "Model Unknown"
+      const parsedReference = typeof parsed.reference === "string" && parsed.reference.trim().length > 0
+        ? parsed.reference.trim()
+        : "Unknown"
+      const parsedValue = typeof parsed.value === "number" && Number.isFinite(parsed.value)
+        ? parsed.value
+        : 0
+      const parsedFeatures = typeof parsed.features === "string" && parsed.features.trim().length > 0
+        ? parsed.features.trim()
+        : "Unable to identify key features from this image."
+
       setIdentifiedWatch({
-        ...parsed,
+        brand: parsedBrand,
+        model: parsedModel,
+        reference: parsedReference,
+        value: parsedValue,
+        features: parsedFeatures,
         imageUrl: safeIdentifierImage
       })
     } catch (error) {
@@ -535,7 +567,7 @@ Respond in valid JSON format:
 
   const loadDealOfDay = async () => {
     setIsLoadingDeal(true)
-    let assessedDeal: Deal | null = null
+    setDealOfDayError(null)
     try {
       let listings: Deal[] = []
       let usedLiveData = false
@@ -562,8 +594,9 @@ Respond in valid JSON format:
             if (uniqueDealsMap.size >= DEAL_OF_DAY_QUERY_LIMIT) {
               break
             }
-          } catch {
-            // Keep iterating through the remaining brands before falling back.
+          } catch (error) {
+            console.error(`[AIAdvisorModule] Failed to fetch Chrono24 deals for Deal of the Day brand "${brand}".`, error)
+            // Keep iterating through the remaining brands before failing.
           }
         }
       }
@@ -578,9 +611,7 @@ Respond in valid JSON format:
         // Use previously cached live results
         listings = mockListings
       } else {
-        // Last resort: use the static fallback deals so the section is never blank.
-        // These are clearly labelled as fallback data in the UI badge.
-        listings = FALLBACK_DEALS
+        throw new Error("No Chrono24 listings were returned for Deal of the Day.")
       }
 
       setIsLiveDealData(usedLiveData)
@@ -598,29 +629,36 @@ Respond in valid JSON format:
 
       listingsWithScores.sort((a, b) => b.dealScore - a.dealScore)
       const topDeal = listingsWithScores[0]
-      assessedDeal = topDeal
+      if (!topDeal) {
+        throw new Error("No scored Chrono24 listings are available for Deal of the Day.")
+      }
       setDealOfDay(topDeal)
 
       const assessmentPrompt = `In exactly 2 sentences, explain why this watch is today's best deal: ${topDeal.brand} ${topDeal.model} ${topDeal.referenceNumber || ''}, ${topDeal.year || 'unknown year'}, ${topDeal.condition}, asking ${formatCurrency(topDeal.price, preferredCurrency, { sourceCurrency: topDeal.currency || "USD" })} vs fair market value of ${formatCurrency(topDeal.fairValue || topDeal.price, preferredCurrency, { sourceCurrency: topDeal.currency || "USD" })}. Be specific about what makes the price attractive and who should consider buying it.`
 
 
-      const assessment = await callAI({
-        prompt: assessmentPrompt,
-        taskType: 'deal_assessment',
-        cacheKey: createAICacheKey(
-          'deal-of-day',
-          topDeal.id,
-          hashAIInput(`${preferredCurrency}|${topDeal.price}|${topDeal.fairValue || topDeal.price}|${topDeal.condition}|${topDeal.daysListed || 0}`),
-        ),
-        cacheTtlSeconds: DEAL_ASSESSMENT_CACHE_TTL_SECONDS,
-      })
-      setDealAssessment(assessment)
-    } catch (error) {
-      if (assessedDeal) {
-        setDealAssessment(buildDealAssessmentFallback(assessedDeal, preferredCurrency))
+      try {
+        const assessment = await callAI({
+          prompt: assessmentPrompt,
+          taskType: 'deal_assessment',
+          cacheKey: createAICacheKey(
+            'deal-of-day',
+            topDeal.id,
+            hashAIInput(`${preferredCurrency}|${topDeal.price}|${topDeal.fairValue || topDeal.price}|${topDeal.condition}|${topDeal.daysListed || 0}`),
+          ),
+          cacheTtlSeconds: DEAL_ASSESSMENT_CACHE_TTL_SECONDS,
+        })
+        setDealAssessment(assessment)
+      } catch (error) {
+        console.error("[AIAdvisorModule] Failed to generate Deal of the Day AI assessment.", error)
+        setDealAssessment(buildDealAssessmentFallback(topDeal, preferredCurrency))
       }
-      console.error("Failed to load deal of day:", error)
+    } catch (error) {
+      setDealOfDay(null)
+      setDealAssessment('')
       setIsLiveDealData(false)
+      setDealOfDayError(error instanceof Error ? error.message : "Failed to load Deal of the Day from Chrono24.")
+      console.error("Failed to load deal of day:", error)
     } finally {
       setIsLoadingDeal(false)
     }
@@ -747,7 +785,7 @@ Respond in valid JSON format:
                 🔥 Deal of the Day
               </CardTitle>
               <Badge variant="outline" className="bg-muted/20">
-                {isLiveDealData ? "Live Chrono24" : "Cached fallback"}
+                {isLiveDealData ? "Live Chrono24" : "Cached Live Results"}
               </Badge>
             </div>
           </CardHeader>
@@ -768,6 +806,17 @@ Respond in valid JSON format:
                       className="w-full h-full object-cover"
                     />
                   </div>
+                )}
+
+                {!isLoadingDeal && !dealOfDay && dealOfDayError && (
+                  <Card className="bg-card border-destructive/40">
+                    <CardContent className="py-6 space-y-3">
+                      <p className="text-sm text-destructive">Deal of the Day unavailable: {dealOfDayError}</p>
+                      <Button variant="outline" size="sm" onClick={loadDealOfDay}>
+                        Retry Deal of the Day
+                      </Button>
+                    </CardContent>
+                  </Card>
                 )}
                 
                 <div>
