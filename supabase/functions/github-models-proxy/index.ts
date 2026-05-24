@@ -11,7 +11,7 @@ const MAX_CACHE_TTL_SECONDS = 60 * 60 * 24 * 7
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, anthropic-beta, anthropic-version',
 }
 
 const MODEL_ROUTES: Record<string, string> = {
@@ -46,6 +46,14 @@ type CachedAiPayload = {
 
 function hasInvalidHeaderCharacters(value: string) {
   return /[\r\n]/.test(value)
+}
+
+function sanitizeUpstreamHeaders(headers: Headers) {
+  for (const headerName of headers.keys()) {
+    if (headerName.toLowerCase().startsWith('anthropic-')) {
+      headers.delete(headerName)
+    }
+  }
 }
 
 function jsonResponse(status: number, body: unknown) {
@@ -261,7 +269,7 @@ Deno.serve(async (req) => {
     Authorization: `Bearer ${GITHUB_TOKEN}`,
     'Content-Type': 'application/json',
   })
-  upstreamHeaders.delete('anthropic-beta')
+  sanitizeUpstreamHeaders(upstreamHeaders)
 
   const upstreamResponse = await fetch(ENDPOINT, {
     method: 'POST',
