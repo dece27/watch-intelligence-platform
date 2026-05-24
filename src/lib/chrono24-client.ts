@@ -1,8 +1,9 @@
 import { Deal } from "@/lib/types"
 
 export const CHRONO24_CONFIG_ERROR_MESSAGE =
-  "Chrono24 API not configured. Start the chrono24-api server and set " +
-  "VITE_CHRONO24_WRAPPER_BASE_URL (or VITE_CHRONO24_API_HOST) to enable live deals."
+  "Chrono24 API not configured. Either set VITE_CHRONO24_WRAPPER_BASE_URL at build time, " +
+  "or deploy the chrono24-proxy Supabase Edge Function with the CHRONO24_WRAPPER_BASE_URL secret " +
+  "pointing to your chrono24-api server."
 
 const trimEnv = (value?: string) => value?.trim() || undefined
 
@@ -12,6 +13,15 @@ const isLocalDevHost = () => {
   return host === "localhost" || host === "127.0.0.1" || host === "[::1]"
 }
 
+// Derive the Supabase Edge Function URL from VITE_SUPABASE_URL so that live
+// fetching works in any deployed environment without requiring a build-time
+// VITE_CHRONO24_WRAPPER_BASE_URL.  The Edge Function reads CHRONO24_WRAPPER_BASE_URL
+// from its server-side Supabase secrets and proxies to the Python chrono24-api server.
+const SUPABASE_BASE_URL = trimEnv(import.meta.env.VITE_SUPABASE_URL)
+const CHRONO24_EDGE_FN_BASE_URL = SUPABASE_BASE_URL
+  ? `${SUPABASE_BASE_URL.replace(/\/$/, "")}/functions/v1/chrono24-proxy`
+  : undefined
+
 const resolveChrono24WrapperBaseUrl = () =>
   trimEnv(import.meta.env.VITE_CHRONO24_WRAPPER_BASE_URL)
   || trimEnv(import.meta.env.VITE_CHRONO24_API_BASE_URL)
@@ -20,12 +30,28 @@ const resolveChrono24WrapperBaseUrl = () =>
   || trimEnv(import.meta.env.CHRONO24_API_BASE_URL)
   || trimEnv(import.meta.env.CHRONO24_API_HOST)
   || (import.meta.env.DEV && isLocalDevHost() ? "http://localhost:8000" : undefined)
+  // Fall back to the Supabase Edge Function proxy so live fetching works in all
+  // deployed environments without a build-time wrapper URL being required.
+  || CHRONO24_EDGE_FN_BASE_URL
 
 const CHRONO24_WRAPPER_BASE_URL = resolveChrono24WrapperBaseUrl()
-const CHRONO24_WRAPPER_API_KEY = trimEnv(import.meta.env.VITE_CHRONO24_WRAPPER_API_KEY)
-  || trimEnv(import.meta.env.VITE_CHRONO24_API_KEY)
-  || trimEnv(import.meta.env.CHRONO24_WRAPPER_API_KEY)
-  || trimEnv(import.meta.env.CHRONO24_API_KEY)
+
+const resolveApiKey = () => {
+  const explicit = trimEnv(import.meta.env.VITE_CHRONO24_WRAPPER_API_KEY)
+    || trimEnv(import.meta.env.VITE_CHRONO24_API_KEY)
+    || trimEnv(import.meta.env.CHRONO24_WRAPPER_API_KEY)
+    || trimEnv(import.meta.env.CHRONO24_API_KEY)
+  if (explicit) return explicit
+  // When routing through the Supabase Edge Function, authenticate with the
+  // Supabase anon key (Bearer scheme).  This is the standard way to call
+  // Supabase Edge Functions from browser clients.
+  if (CHRONO24_WRAPPER_BASE_URL && CHRONO24_WRAPPER_BASE_URL === CHRONO24_EDGE_FN_BASE_URL) {
+    return trimEnv(import.meta.env.VITE_SUPABASE_ANON_KEY)
+  }
+  return undefined
+}
+
+const CHRONO24_WRAPPER_API_KEY = resolveApiKey()
 const CHRONO24_WRAPPER_AUTH_HEADER = trimEnv(import.meta.env.VITE_CHRONO24_WRAPPER_AUTH_HEADER)
   || trimEnv(import.meta.env.VITE_CHRONO24_API_AUTH_HEADER)
   || trimEnv(import.meta.env.CHRONO24_WRAPPER_AUTH_HEADER)
