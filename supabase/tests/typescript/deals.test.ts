@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { getDealCacheKey, listDealListings, removeSavedDeal, saveDeal, upsertDealListings } from '@/lib/db/deals'
+import { getDealCacheKey, listDealListings, removeSavedDeal, saveDeal, searchDealListings, upsertDealListings } from '@/lib/db/deals'
 
 describe('deals persistence helpers', () => {
   it('generates user-scoped cache keys for deal feeds', () => {
@@ -45,6 +45,29 @@ describe('deals persistence helpers', () => {
       [expect.objectContaining({ id: 'deal-1', reference: '226570' })],
       { onConflict: 'id' },
     )
+  })
+
+  it('filters active deal listings by brand and max price', async () => {
+    const limit = vi.fn().mockResolvedValue({ data: [], error: null })
+    const secondOrder = vi.fn(() => ({ limit }))
+    const firstOrder = vi.fn(() => ({ order: secondOrder }))
+    const lte = vi.fn(() => ({ order: firstOrder }))
+    const inFn = vi.fn(() => ({ lte }))
+    const eq = vi.fn(() => ({ in: inFn }))
+    const select = vi.fn(() => ({ eq }))
+    const from = vi.fn(() => ({ select }))
+
+    await searchDealListings(
+      { from } as never,
+      { brands: ['Rolex'], maxAskingPrice: 12000, limit: 10 },
+    )
+
+    expect(eq).toHaveBeenCalledWith('is_active', true)
+    expect(firstOrder).toHaveBeenCalledWith('deal_score', { ascending: false })
+    expect(secondOrder).toHaveBeenCalledWith('created_at', { ascending: false })
+    expect(inFn).toHaveBeenCalledWith('brand', ['Rolex'])
+    expect(lte).toHaveBeenCalledWith('asking_price', 12000)
+    expect(limit).toHaveBeenCalledWith(10)
   })
 
   it('saves personalized deal snapshots by user and listing', async () => {

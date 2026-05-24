@@ -7,10 +7,9 @@ import { DealsModule } from "@/components/modules/DealsModule"
 import type { DealsPreferences, UserPreferences, Watch } from "@/lib/types"
 import type { ReactNode } from "react"
 
-vi.mock("@/lib/chrono24-client", () => ({
-  searchChrono24Deals: vi.fn(async () => []),
-  clearChrono24SearchCache: vi.fn(),
-  isChrono24WrapperConfigured: false,
+vi.mock("@/lib/deal-listings-client", () => ({
+  fetchDealListings: vi.fn(async () => []),
+  areDealListingsConfigured: false,
 }))
 
 vi.mock("@/lib/adminAnalytics", () => ({
@@ -137,7 +136,7 @@ describe("DealsModule browser regression", () => {
     consoleErrorSpy.mockRestore()
   })
 
-  it("shows Chrono24 configuration errors in Deal Flow without React runtime errors", async () => {
+  it("shows deal listing configuration errors in Deal Flow without React runtime errors", async () => {
     const watches: Watch[] = [
       {
         id: "watch-1",
@@ -156,7 +155,7 @@ describe("DealsModule browser regression", () => {
 
     await waitFor(() => {
       expect(container.textContent).toContain("Live Data Unavailable")
-      expect(container.textContent).toContain("Chrono24 API connection issue")
+      expect(container.textContent).toContain("Synced deal listings unavailable")
     })
 
     expect(consoleErrorSpy).not.toHaveBeenCalled()
