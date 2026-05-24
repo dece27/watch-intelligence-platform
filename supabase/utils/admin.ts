@@ -15,7 +15,7 @@ function requireEnv(...names: string[]): string {
 
 export function createSupabaseAdminClient(): SupabaseClient<Database> {
   return createClient<Database>(
-    requireEnv('SUPABASE_URL', 'VITE_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_URL'),
+    requireEnv('SUPABASE_URL'),
     requireEnv('SUPABASE_SERVICE_ROLE_KEY'),
     {
       auth: {
