@@ -14,7 +14,7 @@ const basePath = process.env.VITE_BASE_PATH || "/"
 // https://vite.dev/config/
 export default defineConfig({
   base: basePath.endsWith("/") ? basePath : `${basePath}/`,
-  envPrefix: ["VITE_"],
+  envPrefix: ["VITE_", "NEXT_PUBLIC_"],
   build: {
     chunkSizeWarningLimit: 1500,
   },
