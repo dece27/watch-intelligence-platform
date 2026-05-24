@@ -8,8 +8,9 @@ vi.mock('@/lib/github-models-proxy', () => ({
 
 type KvStore = Map<string, unknown>
 
-function createSparkWindow(store: KvStore) {
+function createSparkWindow(store: KvStore, llm = vi.fn(async () => 'spark-response')) {
   return {
+    dispatchEvent: vi.fn(),
     spark: {
       kv: {
         get: vi.fn(async <T,>(key: string) => store.get(key) as T | undefined),
@@ -17,6 +18,9 @@ function createSparkWindow(store: KvStore) {
           store.set(key, value)
         }),
       },
+      llm,
+      llmPrompt: (strings: string[], ...values: unknown[]) =>
+        strings.reduce((accumulator, current, index) => accumulator + current + (values[index] ?? ''), ''),
     },
   }
 }
@@ -79,6 +83,22 @@ describe('ai caller helpers', () => {
     )
 
     await expect(callAI({ prompt: 'hello', taskType: 'chat' })).rejects.toBeInstanceOf(DailyLimitError)
+  })
+
+  it('falls back to Spark AI when the proxy is unavailable', async () => {
+    const store: KvStore = new Map([['currentUser', { id: 'user-1' }]])
+    const llm = vi.fn(async () => 'spark-response')
+    ;(globalThis as { window?: unknown }).window = createSparkWindow(store, llm)
+    vi.mocked(callGitHubModelsProxy).mockRejectedValueOnce(
+      Object.assign(new Error('GitHub Models proxy is unavailable because Supabase browser environment variables are missing.'), {
+        code: 'proxy_unavailable',
+      }),
+    )
+
+    await expect(callAI({ prompt: 'hello', taskType: 'chat', jsonMode: true })).resolves.toBe('spark-response')
+
+    expect(llm).toHaveBeenCalledWith('hello', undefined, true)
+    expect(store.has('ai_usage_user-1')).toBe(true)
   })
 
   it('builds stable AI cache helpers', () => {

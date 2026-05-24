@@ -13,6 +13,14 @@ function readEnv(name: string): string | undefined {
   return viteEnv?.[name] ?? processEnv?.[name]
 }
 
+export function hasSupabaseBrowserEnv(): boolean {
+  return Boolean(
+    readEnv('VITE_SUPABASE_URL') || readEnv('NEXT_PUBLIC_SUPABASE_URL')
+  ) && Boolean(
+    readEnv('VITE_SUPABASE_ANON_KEY') || readEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY')
+  )
+}
+
 function requireEnv(...names: string[]): string {
   for (const name of names) {
     const value = readEnv(name)
