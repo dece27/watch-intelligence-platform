@@ -50,6 +50,12 @@ class TestParsePriceToFloat:
     def test_large_price(self):
         assert _parse_price_to_float("$250,000") == 250000.0
 
+    def test_european_thousands_separator(self):
+        assert _parse_price_to_float("16.553") == 16553.0
+
+    def test_european_decimal_separator(self):
+        assert _parse_price_to_float("1.234,56") == 1234.56
+
 
 # ---------------------------------------------------------------------------
 # _normalize_listing
@@ -207,6 +213,7 @@ class TestSearchEndpoint:
         """Return a context manager that patches chrono24.query to yield `listings`."""
         mock_instance = MagicMock()
         mock_instance.search.return_value = iter(listings)
+        mock_instance.detailed_search.return_value = iter(listings)
 
         patcher = patch("server.chrono24.query", return_value=mock_instance)
         return patcher
@@ -267,6 +274,18 @@ class TestSearchEndpoint:
 
         assert response.json()["total"] == 2
 
+    def test_min_price_filter_removes_cheaper_listings(self):
+        items = [
+            _make_library_listing(id="cheap", price="$5,000"),
+            _make_library_listing(id="expensive", price="$30,000"),
+        ]
+        with self._patch_chrono24(items):
+            response = client.get("/search?brand=Rolex&min_price=10000")
+
+        body = response.json()
+        assert body["total"] == 1
+        assert body["listings"][0]["price"] == 30000.0
+
     def test_no_listings_found_exception_returns_empty(self):
         from chrono24.exceptions import NoListingsFoundException
 
@@ -320,6 +339,7 @@ class TestSearchEndpoint:
     def test_brand_model_combined_when_no_query(self):
         mock_instance = MagicMock()
         mock_instance.search.return_value = iter([])
+        mock_instance.detailed_search.return_value = iter([])
 
         with patch("server.chrono24.query", return_value=mock_instance) as mock_query:
             client.get("/search?brand=Omega&model=Seamaster")
@@ -329,11 +349,59 @@ class TestSearchEndpoint:
     def test_limit_is_passed_to_library(self):
         mock_instance = MagicMock()
         mock_instance.search.return_value = iter([])
+        mock_instance.detailed_search.return_value = iter([])
 
         with patch("server.chrono24.query", return_value=mock_instance):
             client.get("/search?brand=Rolex&limit=5")
 
         mock_instance.search.assert_called_once_with(limit=5)
+
+    def test_page_changes_library_limit_and_response_slice(self):
+        items = [
+            _make_library_listing(id="first", price="$5,000"),
+            _make_library_listing(id="second", price="$8,000"),
+            _make_library_listing(id="third", price="$12,000"),
+        ]
+        with self._patch_chrono24(items):
+            response = client.get("/search?brand=Rolex&limit=1&page=2")
+
+        body = response.json()
+        assert body["total"] == 1
+        assert body["listings"][0]["id"] == "second"
+
+    def test_detailed_true_uses_detailed_search(self):
+        mock_instance = MagicMock()
+        mock_instance.search.return_value = iter([])
+        mock_instance.detailed_search.return_value = iter([])
+
+        with patch("server.chrono24.query", return_value=mock_instance):
+            client.get("/search?brand=Rolex&detailed=true&limit=5")
+
+        mock_instance.detailed_search.assert_called_once_with(limit=5)
+        mock_instance.search.assert_not_called()
+
+    def test_filters_and_years_are_forwarded_to_query(self):
+        mock_instance = MagicMock()
+        mock_instance.search.return_value = iter([])
+        mock_instance.detailed_search.return_value = iter([])
+
+        with patch("server.chrono24.query", return_value=mock_instance) as mock_query:
+            client.get("/search?query=Rolex+Datejust&filters=steel,automatic&min_year=2010&max_year=2020")
+
+        mock_query.assert_called_once_with(
+            "Rolex Datejust",
+            filters=["steel", "automatic"],
+            min_year=2010,
+            max_year=2020,
+        )
+
+    def test_rejects_invalid_year_range(self):
+        with self._patch_chrono24([]):
+            response = client.get("/search?query=Rolex&min_year=2025&max_year=2020")
+
+        body = response.json()
+        assert body["total"] == 0
+        assert "error" in body
 
     def test_response_envelope_has_listings_key(self):
         """The TypeScript getArrayPayload() helper looks for a 'listings' key."""

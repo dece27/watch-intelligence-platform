@@ -49,20 +49,102 @@ app.add_middleware(
 )
 
 # Regex to extract a numeric price from strings like "$16,553" or "16.553"
-_RE_PRICE = re.compile(r"[\d,.]+")
+_RE_PRICE = re.compile(r"[-\d,.]+")
 
 
 def _parse_price_to_float(price_str: str) -> float | None:
-    """Convert a price string like '$16,553' to a float (16553.0)."""
-    if not price_str or price_str.lower() == "null":
+    """Convert mixed locale price strings to float (e.g. '$16,553' or '16.553')."""
+    if not price_str or price_str.strip().lower() == "null":
         return None
-    digits = _RE_PRICE.search(price_str.replace(",", ""))
-    if digits:
-        try:
-            return float(digits.group())
-        except ValueError:
-            return None
-    return None
+
+    digits = _RE_PRICE.search(price_str)
+    if not digits:
+        return None
+
+    normalized = digits.group().replace(" ", "")
+
+    if "," in normalized and "." in normalized:
+        if normalized.rfind(",") > normalized.rfind("."):
+            normalized = normalized.replace(".", "").replace(",", ".")
+        else:
+            normalized = normalized.replace(",", "")
+    elif "," in normalized:
+        parts = normalized.split(",")
+        if len(parts[-1]) in (1, 2):
+            normalized = f'{"".join(parts[:-1])}.{parts[-1]}'
+        else:
+            normalized = "".join(parts)
+    elif "." in normalized:
+        parts = normalized.split(".")
+        if len(parts[-1]) in (1, 2):
+            normalized = f'{"".join(parts[:-1])}.{parts[-1]}'
+        elif len(parts) > 1 and all(len(part) == 3 for part in parts[1:]):
+            normalized = "".join(parts)
+
+    try:
+        return float(normalized)
+    except ValueError:
+        return None
+
+
+def _parse_filters(filters: str) -> list[str] | str:
+    entries = [entry.strip() for entry in filters.split(",") if entry.strip()]
+    if len(entries) == 0:
+        return ""
+    if len(entries) == 1:
+        return entries[0]
+    return entries
+
+
+def _apply_price_filters(
+    listings: list[dict[str, Any]],
+    min_price: float | None,
+    max_price: float | None,
+) -> list[dict[str, Any]]:
+    if min_price is None and max_price is None:
+        return listings
+
+    filtered: list[dict[str, Any]] = []
+    for item in listings:
+        price = item.get("price")
+        if not isinstance(price, (int, float)):
+            continue
+        if min_price is not None and price < min_price:
+            continue
+        if max_price is not None and price > max_price:
+            continue
+        filtered.append(item)
+    return filtered
+
+
+def _paginate_listings(listings: list[dict[str, Any]], page: int, limit: int) -> list[dict[str, Any]]:
+    start = (page - 1) * limit
+    end = start + limit
+    return listings[start:end]
+
+
+def _search_chrono24(
+    query_text: str,
+    limit: int,
+    page: int,
+    detailed: bool,
+    filters: str,
+    min_year: int | None,
+    max_year: int | None,
+) -> list[dict[str, Any]]:
+    page_limit = limit * page
+    parsed_filters = _parse_filters(filters)
+    query_kwargs: dict[str, Any] = {}
+    if parsed_filters:
+        query_kwargs["filters"] = parsed_filters
+    if min_year is not None:
+        query_kwargs["min_year"] = min_year
+    if max_year is not None:
+        query_kwargs["max_year"] = max_year
+
+    chrono_query = chrono24.query(query_text, **query_kwargs)
+    iterator = chrono_query.detailed_search(limit=page_limit) if detailed else chrono_query.search(limit=page_limit)
+    return list(iterator)
 
 
 def _normalize_listing(raw: dict[str, Any]) -> dict[str, Any]:
@@ -116,9 +198,14 @@ def search(
     query: str = Query(default="", description="Free-text search query (e.g. 'Rolex Submariner')"),
     brand: str = Query(default="", description="Brand filter (e.g. 'Rolex')"),
     model: str = Query(default="", description="Model filter (e.g. 'Submariner')"),
+    detailed: bool = Query(default=False, description="Fetch detailed listing fields from listing pages"),
+    filters: str = Query(default="", description="Chrono24 filter keys (comma-separated)"),
+    min_year: int | None = Query(default=None, ge=1900, le=2100, description="Minimum production year filter"),
+    max_year: int | None = Query(default=None, ge=1900, le=2100, description="Maximum production year filter"),
+    min_price: float | None = Query(default=None, description="Minimum price in USD"),
     limit: int = Query(default=24, ge=1, le=120, description="Max number of listings to return"),
     max_price: float | None = Query(default=None, description="Maximum price in USD"),
-    page: int = Query(default=1, ge=1, description="Page number (unused – handled by limit)"),
+    page: int = Query(default=1, ge=1, description="1-indexed page number"),
 ) -> dict:
     """
     Search Chrono24 listings and return them as JSON.
@@ -133,31 +220,52 @@ def search(
         or "Rolex"
     )
 
-    logger.info("Searching Chrono24: query=%r limit=%d max_price=%s", search_query, limit, max_price)
+    if min_year is not None and max_year is not None and min_year > max_year:
+        return {"listings": [], "error": "min_year cannot be greater than max_year.", "total": 0}
+
+    logger.info(
+        "Searching Chrono24: query=%r limit=%d page=%d min_price=%s max_price=%s detailed=%s filters=%r min_year=%s max_year=%s",
+        search_query,
+        limit,
+        page,
+        min_price,
+        max_price,
+        detailed,
+        filters,
+        min_year,
+        max_year,
+    )
 
     try:
-        raw_listings = list(chrono24.query(search_query).search(limit=limit))
+        raw_listings = _search_chrono24(
+            query_text=search_query,
+            limit=limit,
+            page=page,
+            detailed=detailed,
+            filters=filters,
+            min_year=min_year,
+            max_year=max_year,
+        )
     except NoListingsFoundException:
         logger.warning("No listings found for query=%r", search_query)
         return {"listings": [], "total": 0}
+    except ValueError as exc:
+        logger.warning("Invalid Chrono24 filter input for query=%r: %s", search_query, exc)
+        return {"listings": [], "error": "Invalid Chrono24 filter or year parameters.", "total": 0}
     except RequestException as exc:
         logger.error("Chrono24 request failed: %s", exc)
-        return {"listings": [], "error": str(exc), "total": 0}
+        return {"listings": [], "error": "Chrono24 request failed.", "total": 0}
     except Exception as exc:  # noqa: BLE001
-        logger.error("Unexpected error for query=%r: %s", search_query, exc)
-        return {"listings": [], "error": str(exc), "total": 0}
+        logger.exception("Unexpected error for query=%r: %s", search_query, exc)
+        return {"listings": [], "error": "Unexpected Chrono24 wrapper error.", "total": 0}
 
     normalized = [_normalize_listing(item) for item in raw_listings]
 
-    # Apply optional price filter (price is now numeric after _normalize_listing)
-    if max_price is not None:
-        normalized = [
-            item for item in normalized
-            if isinstance(item.get("price"), (int, float)) and item["price"] <= max_price
-        ]
+    filtered = _apply_price_filters(normalized, min_price=min_price, max_price=max_price)
+    paged = _paginate_listings(filtered, page=page, limit=limit)
 
-    logger.info("Returning %d listings", len(normalized))
-    return {"listings": normalized, "total": len(normalized)}
+    logger.info("Returning %d listings", len(paged))
+    return {"listings": paged, "total": len(paged)}
 
 
 @app.get("/health")
