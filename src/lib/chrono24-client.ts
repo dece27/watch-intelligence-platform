@@ -7,6 +7,14 @@ export const CHRONO24_CONFIG_ERROR_MESSAGE =
 
 const trimEnv = (value?: string) => value?.trim() || undefined
 
+const readEnv = (name: string): string | undefined => {
+  const viteEnv = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env
+  const processEnv = (globalThis as typeof globalThis & {
+    process?: { env?: Record<string, string | undefined> }
+  }).process?.env
+  return trimEnv(viteEnv?.[name] ?? processEnv?.[name])
+}
+
 const isLocalDevHost = () => {
   if (typeof window === "undefined") return false
   const host = window.location.hostname
@@ -17,18 +25,21 @@ const isLocalDevHost = () => {
 // fetching works in any deployed environment without requiring a build-time
 // VITE_CHRONO24_WRAPPER_BASE_URL.  The Edge Function reads CHRONO24_WRAPPER_BASE_URL
 // from its server-side Supabase secrets and proxies to the Python chrono24-api server.
-const SUPABASE_BASE_URL = trimEnv(import.meta.env.VITE_SUPABASE_URL)
+const SUPABASE_BASE_URL = readEnv("VITE_SUPABASE_URL") || readEnv("NEXT_PUBLIC_SUPABASE_URL")
 const CHRONO24_EDGE_FN_BASE_URL = SUPABASE_BASE_URL
   ? `${SUPABASE_BASE_URL.replace(/\/$/, "")}/functions/v1/chrono24-proxy`
   : undefined
 
 const resolveChrono24WrapperBaseUrl = () =>
-  trimEnv(import.meta.env.VITE_CHRONO24_WRAPPER_BASE_URL)
-  || trimEnv(import.meta.env.VITE_CHRONO24_API_BASE_URL)
-  || trimEnv(import.meta.env.VITE_CHRONO24_API_HOST)
-  || trimEnv(import.meta.env.CHRONO24_WRAPPER_BASE_URL)
-  || trimEnv(import.meta.env.CHRONO24_API_BASE_URL)
-  || trimEnv(import.meta.env.CHRONO24_API_HOST)
+  readEnv("VITE_CHRONO24_WRAPPER_BASE_URL")
+  || readEnv("NEXT_PUBLIC_CHRONO24_WRAPPER_BASE_URL")
+  || readEnv("VITE_CHRONO24_API_BASE_URL")
+  || readEnv("NEXT_PUBLIC_CHRONO24_API_BASE_URL")
+  || readEnv("VITE_CHRONO24_API_HOST")
+  || readEnv("NEXT_PUBLIC_CHRONO24_API_HOST")
+  || readEnv("CHRONO24_WRAPPER_BASE_URL")
+  || readEnv("CHRONO24_API_BASE_URL")
+  || readEnv("CHRONO24_API_HOST")
   || (import.meta.env.DEV && isLocalDevHost() ? "http://localhost:8000" : undefined)
   // Fall back to the Supabase Edge Function proxy so live fetching works in all
   // deployed environments without a build-time wrapper URL being required.
@@ -37,36 +48,44 @@ const resolveChrono24WrapperBaseUrl = () =>
 const CHRONO24_WRAPPER_BASE_URL = resolveChrono24WrapperBaseUrl()
 
 const resolveApiKey = () => {
-  const explicit = trimEnv(import.meta.env.VITE_CHRONO24_WRAPPER_API_KEY)
-    || trimEnv(import.meta.env.VITE_CHRONO24_API_KEY)
-    || trimEnv(import.meta.env.CHRONO24_WRAPPER_API_KEY)
-    || trimEnv(import.meta.env.CHRONO24_API_KEY)
+  const explicit = readEnv("VITE_CHRONO24_WRAPPER_API_KEY")
+    || readEnv("NEXT_PUBLIC_CHRONO24_WRAPPER_API_KEY")
+    || readEnv("VITE_CHRONO24_API_KEY")
+    || readEnv("NEXT_PUBLIC_CHRONO24_API_KEY")
+    || readEnv("CHRONO24_WRAPPER_API_KEY")
+    || readEnv("CHRONO24_API_KEY")
   if (explicit) return explicit
   // When routing through the Supabase Edge Function, authenticate with the
   // Supabase anon key (Bearer scheme).  This is the standard way to call
   // Supabase Edge Functions from browser clients.
   if (CHRONO24_WRAPPER_BASE_URL && CHRONO24_WRAPPER_BASE_URL === CHRONO24_EDGE_FN_BASE_URL) {
-    return trimEnv(import.meta.env.VITE_SUPABASE_ANON_KEY)
+    return readEnv("VITE_SUPABASE_ANON_KEY") || readEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
   }
   return undefined
 }
 
 const CHRONO24_WRAPPER_API_KEY = resolveApiKey()
-const CHRONO24_WRAPPER_AUTH_HEADER = trimEnv(import.meta.env.VITE_CHRONO24_WRAPPER_AUTH_HEADER)
-  || trimEnv(import.meta.env.VITE_CHRONO24_API_AUTH_HEADER)
-  || trimEnv(import.meta.env.CHRONO24_WRAPPER_AUTH_HEADER)
-  || trimEnv(import.meta.env.CHRONO24_API_AUTH_HEADER)
+const CHRONO24_WRAPPER_AUTH_HEADER = readEnv("VITE_CHRONO24_WRAPPER_AUTH_HEADER")
+  || readEnv("NEXT_PUBLIC_CHRONO24_WRAPPER_AUTH_HEADER")
+  || readEnv("VITE_CHRONO24_API_AUTH_HEADER")
+  || readEnv("NEXT_PUBLIC_CHRONO24_API_AUTH_HEADER")
+  || readEnv("CHRONO24_WRAPPER_AUTH_HEADER")
+  || readEnv("CHRONO24_API_AUTH_HEADER")
   || "Authorization"
-const CHRONO24_WRAPPER_AUTH_SCHEME = trimEnv(import.meta.env.VITE_CHRONO24_WRAPPER_AUTH_SCHEME)
-  || trimEnv(import.meta.env.VITE_CHRONO24_API_AUTH_SCHEME)
-  || trimEnv(import.meta.env.CHRONO24_WRAPPER_AUTH_SCHEME)
-  || trimEnv(import.meta.env.CHRONO24_API_AUTH_SCHEME)
+const CHRONO24_WRAPPER_AUTH_SCHEME = readEnv("VITE_CHRONO24_WRAPPER_AUTH_SCHEME")
+  || readEnv("NEXT_PUBLIC_CHRONO24_WRAPPER_AUTH_SCHEME")
+  || readEnv("VITE_CHRONO24_API_AUTH_SCHEME")
+  || readEnv("NEXT_PUBLIC_CHRONO24_API_AUTH_SCHEME")
+  || readEnv("CHRONO24_WRAPPER_AUTH_SCHEME")
+  || readEnv("CHRONO24_API_AUTH_SCHEME")
   || "Bearer"
-const CHRONO24_WRAPPER_ENDPOINT = trimEnv(import.meta.env.VITE_CHRONO24_WRAPPER_SEARCH_ENDPOINT)
-  || trimEnv(import.meta.env.CHRONO24_WRAPPER_SEARCH_ENDPOINT)
+const CHRONO24_WRAPPER_ENDPOINT = readEnv("VITE_CHRONO24_WRAPPER_SEARCH_ENDPOINT")
+  || readEnv("NEXT_PUBLIC_CHRONO24_WRAPPER_SEARCH_ENDPOINT")
+  || readEnv("CHRONO24_WRAPPER_SEARCH_ENDPOINT")
 const CHRONO24_WRAPPER_ENDPOINTS = (
-  trimEnv(import.meta.env.VITE_CHRONO24_WRAPPER_SEARCH_ENDPOINTS)
-  || trimEnv(import.meta.env.CHRONO24_WRAPPER_SEARCH_ENDPOINTS)
+  readEnv("VITE_CHRONO24_WRAPPER_SEARCH_ENDPOINTS")
+  || readEnv("NEXT_PUBLIC_CHRONO24_WRAPPER_SEARCH_ENDPOINTS")
+  || readEnv("CHRONO24_WRAPPER_SEARCH_ENDPOINTS")
 )
   ?.split(",")
   .map((endpoint) => endpoint.trim())
