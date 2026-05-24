@@ -1,5 +1,5 @@
 import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js'
-import type { Database, Json, TableInsert, ViewRow } from '@/lib/supabase/types'
+import type { Json, TableInsert, ViewRow } from '@/lib/supabase/types'
 
 export interface PortfolioSummary {
   userId: string
@@ -72,7 +72,7 @@ function toInsert(snapshot: PortfolioSnapshotInput): TableInsert<'portfolio_snap
 }
 
 export async function getPortfolioSummary(
-  client: Pick<SupabaseClient<Database>, 'from'>,
+  client: Pick<SupabaseClient<any>, 'from'>,
   userId: string,
 ): Promise<PortfolioSummary | null> {
   const { data, error } = await client
@@ -86,7 +86,7 @@ export async function getPortfolioSummary(
 }
 
 export async function listPortfolioBrandAllocations(
-  client: Pick<SupabaseClient<Database>, 'from'>,
+  client: Pick<SupabaseClient<any>, 'from'>,
   userId: string,
 ): Promise<PortfolioBrandAllocation[]> {
   const { data, error } = await client
@@ -100,7 +100,7 @@ export async function listPortfolioBrandAllocations(
 }
 
 export async function upsertPortfolioSnapshot(
-  client: Pick<SupabaseClient<Database>, 'from'>,
+  client: Pick<SupabaseClient<any>, 'from'>,
   snapshot: PortfolioSnapshotInput,
 ): Promise<PortfolioSnapshotInput> {
   const { data, error } = await client

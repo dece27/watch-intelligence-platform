@@ -1,6 +1,6 @@
 import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js'
 import type { BrandIndex } from '@/lib/types'
-import type { Database, Json, TableInsert, TableRow, ViewRow } from '@/lib/supabase/types'
+import type { Json, TableInsert, TableRow, ViewRow } from '@/lib/supabase/types'
 
 export interface MarketPriceRecord {
   brand: string
@@ -67,7 +67,7 @@ function toInsert(price: MarketPriceInput): TableInsert<'market_price_history'> 
 }
 
 export async function listLatestMarketPrices(
-  client: Pick<SupabaseClient<Database>, 'from'>,
+  client: Pick<SupabaseClient<any>, 'from'>,
   brands?: string[],
 ): Promise<MarketPriceRecord[]> {
   let query = client
@@ -84,7 +84,7 @@ export async function listLatestMarketPrices(
   return (data ?? []).map(mapLatestPrice)
 }
 
-export async function listBrandIndexes(client: Pick<SupabaseClient<Database>, 'from'>): Promise<BrandIndex[]> {
+export async function listBrandIndexes(client: Pick<SupabaseClient<any>, 'from'>): Promise<BrandIndex[]> {
   const prices = await listLatestMarketPrices(client)
   const grouped = new Map<string, number[]>()
 
@@ -102,7 +102,7 @@ export async function listBrandIndexes(client: Pick<SupabaseClient<Database>, 'f
 }
 
 export async function upsertMarketPrices(
-  client: Pick<SupabaseClient<Database>, 'from'>,
+  client: Pick<SupabaseClient<any>, 'from'>,
   prices: MarketPriceInput[],
 ): Promise<MarketPriceRecord[]> {
   const { data, error } = await client
@@ -122,7 +122,7 @@ export async function upsertMarketPrices(
 }
 
 export async function getMarketDataCache(
-  client: Pick<SupabaseClient<Database>, 'from'>,
+  client: Pick<SupabaseClient<any>, 'from'>,
   cacheKey: string,
 ): Promise<MarketCacheRecord | null> {
   const { data, error } = await client
@@ -136,7 +136,7 @@ export async function getMarketDataCache(
 }
 
 export async function upsertMarketDataCache(
-  client: Pick<SupabaseClient<Database>, 'from'>,
+  client: Pick<SupabaseClient<any>, 'from'>,
   cache: Omit<MarketCacheRecord, 'computedAt'>,
 ): Promise<MarketCacheRecord> {
   const { data, error } = await client

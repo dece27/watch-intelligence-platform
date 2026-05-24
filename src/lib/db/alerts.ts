@@ -23,7 +23,7 @@ export interface ActivePriceAlert extends PriceAlertRecord {
   marketRecordedAt?: string
 }
 
-export interface PriceAlertInput extends Omit<PriceAlertRecord, 'createdAt' | 'updatedAt'> {
+export interface PriceAlertInput extends Omit<PriceAlertRecord, 'id' | 'createdAt' | 'updatedAt'> {
   id?: string
 }
 
@@ -90,7 +90,7 @@ function toInsert(alert: PriceAlertInput): TableInsert<'price_alerts'> {
   }
 }
 
-export async function listPriceAlerts(client: Pick<SupabaseClient<Database>, 'from'>, userId: string): Promise<PriceAlertRecord[]> {
+export async function listPriceAlerts(client: Pick<SupabaseClient<any>, 'from'>, userId: string): Promise<PriceAlertRecord[]> {
   const { data, error } = await client
     .from('price_alerts')
     .select('*')
@@ -102,7 +102,7 @@ export async function listPriceAlerts(client: Pick<SupabaseClient<Database>, 'fr
 }
 
 export async function listActivePriceAlerts(
-  client: Pick<SupabaseClient<Database>, 'from'>,
+  client: Pick<SupabaseClient<any>, 'from'>,
   userId: string,
 ): Promise<ActivePriceAlert[]> {
   const { data, error } = await client
@@ -115,7 +115,7 @@ export async function listActivePriceAlerts(
   return (data ?? []).map(mapActiveAlert)
 }
 
-export async function upsertPriceAlert(client: Pick<SupabaseClient<Database>, 'from'>, alert: PriceAlertInput): Promise<PriceAlertRecord> {
+export async function upsertPriceAlert(client: Pick<SupabaseClient<any>, 'from'>, alert: PriceAlertInput): Promise<PriceAlertRecord> {
   const { data, error } = await client
     .from('price_alerts')
     .upsert(toInsert(alert), { onConflict: 'id' })
@@ -126,7 +126,7 @@ export async function upsertPriceAlert(client: Pick<SupabaseClient<Database>, 'f
   return mapAlert(data)
 }
 
-export async function deletePriceAlert(client: Pick<SupabaseClient<Database>, 'from'>, userId: string, alertId: string): Promise<void> {
+export async function deletePriceAlert(client: Pick<SupabaseClient<any>, 'from'>, userId: string, alertId: string): Promise<void> {
   const { error } = await client
     .from('price_alerts')
     .delete()

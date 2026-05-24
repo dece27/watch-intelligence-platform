@@ -98,7 +98,7 @@ export function getNewsCacheKey(scope = 'feed_all'): string {
 }
 
 export async function getNewsCache(
-  client: Pick<SupabaseClient<Database>, 'from'>,
+  client: Pick<SupabaseClient<any>, 'from'>,
   cacheKey = 'feed_all',
 ): Promise<NewsCacheRecord | null> {
   const { data, error } = await client
@@ -112,7 +112,7 @@ export async function getNewsCache(
 }
 
 export async function upsertNewsCache(
-  client: Pick<SupabaseClient<Database>, 'from'>,
+  client: Pick<SupabaseClient<any>, 'from'>,
   cacheKey: string,
   articles: Json,
 ): Promise<NewsCacheRecord> {
@@ -127,7 +127,7 @@ export async function upsertNewsCache(
 }
 
 export async function getNewsPreferences(
-  client: Pick<SupabaseClient<Database>, 'from'>,
+  client: Pick<SupabaseClient<any>, 'from'>,
   userId: string,
 ): Promise<NewsPreferenceRecord | null> {
   const { data, error } = await client
@@ -141,7 +141,7 @@ export async function getNewsPreferences(
 }
 
 export async function upsertNewsPreferences(
-  client: Pick<SupabaseClient<Database>, 'from'>,
+  client: Pick<SupabaseClient<any>, 'from'>,
   preferences: Omit<NewsPreferenceRecord, 'updatedAt'>,
 ): Promise<NewsPreferenceRecord> {
   const { data, error } = await client
@@ -164,7 +164,7 @@ export async function upsertNewsPreferences(
 }
 
 export async function scoreNewsArticle(
-  client: Pick<SupabaseClient<Database>, 'from'>,
+  client: Pick<SupabaseClient<any>, 'from'>,
   userId: string,
   articleId: string,
   score: number,
@@ -181,7 +181,7 @@ export async function scoreNewsArticle(
 }
 
 export async function saveNewsArticle(
-  client: Pick<SupabaseClient<Database>, 'from'>,
+  client: Pick<SupabaseClient<any>, 'from'>,
   userId: string,
   articleId: string,
   article: Json,
@@ -196,7 +196,7 @@ export async function saveNewsArticle(
   return mapSavedNews(data)
 }
 
-export async function listSavedNews(client: Pick<SupabaseClient<Database>, 'from'>, userId: string): Promise<SavedNewsRecord[]> {
+export async function listSavedNews(client: Pick<SupabaseClient<any>, 'from'>, userId: string): Promise<SavedNewsRecord[]> {
   const { data, error } = await client
     .from('news_saved')
     .select('*')

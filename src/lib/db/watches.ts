@@ -16,7 +16,7 @@ export interface GetWatchesOptions {
 const SEARCH_LIMIT = 25
 const SEARCH_OFFSET = 0
 
-type WatchClient = Pick<SupabaseClient<Database>, 'from'>
+type WatchClient = Pick<SupabaseClient<any>, 'from'>
 
 function assertPagination(limit: number, offset: number): void {
   if (!Number.isInteger(limit) || limit <= 0) {
@@ -30,7 +30,7 @@ function assertPagination(limit: number, offset: number): void {
 
 function throwDatabaseError(action: string, error: PostgrestError | null): void {
   if (error) {
-    throw new Error(`Failed to ${action}: ${error.message}`, { cause: error })
+    throw new Error(`Failed to ${action}: ${error.message}`)
   }
 }
 

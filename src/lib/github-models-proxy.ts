@@ -55,7 +55,7 @@ export async function callGitHubModelsProxy({
   )
 
   if (error) {
-    throw new Error(`GitHub Models proxy request failed: ${error.message}`, { cause: error })
+    throw new Error(`GitHub Models proxy request failed: ${error.message}`)
   }
 
   if (data?.error) {

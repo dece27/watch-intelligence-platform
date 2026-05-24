@@ -4,8 +4,8 @@ import { recordAiUsage, resolveCurrentUserId } from '@/lib/ai/usage'
 const DEFAULT_CACHE_TTL_SECONDS = 60 * 60 * 6
 
 export class DailyLimitError extends Error {
-  constructor(message = 'Daily AI quota exhausted.', options?: ErrorOptions) {
-    super(message, options)
+  constructor(message = 'Daily AI quota exhausted.') {
+    super(message)
     this.name = 'DailyLimitError'
   }
 }
@@ -86,9 +86,7 @@ export async function callAI({
     return response
   } catch (error) {
     if (isDailyLimitFailure(error)) {
-      throw new DailyLimitError('The daily AI quota has been exhausted. Showing a fallback result instead.', {
-        cause: error,
-      })
+      throw new DailyLimitError('The daily AI quota has been exhausted. Showing a fallback result instead.')
     }
 
     throw error
