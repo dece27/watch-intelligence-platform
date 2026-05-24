@@ -166,6 +166,7 @@ In **Settings → Secrets and variables → Actions**, add these repository secr
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY` — public Supabase anon key used at build time for static frontend workflows
 - `SUPABASE_URL` — same Supabase project URL for GitHub Actions scripts and server-side utilities
 - `SUPABASE_SERVICE_ROLE_KEY` — Supabase service role key for server-side Actions scripts only; never expose it to the browser
+- `SUPABASE_DB_URL` — direct database connection string used by migration and backup workflows
 - `RESEND_API_KEY` — Resend API key for alert notification emails
 
 ### Supabase Edge Function secrets
@@ -247,6 +248,9 @@ tasks:
 - `.github/workflows/fetch-chrono24.yml` — fetches live Chrono24 listings with
   the `irahorecka/chrono24` Python library and upserts them into Supabase via
   `python scripts/fetch-chrono24.py`
+- `.github/workflows/run-supabase-migrations.yml` — applies SQL migrations from
+  `supabase/migrations` to Supabase on push to `main` (when migration files
+  change) or manual dispatch
 
 ## Dependency and security automation
 

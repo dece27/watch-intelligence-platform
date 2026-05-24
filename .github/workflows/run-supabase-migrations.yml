@@ -1,0 +1,44 @@
+name: Run Supabase Migrations
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/*.sql'
+      - '.github/workflows/run-supabase-migrations.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Validate migration configuration
+        id: preflight
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "${SUPABASE_DB_URL:-}" ]; then
+            echo "::warning::Skipping migrations because SUPABASE_DB_URL secret is not configured."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
+      - name: Install Supabase CLI
+        if: steps.preflight.outputs.configured == 'true'
+        uses: supabase/setup-cli@v2
+        with:
+          version: latest
+
+      - name: Apply migrations
+        if: steps.preflight.outputs.configured == 'true'
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: supabase db push --db-url "$SUPABASE_DB_URL"
