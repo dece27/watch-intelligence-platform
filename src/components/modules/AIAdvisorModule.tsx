@@ -85,6 +85,32 @@ const extractJsonPayload = (response: string) => {
   return fenced ? fenced[1].trim() : trimmed
 }
 
+const parseJsonObjectWithRecovery = (response: string): Record<string, unknown> => {
+  const parseCandidate = (candidate: string) => {
+    const parsed = JSON.parse(candidate)
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>
+    }
+    throw new Error('Parsed response was not a JSON object')
+  }
+
+  const normalizedPayload = extractJsonPayload(response)
+
+  try {
+    return parseCandidate(normalizedPayload)
+  } catch {
+    // Fall through to a more permissive extraction mode below.
+  }
+
+  const firstBrace = normalizedPayload.indexOf('{')
+  const lastBrace = normalizedPayload.lastIndexOf('}')
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    return parseCandidate(normalizedPayload.slice(firstBrace, lastBrace + 1))
+  }
+
+  throw new Error('Response did not contain a valid JSON object')
+}
+
 const pickStringValue = (source: Record<string, unknown>, keys: string[]) => {
   for (const key of keys) {
     const value = source[key]
@@ -109,7 +135,7 @@ const normalizeRecommendation = (value: string, fallback: string) => {
 
 const parseRebalanceAnalysis = (response: string): RebalanceAnalysis => {
   try {
-    const parsed = JSON.parse(extractJsonPayload(response)) as Record<string, unknown>
+    const parsed = parseJsonObjectWithRecovery(response)
     const strategicScore = (parsed.strategicScore || parsed.strategic_score || {}) as Record<string, unknown>
     const parsedScore = Number(strategicScore.score)
 
@@ -672,7 +698,8 @@ Respond in valid JSON format:
       if (error instanceof DailyLimitError) {
         setRebalanceAnalysis(buildFallbackRebalanceAnalysis(watches))
       } else {
-        toast.error("Failed to generate rebalancing analysis")
+        setRebalanceAnalysis(buildFallbackRebalanceAnalysis(watches))
+        toast.error("Live rebalancing analysis unavailable. Showing fallback recommendations.")
       }
       console.error(error)
     } finally {
