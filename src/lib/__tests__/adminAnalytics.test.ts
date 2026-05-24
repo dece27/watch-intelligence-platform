@@ -6,10 +6,10 @@ import {
   isAdminEmail,
   recordAiUsage,
 } from '@/lib/adminAnalytics'
-import { callGitHubModelsProxy } from '@/lib/github-models-proxy'
+import { getSupabaseClient } from '@/lib/supabase/client'
 
-vi.mock('@/lib/github-models-proxy', () => ({
-  callGitHubModelsProxy: vi.fn(),
+vi.mock('@/lib/supabase/client', () => ({
+  getSupabaseClient: vi.fn(),
 }))
 
 type KvStore = Map<string, unknown>
@@ -30,7 +30,19 @@ function createSparkWindow(store: KvStore) {
 describe('adminAnalytics helpers', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
-    vi.mocked(callGitHubModelsProxy).mockResolvedValue('tracked-answer')
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co'
+
+    vi.mocked(getSupabaseClient).mockReturnValue({
+      auth: {
+        getSession: vi.fn(async () => ({
+          data: { session: { access_token: 'session-token' } },
+          error: null,
+        })),
+      },
+    } as unknown as ReturnType<typeof getSupabaseClient>)
+
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ content: 'tracked-answer' }), { status: 200 })))
+
     ;(globalThis as { sessionStorage?: Storage }).sessionStorage = {
       getItem: vi.fn(() => null),
       setItem: vi.fn(),
@@ -99,24 +111,20 @@ describe('adminAnalytics helpers', () => {
 
   it('tracks LLM usage for persisted current user', async () => {
     const store: KvStore = new Map([['currentUser', { id: 'persisted-user' }]])
-    const sparkWindow = createSparkWindow(store)
-    ;(globalThis as { window?: unknown }).window = sparkWindow
+    ;(globalThis as { window?: unknown }).window = createSparkWindow(store)
 
     await expect(callTrackedLlm('hello', 'gpt-model', true)).resolves.toBe('tracked-answer')
 
-    expect(callGitHubModelsProxy).toHaveBeenCalledWith(expect.objectContaining({
-      prompt: 'hello',
-      model: 'gpt-model',
-      jsonMode: true,
-      taskType: 'general',
-    }))
+    expect(fetch).toHaveBeenCalledWith(
+      'https://example.supabase.co/functions/v1/github-models-proxy',
+      expect.objectContaining({ method: 'POST' }),
+    )
     expect(store.has('ai_usage_persisted-user')).toBe(true)
   })
 
   it('tracks LLM usage from sessionStorage fallback when persisted user is missing', async () => {
     const store: KvStore = new Map()
-    const sparkWindow = createSparkWindow(store)
-    ;(globalThis as { window?: unknown }).window = sparkWindow
+    ;(globalThis as { window?: unknown }).window = createSparkWindow(store)
     ;(globalThis.sessionStorage.getItem as unknown as ReturnType<typeof vi.fn>).mockImplementation((key: string) =>
       key === 'currentUserSession' ? JSON.stringify({ id: 'session-user' }) : null
     )
@@ -128,8 +136,7 @@ describe('adminAnalytics helpers', () => {
 
   it('does not write usage when no user can be resolved', async () => {
     const store: KvStore = new Map()
-    const sparkWindow = createSparkWindow(store)
-    ;(globalThis as { window?: unknown }).window = sparkWindow
+    ;(globalThis as { window?: unknown }).window = createSparkWindow(store)
 
     await callTrackedLlm('hello', 'gpt-model')
 
@@ -137,17 +144,17 @@ describe('adminAnalytics helpers', () => {
     expect(Array.from(store.keys()).find((key) => key.startsWith('ai_usage_'))).toBeUndefined()
   })
 
-  it('forwards the requested task type to the GitHub Models proxy', async () => {
+  it('forwards the requested task type to the edge function payload', async () => {
     const store: KvStore = new Map([['currentUser', { id: 'persisted-user' }]])
     ;(globalThis as { window?: unknown }).window = createSparkWindow(store)
 
     await callTrackedLlm('rank these deals', 'auto', true, 'deal_ranking')
 
-    expect(callGitHubModelsProxy).toHaveBeenLastCalledWith(expect.objectContaining({
-      prompt: 'rank these deals',
-      model: 'auto',
-      jsonMode: true,
-      taskType: 'deal_ranking',
-    }))
+    expect(fetch).toHaveBeenLastCalledWith(
+      'https://example.supabase.co/functions/v1/github-models-proxy',
+      expect.objectContaining({
+        body: expect.stringContaining('"taskType":"deal_ranking"'),
+      }),
+    )
   })
 })
