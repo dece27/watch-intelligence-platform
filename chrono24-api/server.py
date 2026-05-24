@@ -251,13 +251,13 @@ def search(
         return {"listings": [], "total": 0}
     except ValueError as exc:
         logger.warning("Invalid Chrono24 filter input for query=%r: %s", search_query, exc)
-        return {"listings": [], "error": str(exc), "total": 0}
+        return {"listings": [], "error": "Invalid Chrono24 filter or year parameters.", "total": 0}
     except RequestException as exc:
         logger.error("Chrono24 request failed: %s", exc)
-        return {"listings": [], "error": str(exc), "total": 0}
+        return {"listings": [], "error": "Chrono24 request failed.", "total": 0}
     except Exception as exc:  # noqa: BLE001
-        logger.error("Unexpected error for query=%r: %s", search_query, exc)
-        return {"listings": [], "error": str(exc), "total": 0}
+        logger.exception("Unexpected error for query=%r: %s", search_query, exc)
+        return {"listings": [], "error": "Unexpected Chrono24 wrapper error.", "total": 0}
 
     normalized = [_normalize_listing(item) for item in raw_listings]
 
