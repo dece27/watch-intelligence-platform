@@ -28,6 +28,31 @@ function extractJsonPayload(response: string) {
   return fenced ? fenced[1].trim() : trimmed
 }
 
+function parseJsonWithRecovery<T>(payload: string): T {
+  try {
+    return JSON.parse(payload) as T
+  } catch {
+    // Continue with fallback extraction paths below.
+  }
+
+  const candidates = [
+    [payload.indexOf('{'), payload.lastIndexOf('}')],
+    [payload.indexOf('['), payload.lastIndexOf(']')],
+  ]
+    .filter(([start, end]) => start >= 0 && end > start)
+    .sort((a, b) => a[0] - b[0])
+
+  for (const [start, end] of candidates) {
+    try {
+      return JSON.parse(payload.slice(start, end + 1)) as T
+    } catch {
+      // Try the next extraction candidate.
+    }
+  }
+
+  throw new Error('Response did not contain valid JSON.')
+}
+
 function isDailyLimitFailure(error: unknown) {
   if (!(error instanceof Error)) {
     return false
@@ -42,7 +67,7 @@ function isDailyLimitFailure(error: unknown) {
 }
 
 export function parseAIJson<T>(response: string): T {
-  return JSON.parse(extractJsonPayload(response)) as T
+  return parseJsonWithRecovery<T>(extractJsonPayload(response))
 }
 
 export function hashAIInput(value: string): string {
