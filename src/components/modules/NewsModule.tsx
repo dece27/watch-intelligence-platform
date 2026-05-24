@@ -137,11 +137,13 @@ export function NewsModule({ watches }: NewsModuleProps) {
   const [tierFilter, setTierFilter] = useState<TierFilter>('all')
   const [search, setSearch] = useState('')
   const [lastFetched, setLastFetched] = useState<Date | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   const loadArticles = useCallback(
     async (forceRefresh = false) => {
       if (forceRefresh) setRefreshing(true)
       else setLoading(true)
+      setLoadError(null)
       try {
         const data = forceRefresh
           ? await refreshNewsFeed(watches)
@@ -149,6 +151,7 @@ export function NewsModule({ watches }: NewsModuleProps) {
         setArticles(data)
         setLastFetched(new Date())
       } catch (err) {
+        setLoadError(err instanceof Error ? err.message : 'Failed to load watch news feed.')
         console.error('[NewsModule] load failed:', err)
       } finally {
         setLoading(false)
@@ -276,7 +279,16 @@ export function NewsModule({ watches }: NewsModuleProps) {
       )}
 
       {/* Grid */}
-      {loading ? (
+      {loadError && !loading ? (
+        <Card className="bg-card border-destructive/40">
+          <CardContent className="py-8 text-center space-y-3">
+            <p className="text-sm text-destructive">News feed unavailable: {loadError}</p>
+            <Button variant="outline" size="sm" onClick={() => loadArticles(true)}>
+              Retry News Fetch
+            </Button>
+          </CardContent>
+        </Card>
+      ) : loading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {Array.from({ length: 12 }).map((_, i) => (
             <ArticleCardSkeleton key={i} />
