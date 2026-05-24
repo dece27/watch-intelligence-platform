@@ -88,12 +88,17 @@ jobs:
           rclone rmdirs "$R2_REMOTE_PATH/" --leave-root
 
       - name: Send failure alert via Resend
-        if: ${{ failure() && steps.preflight.outputs.configured == 'true' && secrets.RESEND_API_KEY != '' && vars.BACKUP_ALERT_EMAIL_TO != '' }}
+        if: ${{ failure() && steps.preflight.outputs.configured == 'true' }}
         env:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
         run: |
           FROM_EMAIL="${BACKUP_ALERT_EMAIL_FROM:-onboarding@resend.dev}"
           TO_EMAIL="${BACKUP_ALERT_EMAIL_TO:-}"
+
+          if [ -z "$RESEND_API_KEY" ] || [ -z "$TO_EMAIL" ]; then
+            echo "Skipping failure alert because RESEND_API_KEY or BACKUP_ALERT_EMAIL_TO is not configured."
+            exit 0
+          fi
 
           curl --fail-with-body --silent --show-error \
             -X POST https://api.resend.com/emails \
