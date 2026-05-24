@@ -1,8 +1,9 @@
-import { callGitHubModelsProxy, type GitHubModelsTaskType } from '@/lib/github-models-proxy'
+import type { GitHubModelsTaskType } from '@/lib/github-models-proxy'
 import { recordAiUsage, resolveCurrentUserId } from '@/lib/ai/usage'
-import { installSparkKVFallback } from '@/lib/sparkKV'
+import { getSupabaseClient } from '@/lib/supabase/client'
 
 const DEFAULT_CACHE_TTL_SECONDS = 60 * 60 * 6
+const AI_DEBUG_EVENT = 'ai-call-debug'
 
 export class DailyLimitError extends Error {
   constructor(message = 'Daily AI quota exhausted.', cause?: unknown) {
@@ -21,6 +22,38 @@ export interface CallAIOptions {
   taskType?: GitHubModelsTaskType
   cacheKey?: string
   cacheTtlSeconds?: number
+}
+
+interface GitHubModelsProxyResponse {
+  content?: string
+  model?: string
+  usage?: {
+    promptTokens?: number
+    completionTokens?: number
+    totalTokens?: number
+  }
+  error?: string
+  errorCode?: string
+}
+
+interface AIDebugEventDetail {
+  id: string
+  phase: 'start' | 'success' | 'error'
+  taskType: GitHubModelsTaskType
+  model: string
+  cacheKey?: string
+  durationMs?: number
+  status?: number
+  error?: string
+  timestamp: string
+}
+
+function emitAIDebug(detail: AIDebugEventDetail) {
+  if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') {
+    return
+  }
+
+  window.dispatchEvent(new CustomEvent(AI_DEBUG_EVENT, { detail }))
 }
 
 function extractJsonPayload(response: string) {
@@ -54,37 +87,6 @@ function parseJsonWithRecovery<T>(payload: string): T {
   throw new Error('Response did not contain valid JSON.')
 }
 
-function isDailyLimitFailure(error: unknown) {
-  if (!(error instanceof Error)) {
-    return false
-  }
-
-  const errorLike = error as Error & { code?: string; status?: number }
-  return (
-    errorLike.code === 'daily_limit_exhausted' ||
-    errorLike.status === 429 ||
-    /daily.*quota|daily.*limit|quota.*exhausted|rate limit|429/i.test(error.message)
-  )
-}
-
-function shouldFallbackToSpark(error: unknown) {
-  if (!(error instanceof Error)) {
-    return false
-  }
-
-  const errorLike = error as Error & { code?: string }
-  return (
-    errorLike.code === 'proxy_unavailable' ||
-    /Missing Supabase environment variable/i.test(error.message) ||
-    /Failed to send a request to the Edge Function/i.test(error.message) ||
-    /NetworkError/i.test(error.message)
-  )
-}
-
-function isSparkUnavailableError(error: unknown) {
-  return error instanceof Error && /Spark AI features are unavailable in this deployment/i.test(error.message)
-}
-
 async function recordUsageForActiveUser(prompt: string, response: string) {
   const userId = await resolveCurrentUserId()
   if (userId) {
@@ -92,9 +94,30 @@ async function recordUsageForActiveUser(prompt: string, response: string) {
   }
 }
 
-async function callSparkAI(prompt: string, model: string, jsonMode: boolean) {
-  installSparkKVFallback()
-  return window.spark.llm(prompt, model === 'auto' ? undefined : model, jsonMode)
+function getPublicSupabaseUrl() {
+  const processEnv = (globalThis as typeof globalThis & {
+    process?: { env?: Record<string, string | undefined> }
+  }).process?.env
+
+  const viteEnv = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env
+
+  return processEnv?.NEXT_PUBLIC_SUPABASE_URL
+    || viteEnv?.NEXT_PUBLIC_SUPABASE_URL
+    || viteEnv?.VITE_SUPABASE_URL
+}
+
+function normalizeResponseError(payload: unknown, status: number): Error {
+  const data = (payload && typeof payload === 'object') ? payload as GitHubModelsProxyResponse : null
+  const message = data?.error || `GitHub Models proxy request failed with status ${status}.`
+
+  if (status === 429 || data?.errorCode === 'daily_limit_exhausted') {
+    return new DailyLimitError(message)
+  }
+
+  return Object.assign(new Error(message), {
+    status,
+    code: data?.errorCode,
+  })
 }
 
 export function parseAIJson<T>(response: string): T {
@@ -127,35 +150,104 @@ export async function callAI({
   cacheKey,
   cacheTtlSeconds = DEFAULT_CACHE_TTL_SECONDS,
 }: CallAIOptions): Promise<string> {
+  const callId = crypto.randomUUID()
+  const startedAt = performance.now()
+
+  emitAIDebug({
+    id: callId,
+    phase: 'start',
+    taskType,
+    model,
+    cacheKey,
+    timestamp: new Date().toISOString(),
+  })
+
   try {
-    const response = await callGitHubModelsProxy({
-      prompt,
-      model,
-      jsonMode,
-      taskType,
-      cacheKey,
-      cacheTtlSeconds,
-    })
-
-    await recordUsageForActiveUser(prompt, response)
-
-    return response
-  } catch (error) {
-    if (isDailyLimitFailure(error)) {
-      throw new DailyLimitError('The daily AI quota has been exhausted. Showing a fallback result instead.', error)
+    const supabaseUrl = getPublicSupabaseUrl()
+    if (!supabaseUrl) {
+      throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL environment variable.')
     }
 
-    if (shouldFallbackToSpark(error)) {
+    const supabase = getSupabaseClient()
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+    if (sessionError) {
+      throw sessionError
+    }
+
+    const accessToken = sessionData.session?.access_token
+    if (!accessToken) {
+      throw new Error('Authenticated Supabase session is required before calling AI features.')
+    }
+
+    const endpoint = `${supabaseUrl.replace(/\/$/, '')}/functions/v1/github-models-proxy`
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        prompt,
+        model,
+        jsonMode,
+        taskType,
+        cacheKey,
+        cacheTtlSeconds,
+      }),
+    })
+
+    const payloadText = await response.text()
+    let payload: GitHubModelsProxyResponse | null = null
+
+    if (payloadText.trim()) {
       try {
-        const response = await callSparkAI(prompt, model, jsonMode)
-        await recordUsageForActiveUser(prompt, response)
-        return response
-      } catch (sparkError) {
-        if (!isSparkUnavailableError(sparkError)) {
-          throw sparkError
+        payload = JSON.parse(payloadText) as GitHubModelsProxyResponse
+      } catch {
+        if (!response.ok) {
+          throw Object.assign(new Error(payloadText), { status: response.status })
         }
       }
     }
+
+    if (!response.ok) {
+      throw normalizeResponseError(payload, response.status)
+    }
+
+    if (!payload?.content || typeof payload.content !== 'string') {
+      throw new Error('GitHub Models proxy returned an empty response.')
+    }
+
+    await recordUsageForActiveUser(prompt, payload.content)
+
+    emitAIDebug({
+      id: callId,
+      phase: 'success',
+      taskType,
+      model,
+      cacheKey,
+      durationMs: Math.round(performance.now() - startedAt),
+      status: response.status,
+      timestamp: new Date().toISOString(),
+    })
+
+    return payload.content
+  } catch (error) {
+    const status = error instanceof DailyLimitError
+      ? 429
+      : (error as { status?: number } | undefined)?.status
+
+    emitAIDebug({
+      id: callId,
+      phase: 'error',
+      taskType,
+      model,
+      cacheKey,
+      durationMs: Math.round(performance.now() - startedAt),
+      status,
+      error: error instanceof Error ? error.message : String(error),
+      timestamp: new Date().toISOString(),
+    })
 
     throw error
   }

@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { DailyLimitError, callAI, createAICacheKey, getTodayCacheBucket, hashAIInput, parseAIJson } from '@/lib/ai/caller'
-import { callGitHubModelsProxy } from '@/lib/github-models-proxy'
+import { getSupabaseClient } from '@/lib/supabase/client'
 
-vi.mock('@/lib/github-models-proxy', () => ({
-  callGitHubModelsProxy: vi.fn(),
+vi.mock('@/lib/supabase/client', () => ({
+  getSupabaseClient: vi.fn(),
 }))
 
 type KvStore = Map<string, unknown>
 
-function createSparkWindow(store: KvStore, llm = vi.fn(async () => 'spark-response')) {
+function createSparkWindow(store: KvStore) {
   return {
     dispatchEvent: vi.fn(),
     spark: {
@@ -18,9 +18,6 @@ function createSparkWindow(store: KvStore, llm = vi.fn(async () => 'spark-respon
           store.set(key, value)
         }),
       },
-      llm,
-      llmPrompt: (strings: string[], ...values: unknown[]) =>
-        strings.reduce((accumulator, current, index) => accumulator + current + (values[index] ?? ''), ''),
     },
   }
 }
@@ -28,7 +25,19 @@ function createSparkWindow(store: KvStore, llm = vi.fn(async () => 'spark-respon
 describe('ai caller helpers', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
-    vi.mocked(callGitHubModelsProxy).mockResolvedValue('proxy-response')
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co'
+
+    vi.mocked(getSupabaseClient).mockReturnValue({
+      auth: {
+        getSession: vi.fn(async () => ({
+          data: { session: { access_token: 'session-token' } },
+          error: null,
+        })),
+      },
+    } as unknown as ReturnType<typeof getSupabaseClient>)
+
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ content: 'proxy-response' }), { status: 200 })))
+
     ;(globalThis as { sessionStorage?: Storage }).sessionStorage = {
       getItem: vi.fn(() => null),
       setItem: vi.fn(),
@@ -51,7 +60,7 @@ describe('ai caller helpers', () => {
     expect(parseAIJson<Array<{ id: string }>>('Ranking output: [{"id":"deal-1"}] done')).toEqual([{ id: 'deal-1' }])
   })
 
-  it('forwards cache settings and records usage for the active user', async () => {
+  it('calls the edge function with session bearer token and records usage for the active user', async () => {
     const store: KvStore = new Map([['currentUser', { id: 'user-1' }]])
     ;(globalThis as { window?: unknown }).window = createSparkWindow(store)
 
@@ -62,43 +71,39 @@ describe('ai caller helpers', () => {
       cacheTtlSeconds: 900,
     })).resolves.toBe('proxy-response')
 
-    expect(callGitHubModelsProxy).toHaveBeenCalledWith({
-      prompt: 'hello',
-      model: 'auto',
-      jsonMode: false,
-      taskType: 'chat',
-      cacheKey: 'ai:chat:user-1',
-      cacheTtlSeconds: 900,
-    })
+    expect(fetch).toHaveBeenCalledWith(
+      'https://example.supabase.co/functions/v1/github-models-proxy',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer session-token',
+        }),
+      }),
+    )
     expect(store.has('ai_usage_user-1')).toBe(true)
   })
 
-  it('maps quota failures to DailyLimitError', async () => {
+  it('maps 429 failures to DailyLimitError', async () => {
     ;(globalThis as { window?: unknown }).window = createSparkWindow(new Map())
-    vi.mocked(callGitHubModelsProxy).mockRejectedValueOnce(
-      Object.assign(new Error('Daily GitHub Models quota exhausted.'), {
-        code: 'daily_limit_exhausted',
-        status: 429,
-      }),
-    )
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'Daily GitHub Models quota exhausted.', errorCode: 'daily_limit_exhausted' }), { status: 429 })))
 
     await expect(callAI({ prompt: 'hello', taskType: 'chat' })).rejects.toBeInstanceOf(DailyLimitError)
   })
 
-  it('falls back to Spark AI when the proxy is unavailable', async () => {
-    const store: KvStore = new Map([['currentUser', { id: 'user-1' }]])
-    const llm = vi.fn(async () => 'spark-response')
-    ;(globalThis as { window?: unknown }).window = createSparkWindow(store, llm)
-    vi.mocked(callGitHubModelsProxy).mockRejectedValueOnce(
-      Object.assign(new Error('GitHub Models proxy is unavailable because Supabase browser environment variables are missing.'), {
-        code: 'proxy_unavailable',
-      }),
+  it('throws when no authenticated session is available', async () => {
+    ;(globalThis as { window?: unknown }).window = createSparkWindow(new Map())
+    vi.mocked(getSupabaseClient).mockReturnValueOnce({
+      auth: {
+        getSession: vi.fn(async () => ({
+          data: { session: null },
+          error: null,
+        })),
+      },
+    } as unknown as ReturnType<typeof getSupabaseClient>)
+
+    await expect(callAI({ prompt: 'hello', taskType: 'chat' })).rejects.toThrow(
+      'Authenticated Supabase session is required before calling AI features.',
     )
-
-    await expect(callAI({ prompt: 'hello', taskType: 'chat', jsonMode: true })).resolves.toBe('spark-response')
-
-    expect(llm).toHaveBeenCalledWith('hello', undefined, true)
-    expect(store.has('ai_usage_user-1')).toBe(true)
   })
 
   it('builds stable AI cache helpers', () => {

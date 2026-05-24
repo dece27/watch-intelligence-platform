@@ -1,6 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-const GITHUB_TOKEN = Deno.env.get('GITHUB_TOKEN')!
+const GITHUB_TOKEN = Deno.env.get('GITHUB_TOKEN')
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
@@ -175,17 +175,44 @@ function extractContent(content: unknown): string {
   return ''
 }
 
-async function recordUsageIfAuthenticated(req: Request, taskType: string, totalTokens: number) {
-  const authorization = req.headers.get('Authorization')
+async function verifyAuthenticatedCaller(authorizationHeader: string | null) {
+  if (!authorizationHeader || !authorizationHeader.startsWith('Bearer ')) {
+    return { userId: null, error: jsonResponse(401, { error: 'Missing bearer authorization token.' }) }
+  }
 
-  if (!authorization || !SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  const accessToken = authorizationHeader.replace(/^Bearer\s+/i, '').trim()
+  if (!accessToken) {
+    return { userId: null, error: jsonResponse(401, { error: 'Missing bearer authorization token.' }) }
+  }
+
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    return { userId: null, error: jsonResponse(500, { error: 'Supabase auth configuration is missing.' }) }
+  }
+
+  const authClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  })
+
+  const { data, error } = await authClient.auth.getUser(accessToken)
+  if (error || !data.user) {
+    return { userId: null, error: jsonResponse(401, { error: 'Invalid or expired Supabase auth token.' }) }
+  }
+
+  return { userId: data.user.id, error: null }
+}
+
+async function recordUsageForCaller(authorizationHeader: string, taskType: string, totalTokens: number) {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
     return
   }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     global: {
       headers: {
-        Authorization: authorization,
+        Authorization: authorizationHeader,
       },
     },
     auth: {
@@ -194,12 +221,16 @@ async function recordUsageIfAuthenticated(req: Request, taskType: string, totalT
     },
   })
 
-  await supabase.rpc('record_ai_usage', {
+  const { error } = await supabase.rpc('record_ai_usage', {
     p_call_type: resolveUsageCallType(taskType),
     p_tokens: totalTokens,
     p_usage_date: null,
     p_increment: 1,
   })
+
+  if (error) {
+    throw error
+  }
 }
 
 Deno.serve(async (req) => {
@@ -213,6 +244,12 @@ Deno.serve(async (req) => {
 
   if (!GITHUB_TOKEN) {
     return jsonResponse(500, { error: 'Missing GITHUB_TOKEN environment variable.' })
+  }
+
+  const authorization = req.headers.get('Authorization')
+  const authCheck = await verifyAuthenticatedCaller(authorization)
+  if (authCheck.error) {
+    return authCheck.error
   }
 
   let body: GitHubModelsRequest
@@ -250,24 +287,31 @@ Deno.serve(async (req) => {
 
   const model = resolveModel(taskType, requestedModel)
 
-  const upstreamResponse = await fetch(ENDPOINT, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${GITHUB_TOKEN}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
-      temperature: jsonMode ? 0.2 : 0.7,
-      response_format: jsonMode ? { type: 'json_object' } : undefined,
-    }),
-  })
+  let upstreamResponse: Response
+  try {
+    upstreamResponse = await fetch(ENDPOINT, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${GITHUB_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        temperature: jsonMode ? 0.2 : 0.7,
+        response_format: jsonMode ? { type: 'json_object' } : undefined,
+      }),
+    })
+  } catch (error) {
+    return jsonResponse(502, {
+      error: `GitHub Models request failed: ${error instanceof Error ? error.message : String(error)}`,
+    })
+  }
 
   if (!upstreamResponse.ok) {
     const errorText = await upstreamResponse.text()
@@ -283,8 +327,14 @@ Deno.serve(async (req) => {
     })
   }
 
-  const payload = await upstreamResponse.json()
-  const content = extractContent(payload?.choices?.[0]?.message?.content)
+  let payload: unknown
+  try {
+    payload = await upstreamResponse.json()
+  } catch {
+    return jsonResponse(502, { error: 'GitHub Models returned malformed JSON.' })
+  }
+
+  const content = extractContent((payload as { choices?: Array<{ message?: { content?: unknown } }> })?.choices?.[0]?.message?.content)
 
   if (!content) {
     return jsonResponse(502, { error: 'GitHub Models returned no message content.' })
@@ -292,16 +342,16 @@ Deno.serve(async (req) => {
 
   const usage = {
     promptTokens:
-      typeof payload?.usage?.prompt_tokens === 'number'
-        ? payload.usage.prompt_tokens
+      typeof (payload as { usage?: { prompt_tokens?: unknown } })?.usage?.prompt_tokens === 'number'
+        ? (payload as { usage: { prompt_tokens: number } }).usage.prompt_tokens
         : estimateTokens(prompt),
     completionTokens:
-      typeof payload?.usage?.completion_tokens === 'number'
-        ? payload.usage.completion_tokens
+      typeof (payload as { usage?: { completion_tokens?: unknown } })?.usage?.completion_tokens === 'number'
+        ? (payload as { usage: { completion_tokens: number } }).usage.completion_tokens
         : estimateTokens(content),
     totalTokens:
-      typeof payload?.usage?.total_tokens === 'number'
-        ? payload.usage.total_tokens
+      typeof (payload as { usage?: { total_tokens?: unknown } })?.usage?.total_tokens === 'number'
+        ? (payload as { usage: { total_tokens: number } }).usage.total_tokens
         : estimateTokens(prompt) + estimateTokens(content),
   }
 
@@ -316,7 +366,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    await recordUsageIfAuthenticated(req, taskType, usage.totalTokens)
+    await recordUsageForCaller(authorization as string, taskType, usage.totalTokens)
   } catch (error) {
     console.error('Failed to record AI usage', error)
   }

@@ -15,6 +15,7 @@ import { AppraisalModule } from "@/components/modules/AppraisalModule"
 import { NewsModule } from "@/components/modules/NewsModule"
 import { FeedbackDashboard } from "@/components/FeedbackDashboard"
 import { AdminDashboard } from "@/components/AdminDashboard"
+import { AIDebugOverlay } from "@/components/AIDebugOverlay"
 import { Toaster } from "@/components/ui/sonner"
 import { MobileNav } from "@/components/MobileNav"
 import { isAdminEmail } from "@/lib/adminAnalytics"
@@ -407,6 +408,7 @@ function App() {
           />
         </div>
         <Toaster />
+        {import.meta.env.DEV && <AIDebugOverlay />}
       </div>
     )
   }
