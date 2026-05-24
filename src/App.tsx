@@ -54,7 +54,30 @@ function App() {
   const [sharedLoading, setSharedLoading] = useState(false)
   const [sharedError, setSharedError] = useState<string | null>(null)
   const [preferredCurrency, setPreferredCurrency] = useState(DEFAULT_CURRENCY)
+  // Supabase Auth user ID derived from the live session — never stored in
+  // any browser storage; re-derived from the session on every mount/login.
+  const [supabaseUserId, setSupabaseUserId] = useState<string | null>(null)
   const isMobile = useIsMobile()
+
+  // Subscribe to Supabase Auth state changes to keep supabaseUserId in sync.
+  useEffect(() => {
+    if (!hasSupabaseBrowserEnv()) return
+
+    const client = getSupabaseClient()
+
+    // Populate from any existing session immediately.
+    void client.auth.getSession().then(({ data }) => {
+      setSupabaseUserId(data.session?.user.id ?? null)
+    })
+
+    const { data: { subscription } } = client.auth.onAuthStateChange((_event, session) => {
+      setSupabaseUserId(session?.user.id ?? null)
+    })
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [])
 
   useEffect(() => {
     const updateSharedSlugFromLocation = () => {
@@ -140,9 +163,9 @@ function App() {
 
       try {
         // Supabase path: load preferences from DB when a session is available.
-        if (currentUser.supabaseId && hasSupabaseBrowserEnv()) {
+        if (supabaseUserId && hasSupabaseBrowserEnv()) {
           const client = getSupabaseClient()
-          const prefs = await getUserPreferences(client, currentUser.supabaseId)
+          const prefs = await getUserPreferences(client, supabaseUserId)
           if (!active) return
           setPreferredCurrency(normalizeCurrency(prefs?.currency))
           return
@@ -163,7 +186,7 @@ function App() {
     return () => {
       active = false
     }
-  }, [currentUser?.id, currentUser?.supabaseId])
+  }, [currentUser?.id, supabaseUserId])
 
   const watchList = watches || []
   const totalValue = watchList.reduce((sum, w) => sum + (w.currentValue || w.purchasePrice), 0)
@@ -178,8 +201,8 @@ function App() {
 
       try {
         // Supabase path: fetch rows from DB and hydrate photo refs from KV.
-        if (currentUser.supabaseId && hasSupabaseBrowserEnv()) {
-          const rows = await getWatches(currentUser.supabaseId, { limit: 1000, offset: 0 })
+        if (supabaseUserId && hasSupabaseBrowserEnv()) {
+          const rows = await getWatches(supabaseUserId, { limit: 1000, offset: 0 })
           const hydratedWatches = await Promise.all(
             rows.map(async (row) => {
               const watch = rowToWatch(row)
@@ -191,7 +214,7 @@ function App() {
                 try {
                   storedPhoto =
                     (await window.spark.kv.get<string>(
-                      getWatchPhotoKey(currentUser.supabaseId!, watch.id),
+                      getWatchPhotoKey(supabaseUserId, watch.id),
                     )) ?? undefined
                 } catch (error) {
                   console.error(`Error loading watch photo for ${watch.id}:`, error)
@@ -249,7 +272,7 @@ function App() {
       }
     }
     loadWatches()
-  }, [currentUser])
+  }, [currentUser, supabaseUserId])
 
   const handleLogin = async (user: User, rememberMe: boolean) => {
     setCurrentUser(user)
@@ -308,11 +331,11 @@ function App() {
     if (!currentUser?.id) return
 
     // Supabase path.
-    if (currentUser.supabaseId && hasSupabaseBrowserEnv()) {
+    if (supabaseUserId && hasSupabaseBrowserEnv()) {
       try {
         const client = getSupabaseClient()
         await upsertUserPreferences(client, {
-          userId: currentUser.supabaseId,
+          userId: supabaseUserId,
           currency: normalizedCurrency,
           locale: 'en',
           theme: 'dark',
@@ -352,9 +375,8 @@ function App() {
     if (!currentUser?.id) return
 
     // Supabase path: diff old vs new and issue individual create/update/delete.
-    if (currentUser.supabaseId && hasSupabaseBrowserEnv()) {
+    if (supabaseUserId && hasSupabaseBrowserEnv()) {
       try {
-        const supabaseUserId = currentUser.supabaseId
         const prevWatches = watches
         const nextWatches = updater(prevWatches)
 

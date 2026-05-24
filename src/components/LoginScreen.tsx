@@ -25,40 +25,32 @@ function isValidLoginIdentifier(value: string): boolean {
 
 /**
  * Attempts to establish a Supabase Auth session after successful KV
- * credential verification. Returns the Supabase user ID if a session was
- * created, or undefined when Supabase is not configured or the attempt fails.
- * This is strictly non-blocking: any error is swallowed so the caller can
- * always fall through to KV-only persistence.
+ * credential verification. This is strictly non-blocking: any error is
+ * swallowed so the caller can always fall through to KV-only persistence.
  */
 async function trySupabaseAuth(
   email: string,
   password: string,
   displayName: string,
   vaultName: string,
-): Promise<string | undefined> {
-  if (!hasSupabaseBrowserEnv()) return undefined
+): Promise<void> {
+  if (!hasSupabaseBrowserEnv()) return
   try {
     const supabase = getSupabaseClient()
-    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+    const { error: signInError } = await supabase.auth.signInWithPassword({
       email,
       password,
     })
-    if (!signInError && signInData.session) {
-      return signInData.user.id
-    }
+    if (!signInError) return
     // Not yet in Supabase Auth — create the account.
-    const { data: signUpData } = await supabase.auth.signUp({
+    await supabase.auth.signUp({
       email,
       password,
       options: { data: { name: displayName, vault_name: vaultName } },
     })
-    if (signUpData?.session) {
-      return signUpData.user?.id
-    }
   } catch {
     // Supabase unreachable — silently fall back to KV-only persistence.
   }
-  return undefined
 }
 
 export function shouldShowAccountCreationFields(loginIdentifier: string, isReturningUser: boolean): boolean {
@@ -271,16 +263,12 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
         // Establish a Supabase Auth session so the DB layer can use RLS.
         // Non-admin users only — the administrator account has no real email.
         if (normalizedLoginIdentifier !== ADMIN_LOGIN_IDENTIFIER) {
-          const supabaseId = await trySupabaseAuth(
+          await trySupabaseAuth(
             normalizedLoginIdentifier,
             password.trim(),
             user.name,
             user.vaultName,
           )
-          if (supabaseId && user.supabaseId !== supabaseId) {
-            user = { ...user, supabaseId }
-            await window.spark.kv.set(`user_${existingUserId}`, user)
-          }
         }
 
         await ensureUserIndexed(user.id)
@@ -310,7 +298,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
 
       const userId = crypto.randomUUID()
       const createdAt = new Date().toISOString()
-      let newUser: User = {
+      const newUser: User = {
         id: userId,
         name: trimmedName,
         email: normalizedLoginIdentifier,
@@ -318,18 +306,6 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
         createdAt,
       }
       const passwordPayload = await hashPassword(password.trim())
-
-      // Attempt Supabase Auth sign-up before writing to KV so the supabaseId
-      // can be included in the persisted profile from the start.
-      const supabaseId = await trySupabaseAuth(
-        normalizedLoginIdentifier,
-        password.trim(),
-        trimmedName,
-        trimmedVaultName,
-      )
-      if (supabaseId) {
-        newUser = { ...newUser, supabaseId }
-      }
 
       await window.spark.kv.set(emailKey, userId)
       await window.spark.kv.set(`user_${userId}`, newUser)
@@ -341,6 +317,14 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
         loginCount: 1,
       } satisfies AuthRecord)
       await ensureUserIndexed(userId)
+
+      // Establish a Supabase Auth session for the new account.
+      await trySupabaseAuth(
+        normalizedLoginIdentifier,
+        password.trim(),
+        trimmedName,
+        trimmedVaultName,
+      )
 
       await onLogin(newUser, rememberMe)
     } catch (err) {

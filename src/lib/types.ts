@@ -109,7 +109,6 @@ export interface User {
   vaultName: string
   createdAt: string
   avatarUrl?: string
-  supabaseId?: string
 }
 
 export interface DealsPreferences {
