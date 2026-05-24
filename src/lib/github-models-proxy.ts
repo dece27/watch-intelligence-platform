@@ -1,4 +1,4 @@
-import { getSupabaseClient } from '@/lib/supabase/client'
+import { getSupabaseClient, hasSupabaseBrowserEnv } from '@/lib/supabase/client'
 
 export type GitHubModelsTaskType =
   | 'general'
@@ -31,6 +31,46 @@ interface GitHubModelsProxyResponse {
   errorCode?: string
 }
 
+type ProxyInvokeError = Error & {
+  code?: string
+  status?: number
+  context?: Response
+}
+
+async function normalizeInvokeError(error: ProxyInvokeError): Promise<Error & { code?: string; status?: number; cause?: unknown }> {
+  let message = error.message
+  let code = error.code
+  let status = error.status
+
+  if (error.context instanceof Response) {
+    status = error.context.status || status
+    try {
+      const payload = await error.context.clone().json() as GitHubModelsProxyResponse
+      if (typeof payload.error === 'string' && payload.error.trim()) {
+        message = payload.error
+      }
+      if (typeof payload.errorCode === 'string' && payload.errorCode.trim()) {
+        code = payload.errorCode
+      }
+    } catch {
+      try {
+        const text = await error.context.clone().text()
+        if (text.trim()) {
+          message = text.trim()
+        }
+      } catch {
+        // Keep the original message when the error response cannot be parsed.
+      }
+    }
+  }
+
+  return Object.assign(new Error(message), {
+    cause: error,
+    code,
+    status: code === 'daily_limit_exhausted' ? 429 : status,
+  })
+}
+
 export async function callGitHubModelsProxy({
   prompt,
   model,
@@ -39,6 +79,13 @@ export async function callGitHubModelsProxy({
   cacheKey,
   cacheTtlSeconds,
 }: GitHubModelsProxyRequest): Promise<string> {
+  if (!hasSupabaseBrowserEnv()) {
+    throw Object.assign(
+      new Error('GitHub Models proxy is unavailable because Supabase browser environment variables are missing.'),
+      { code: 'proxy_unavailable' },
+    )
+  }
+
   const supabase = getSupabaseClient()
   const { data, error } = await supabase.functions.invoke<GitHubModelsProxyResponse>(
     'github-models-proxy',
@@ -55,9 +102,7 @@ export async function callGitHubModelsProxy({
   )
 
   if (error) {
-    const wrappedError = new Error(`GitHub Models proxy request failed: ${error.message}`)
-    ;(wrappedError as Error & { cause?: unknown }).cause = error
-    throw wrappedError
+    throw await normalizeInvokeError(error as ProxyInvokeError)
   }
 
   if (data?.error) {

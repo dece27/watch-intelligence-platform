@@ -1,5 +1,6 @@
 import { callGitHubModelsProxy, type GitHubModelsTaskType } from '@/lib/github-models-proxy'
 import { recordAiUsage, resolveCurrentUserId } from '@/lib/ai/usage'
+import { installSparkKVFallback } from '@/lib/sparkKV'
 
 const DEFAULT_CACHE_TTL_SECONDS = 60 * 60 * 6
 
@@ -66,6 +67,36 @@ function isDailyLimitFailure(error: unknown) {
   )
 }
 
+function shouldFallbackToSpark(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false
+  }
+
+  const errorLike = error as Error & { code?: string }
+  return (
+    errorLike.code === 'proxy_unavailable' ||
+    /Missing Supabase environment variable/i.test(error.message) ||
+    /Failed to send a request to the Edge Function/i.test(error.message) ||
+    /NetworkError/i.test(error.message)
+  )
+}
+
+function isSparkUnavailableError(error: unknown) {
+  return error instanceof Error && /Spark AI features are unavailable in this deployment/i.test(error.message)
+}
+
+async function recordUsageForActiveUser(prompt: string, response: string) {
+  const userId = await resolveCurrentUserId()
+  if (userId) {
+    await recordAiUsage(userId, prompt, response)
+  }
+}
+
+async function callSparkAI(prompt: string, model: string, jsonMode: boolean) {
+  installSparkKVFallback()
+  return window.spark.llm(prompt, model === 'auto' ? undefined : model, jsonMode)
+}
+
 export function parseAIJson<T>(response: string): T {
   return parseJsonWithRecovery<T>(extractJsonPayload(response))
 }
@@ -106,15 +137,24 @@ export async function callAI({
       cacheTtlSeconds,
     })
 
-    const userId = await resolveCurrentUserId()
-    if (userId) {
-      await recordAiUsage(userId, prompt, response)
-    }
+    await recordUsageForActiveUser(prompt, response)
 
     return response
   } catch (error) {
     if (isDailyLimitFailure(error)) {
       throw new DailyLimitError('The daily AI quota has been exhausted. Showing a fallback result instead.', error)
+    }
+
+    if (shouldFallbackToSpark(error)) {
+      try {
+        const response = await callSparkAI(prompt, model, jsonMode)
+        await recordUsageForActiveUser(prompt, response)
+        return response
+      } catch (sparkError) {
+        if (!isSparkUnavailableError(sparkError)) {
+          throw sparkError
+        }
+      }
     }
 
     throw error
