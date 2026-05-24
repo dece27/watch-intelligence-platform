@@ -19,7 +19,8 @@
     "test:all": "npm run test:sql && npm run test:ts",
     "optimize": "vite optimize",
     "preview": "vite preview",
-    "prepare": "husky"
+    "prepare": "husky",
+    "test:supabase-auth-watch-flow": "node scripts/test-supabase-auth-watch-flow.mjs"
   },
   "dependencies": {
     "@github/spark": "^0.39.0",
