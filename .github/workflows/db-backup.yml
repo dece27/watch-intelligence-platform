@@ -67,7 +67,7 @@ jobs:
         run: |
           BACKUP_DATE="$(date -u +%Y%m%d)"
           BACKUP_FILE="backup_${BACKUP_DATE}.sql"
-          npx supabase db dump --db-url "$SUPABASE_DB_URL" > "$BACKUP_FILE"
+          supabase db dump --db-url "$SUPABASE_DB_URL" > "$BACKUP_FILE"
           echo "BACKUP_FILE=$BACKUP_FILE" >> "$GITHUB_ENV"
 
       - name: Gzip backup file
