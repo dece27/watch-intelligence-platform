@@ -3,16 +3,12 @@ import { createClient } from '@supabase/supabase-js'
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000
 const DEFAULT_RESEND_FROM = 'onboarding@resend.dev'
 
-function requireEnv(name) {
-  const value = process.env[name]?.trim()
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`)
-  }
-  return value
+function getOptionalEnv(name) {
+  return process.env[name]?.trim() || null
 }
 
 function createServiceClient() {
-  return createClient(requireEnv('SUPABASE_URL'), requireEnv('SUPABASE_SERVICE_ROLE_KEY'), {
+  return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
@@ -56,7 +52,18 @@ async function sendResendEmail({ apiKey, to, subject, html }) {
 }
 
 async function main() {
-  const resendApiKey = requireEnv('RESEND_API_KEY')
+  const resendApiKey = getOptionalEnv('RESEND_API_KEY')
+  if (!resendApiKey) {
+    console.log('Skipping: RESEND_API_KEY is not configured')
+    return
+  }
+
+  const supabaseUrl = getOptionalEnv('SUPABASE_URL')
+  const supabaseServiceRoleKey = getOptionalEnv('SUPABASE_SERVICE_ROLE_KEY')
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
+    console.log('Skipping: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not configured')
+    return
+  }
   const supabase = createServiceClient()
 
   const { data: alerts, error } = await supabase
