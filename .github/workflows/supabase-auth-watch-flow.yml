@@ -1,0 +1,59 @@
+name: Supabase Auth Watch Flow Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      github_environment:
+        description: 'GitHub Environment with Supabase variables/secrets'
+        required: false
+        default: production
+
+permissions:
+  contents: read
+
+jobs:
+  test-auth-watch-flow:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.github_environment || 'production' }}
+    env:
+      SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      WATCH_E2E_EMAIL: ${{ vars.WATCH_E2E_EMAIL }}
+      WATCH_E2E_PASSWORD: ${{ secrets.WATCH_E2E_PASSWORD }}
+      WATCH_E2E_NAME: ${{ vars.WATCH_E2E_NAME }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Preflight configuration check
+        id: preflight
+        run: |
+          missing=()
+          [ -n "${SUPABASE_URL:-}" ] || missing+=("SUPABASE_URL variable")
+          [ -n "${SUPABASE_ANON_KEY:-}" ] || missing+=("SUPABASE_ANON_KEY secret")
+          [ -n "${SUPABASE_SERVICE_ROLE_KEY:-}" ] || missing+=("SUPABASE_SERVICE_ROLE_KEY secret")
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf '::warning::Skipping auth/watch flow test because required configuration is missing: %s\n' "$(IFS=', '; echo "${missing[*]}")"
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node
+        if: steps.preflight.outputs.configured == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.preflight.outputs.configured == 'true'
+        run: npm ci
+
+      - name: Run Supabase auth/watch flow test
+        if: steps.preflight.outputs.configured == 'true'
+        run: npm run test:supabase-auth-watch-flow
