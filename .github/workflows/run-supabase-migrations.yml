@@ -21,10 +21,10 @@ jobs:
       - name: Validate migration configuration
         id: preflight
         env:
-          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
         run: |
-          if [ -z "${SUPABASE_DB_URL:-}" ]; then
-            echo "::warning::Skipping migrations because SUPABASE_DB_URL secret is not configured."
+          if [ -z "${SUPABASE_URL:-}" ]; then
+            echo "::warning::Skipping migrations because SUPABASE_URL variable is not configured."
             echo "configured=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -40,5 +40,5 @@ jobs:
       - name: Apply migrations
         if: steps.preflight.outputs.configured == 'true'
         env:
-          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-        run: supabase db push --db-url "$SUPABASE_DB_URL"
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+        run: supabase db push --db-url "$SUPABASE_URL"
