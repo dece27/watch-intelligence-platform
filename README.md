@@ -44,7 +44,7 @@ The goal of this project is to provide a single operating system for watch colle
 - Per-user signal and deal assessment cache keyed on a dependency hash (watches + preferences + vault metadata)
 
 ### 5) Deals Discovery
-- Live deal sourcing via the Chrono24 wrapper API (when configured), with curated fallback data
+- Live deal sourcing synced by GitHub Actions with the `irahorecka/chrono24` Python library and stored in Supabase
 - Match and deal scoring based on user preferences and owned brands
 - Filtering by budget, condition, box/papers, preferred brands, and seller rating
 - Deal detail views with contextual scoring signals
@@ -82,7 +82,7 @@ The goal of this project is to provide a single operating system for watch colle
 - **IndexedDB fallback** (`src/lib/sparkKV.ts`) — used automatically on GitHub Pages and other static deployments where the Spark runtime is not available
 - **Supabase Edge Functions** — secure server-side proxying for GitHub Models API calls
 - **WatchCharts API client** (`src/lib/watchcharts-client.ts`) — optional live market value lookups
-- **Chrono24 FastAPI wrapper** (`chrono24-api/`) — optional Python service for live deal sourcing
+- **Chrono24 sync workflow** (`.github/workflows/fetch-chrono24.yml`) — scheduled Python job that fetches listings with `irahorecka/chrono24` and upserts them into Supabase
 
 ## Local Development
 
@@ -119,33 +119,19 @@ npm run db:types
 npm run test:all
 ```
 
-### Chrono24 live deals setup (optional)
+### Chrono24 deal sync
 
-Start the local wrapper API:
+Chrono24 data is fetched only by `scripts/fetch-chrono24.py` inside the
+GitHub Actions workflow at `.github/workflows/fetch-chrono24.yml`.
 
-```bash
-cd chrono24-api
-pip install -r requirements.txt
-python server.py
-```
+The browser app never calls Chrono24 directly. It reads synced rows from the
+Supabase `deal_listings` table instead.
 
-Then point the frontend to it. You can pass the variable inline or add it to a
-gitignored `.env.local` file in the project root:
+To run the sync manually in GitHub Actions, use **Actions → Fetch Chrono24
+Listings → Run workflow** after configuring these repository secrets:
 
-```bash
-# inline
-VITE_CHRONO24_WRAPPER_BASE_URL=http://localhost:8000 npm run dev
-
-# .env.local
-VITE_CHRONO24_WRAPPER_BASE_URL=http://localhost:8000
-```
-
-Alternative accepted variable names: `VITE_CHRONO24_API_HOST`,
-`CHRONO24_WRAPPER_BASE_URL`, `CHRONO24_API_HOST`.
-
-If no Chrono24 base URL env is provided, the frontend will use the Supabase
-`chrono24-proxy` function URL derived from `VITE_SUPABASE_URL` /
-`NEXT_PUBLIC_SUPABASE_URL` when available.
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
 
 ### WatchCharts live market values (optional)
 
@@ -166,9 +152,6 @@ VITE_WATCHCHARTS_API_KEY=your_key npm run dev
 | `SUPABASE_URL` | Optional server-only Supabase URL override for GitHub Actions or other non-browser utilities |
 | `SUPABASE_DB_URL` | Direct database connection string used for CLI tasks such as backups |
 | `GITHUB_TOKEN` | Server-only GitHub personal access token used by `supabase/functions/github-models-proxy` to call GitHub Models |
-| `VITE_CHRONO24_WRAPPER_BASE_URL` | Base URL for the Chrono24 wrapper API |
-| `VITE_CHRONO24_API_HOST` | Alternative name for the Chrono24 wrapper base URL |
-| `VITE_CHRONO24_WRAPPER_API_KEY` | API key for the Chrono24 wrapper (if required) |
 | `VITE_WATCHCHARTS_API_KEY` | API key for WatchCharts market value lookups |
 | `VITE_WATCHCHARTS_BASE_URL` | Override for WatchCharts API base URL |
 | `VITE_BASE_PATH` | Base path for GitHub Pages deployments (set automatically by the deploy workflow) |
@@ -228,14 +211,6 @@ npm run test:ts
 npm run test:all
 ```
 
-The Chrono24 wrapper also has its own test suite:
-
-```bash
-cd chrono24-api
-pip install -r requirements.txt
-python -m pytest -q
-```
-
 ## GitHub Pages deployment
 
 This repository can be deployed to GitHub Pages with the included workflow at
@@ -244,8 +219,7 @@ This repository can be deployed to GitHub Pages with the included workflow at
 Before the first deployment:
 
 1. Install the frontend dependencies with `npm install`
-2. If you need the optional Chrono24 wrapper locally, install its packages with `pip install -r chrono24-api/requirements.txt`
-3. In GitHub, open **Settings → Pages** and set **Source** to **GitHub Actions**
+2. In GitHub, open **Settings → Pages** and set **Source** to **GitHub Actions**
 
 After that, every push to `main` will build the Vite app with the repository
 base path and publish it to GitHub Pages automatically.
@@ -270,6 +244,9 @@ tasks:
   snapshots for users with active watches via `node scripts/portfolio-snapshots.mjs`
 - `.github/workflows/check-price-alerts.yml` — checks active price alerts every
   six hours and sends Resend notifications via `node scripts/check-alerts.mjs`
+- `.github/workflows/fetch-chrono24.yml` — fetches live Chrono24 listings with
+  the `irahorecka/chrono24` Python library and upserts them into Supabase via
+  `python scripts/fetch-chrono24.py`
 
 ## Dependency and security automation
 

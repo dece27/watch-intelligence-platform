@@ -11,10 +11,9 @@ import { Heart, MapPin, ArrowsClockwise } from "@phosphor-icons/react"
 import { DealDetailModal } from "@/components/DealDetailModal"
 import { DailyLimitError, callAI, createAICacheKey, hashAIInput, parseAIJson } from "@/lib/ai/caller"
 import {
-  searchChrono24Deals,
-  clearChrono24SearchCache,
-  isChrono24WrapperConfigured,
-} from "@/lib/chrono24-client"
+  areDealListingsConfigured,
+  fetchDealListings,
+} from "@/lib/deal-listings-client"
 import { convertCurrency, formatCurrency, normalizeCurrency } from "@/lib/currency"
 import { toast } from "sonner"
 
@@ -225,20 +224,14 @@ export function DealsModule({ watches, userId, preferredCurrency = "USD" }: Deal
     return convertCurrency(amount, sourceCurrency || "USD", preferredCurrency)
   }, [preferredCurrency])
 
-  const fetchDeals = useCallback(async (forced = false) => {
+  const fetchDeals = useCallback(async () => {
     setIsLoading(true)
     setErrorMessage(null)
 
-    // Clear the localStorage search cache when the user explicitly triggers a refresh
-    // so stale results are not served from the 10-minute cache.
-    if (forced) {
-      clearChrono24SearchCache()
-    }
-
-    if (!isChrono24WrapperConfigured) {
+    if (!areDealListingsConfigured) {
       setDeals([])
       setIsLiveData(false)
-      setErrorMessage("Chrono24 API is not configured. Configure the wrapper URL and retry.")
+      setErrorMessage("Supabase deal listings are not configured.")
       setIsLoading(false)
       return
     }
@@ -249,36 +242,14 @@ export function DealsModule({ watches, userId, preferredCurrency = "USD" }: Deal
         .slice(0, MAX_BRANDS_TO_QUERY)
 
       const queryTargets = brandsToQuery.length > 0 ? brandsToQuery : [...FALLBACK_QUERY_BRANDS]
-      const uniqueDealsMap = new Map<string, Deal>()
-      const fetchErrors: string[] = []
-
-      for (const brand of queryTargets) {
-        try {
-          const brandDeals = await searchChrono24Deals({
-            brand,
-            maxPrice: preferences.maxPrice > 0 ? preferences.maxPrice : undefined,
-            page: 1,
-            limit: TARGET_LIVE_DEAL_COUNT,
-          })
-
-          for (const deal of brandDeals) {
-            uniqueDealsMap.set(deal.id, deal)
-          }
-
-          if (uniqueDealsMap.size >= TARGET_LIVE_DEAL_COUNT) {
-            break
-          }
-        } catch (error) {
-          console.error(`[DealsModule] Failed to fetch Chrono24 deals for brand "${brand}".`, error)
-          fetchErrors.push(error instanceof Error ? error.message : String(error))
-        }
-      }
-
-      const uniqueDeals = Array.from(uniqueDealsMap.values())
+      const uniqueDeals = await fetchDealListings({
+        brands: queryTargets,
+        maxPrice: preferences.maxPrice > 0 ? preferences.maxPrice : undefined,
+        limit: TARGET_LIVE_DEAL_COUNT,
+      })
 
       if (uniqueDeals.length === 0) {
-        const combinedError = fetchErrors.length > 0 ? fetchErrors.join("; ") : "No live deals returned"
-        throw new Error(`Failed to fetch Chrono24 deals for all queried brands: ${combinedError}`)
+        throw new Error("No synced deal listings are available yet.")
       }
 
       const heuristicScored = uniqueDeals.map((deal) => scoreHeuristically(deal, watches, preferences))
@@ -388,7 +359,7 @@ Return every deal id exactly once.`
     } catch (error) {
       setDeals([])
       setIsLiveData(false)
-      setErrorMessage(error instanceof Error ? error.message : "Chrono24 data unavailable")
+      setErrorMessage(error instanceof Error ? error.message : "Deal listings unavailable")
     } finally {
       setIsLoading(false)
     }
@@ -454,8 +425,7 @@ Return every deal id exactly once.`
   }
 
   const handleRefresh = () => {
-    // Pass `forced = true` so the search cache is cleared before the fetch.
-    fetchDeals(true)
+    fetchDeals()
   }
 
   const toggleFavorite = (id: string, event: MouseEvent) => {
@@ -477,11 +447,11 @@ Return every deal id exactly once.`
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-3xl font-semibold">Deal Flow</h1>
-          <p className="text-muted-foreground mt-1">Chrono24 live deals filtered to your portfolio and AI preferences</p>
+          <p className="text-muted-foreground mt-1">Synced marketplace listings filtered to your portfolio and AI preferences</p>
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="outline" className={isLiveData ? "border-success/40 text-success" : ""}>
-            {isLiveData ? "Live Chrono24 Data" : "Live Data Unavailable"}
+            {isLiveData ? "Live Deal Listings" : "Live Data Unavailable"}
           </Badge>
           <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isLoading}>
             <ArrowsClockwise className="mr-2" size={16} />
@@ -493,7 +463,7 @@ Return every deal id exactly once.`
       {errorMessage && (
         <Card className="border-amber-500/30 bg-amber-500/10">
           <CardContent className="py-3 text-sm text-amber-200">
-            Chrono24 API connection issue: {errorMessage}
+            Synced deal listings unavailable: {errorMessage}
           </CardContent>
         </Card>
       )}

@@ -11,7 +11,7 @@ import { Sparkle, PaperPlaneTilt, Image as ImageIcon, Plus, Fire, Star, Shopping
 import { toast } from "sonner"
 import { DailyLimitError, callAI, createAICacheKey, getTodayCacheBucket, hashAIInput, parseAIJson } from "@/lib/ai/caller"
 import { useAIQuota } from "@/lib/ai/useAIQuota"
-import { searchChrono24Deals, isChrono24WrapperConfigured } from "@/lib/chrono24-client"
+import { areDealListingsConfigured, fetchDealListings } from "@/lib/deal-listings-client"
 import { formatCurrency } from "@/lib/currency"
 import { useKV } from "@/lib/useKV"
 
@@ -294,8 +294,8 @@ export function AIAdvisorModule({ watches, userId, preferredCurrency = "USD" }: 
 
   useEffect(() => {
     // Load (or reload) the Deal of the Day whenever the watch portfolio changes.
-    // The function always attempts live data and falls back to cached or static
-    // deals, so we no longer need to gate on `hasChrono24Credentials`.
+    // The function always attempts synced Supabase data and falls back to cached
+    // results, so there is no separate browser-side marketplace client gate.
     // `mockListings` is intentionally excluded from the dependency array:
     // loadDealOfDay() itself writes to mockListings when it fetches live data,
     // so including it here would cause an infinite update loop.
@@ -572,36 +572,18 @@ Respond in valid JSON format:
       let listings: Deal[] = []
       let usedLiveData = false
 
-      // Attempt live data only when a wrapper URL is configured/resolved;
-      // otherwise skip directly to cached/static fallbacks.
       const portfolioBrands = Array.from(new Set(watches.map((watch) => watch.brand))).slice(0, MAX_DEAL_OF_DAY_BRANDS)
       const queryTargets = portfolioBrands.length > 0 ? portfolioBrands : DEAL_OF_DAY_FALLBACK_BRANDS
-      const uniqueDealsMap = new Map<string, Deal>()
-
-      if (isChrono24WrapperConfigured) {
-        for (const brand of queryTargets) {
-          try {
-            const brandDeals = await searchChrono24Deals({
-              brand,
-              page: 1,
-              limit: DEAL_OF_DAY_QUERY_LIMIT,
-            })
-
-            for (const deal of brandDeals) {
-              uniqueDealsMap.set(deal.id, deal)
-            }
-
-            if (uniqueDealsMap.size >= DEAL_OF_DAY_QUERY_LIMIT) {
-              break
-            }
-          } catch (error) {
-            console.error(`[AIAdvisorModule] Failed to fetch Chrono24 deals for Deal of the Day brand "${brand}".`, error)
-            // Keep iterating through the remaining brands before failing.
-          }
+      if (areDealListingsConfigured) {
+        try {
+          listings = await fetchDealListings({
+            brands: queryTargets,
+            limit: DEAL_OF_DAY_QUERY_LIMIT,
+          })
+        } catch (error) {
+          console.error("[AIAdvisorModule] Failed to load synced deal listings for Deal of the Day.", error)
         }
       }
-
-      listings = Array.from(uniqueDealsMap.values())
 
       if (listings.length > 0) {
         // Cache the live results for next time
@@ -611,7 +593,7 @@ Respond in valid JSON format:
         // Use previously cached live results
         listings = mockListings
       } else {
-        throw new Error("No Chrono24 listings were returned for Deal of the Day.")
+        throw new Error("No synced deal listings were returned for Deal of the Day.")
       }
 
       setIsLiveDealData(usedLiveData)
@@ -630,7 +612,7 @@ Respond in valid JSON format:
       listingsWithScores.sort((a, b) => b.dealScore - a.dealScore)
       const topDeal = listingsWithScores[0]
       if (!topDeal) {
-        throw new Error("No scored Chrono24 listings are available for Deal of the Day.")
+        throw new Error("No scored deal listings are available for Deal of the Day.")
       }
       setDealOfDay(topDeal)
 
@@ -657,7 +639,7 @@ Respond in valid JSON format:
       setDealOfDay(null)
       setDealAssessment('')
       setIsLiveDealData(false)
-      setDealOfDayError(error instanceof Error ? error.message : "Failed to load Deal of the Day from Chrono24.")
+      setDealOfDayError(error instanceof Error ? error.message : "Failed to load Deal of the Day.")
       console.error("Failed to load deal of day:", error)
     } finally {
       setIsLoadingDeal(false)

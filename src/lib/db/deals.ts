@@ -36,6 +36,12 @@ export interface SavedDealRecord {
   savedAt: string
 }
 
+export interface DealListingSearchOptions {
+  brands?: string[]
+  limit?: number
+  maxAskingPrice?: number
+}
+
 function throwIfError(error: PostgrestError | null): asserts error is null {
   if (error) {
     throw error
@@ -113,6 +119,38 @@ export async function listDealListings(
     .from('deal_listings')
     .select('*')
     .eq('is_active', true)
+    .order('deal_score', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(limit)
+
+  throwIfError(error)
+  return (data ?? []).map(mapListing)
+}
+
+export async function searchDealListings(
+  client: Pick<SupabaseClient<Database>, 'from'>,
+  options: DealListingSearchOptions = {},
+): Promise<DealListingRecord[]> {
+  const {
+    brands = [],
+    limit = 50,
+    maxAskingPrice,
+  } = options
+
+  let query = client
+    .from('deal_listings')
+    .select('*')
+    .eq('is_active', true)
+
+  if (brands.length > 0) {
+    query = query.in('brand', brands)
+  }
+
+  if (typeof maxAskingPrice === 'number' && Number.isFinite(maxAskingPrice) && maxAskingPrice > 0) {
+    query = query.lte('asking_price', maxAskingPrice)
+  }
+
+  const { data, error } = await query
     .order('deal_score', { ascending: false })
     .order('created_at', { ascending: false })
     .limit(limit)
