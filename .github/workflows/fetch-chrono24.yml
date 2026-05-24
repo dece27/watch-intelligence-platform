@@ -5,10 +5,16 @@ on:
     # Run every 6 hours — respectful cadence for a scraper
     - cron: '0 */6 * * *'
   workflow_dispatch:   # Allow manual trigger from GitHub UI
+    inputs:
+      github_environment:
+        description: 'GitHub Environment that contains SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY'
+        required: false
+        default: production
 
 jobs:
   fetch:
     runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.github_environment || vars.CHRONO24_GITHUB_ENVIRONMENT || 'production' }}
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL || vars.SUPABASE_URL || vars.NEXT_PUBLIC_SUPABASE_URL || '' }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || vars.SUPABASE_SERVICE_ROLE_KEY || '' }}
@@ -28,7 +34,7 @@ jobs:
       - name: Fetch listings from Chrono24
         run: |
           if [ -z "${SUPABASE_URL}" ] || [ -z "${SUPABASE_SERVICE_ROLE_KEY}" ]; then
-            echo "Skipping Chrono24 fetch: set SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in repository secrets or vars."
+            echo "Skipping Chrono24 fetch: configure SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL) and SUPABASE_SERVICE_ROLE_KEY in the selected GitHub Environment, repository secrets, or repository variables."
             exit 0
           fi
           python scripts/fetch-chrono24.py
