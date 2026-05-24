@@ -74,7 +74,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    return jsonResponse(502, { listings: [], total: 0, error: message })
+    // Log the error server-side but do not expose internal details (e.g. the
+    // configured wrapper URL) to the caller.
+    console.error('chrono24-proxy: upstream request failed:', error instanceof Error ? error.message : String(error))
+    return jsonResponse(502, { listings: [], total: 0, error: 'Failed to fetch from Chrono24 API wrapper.' })
   }
 })
