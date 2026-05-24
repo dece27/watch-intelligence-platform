@@ -3,6 +3,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/types'
 
 let browserClient: SupabaseClient<Database> | null = null
+const SUPABASE_URL_ENV_NAMES = ['VITE_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_URL'] as const
+const SUPABASE_ANON_KEY_ENV_NAMES = ['VITE_SUPABASE_ANON_KEY', 'NEXT_PUBLIC_SUPABASE_ANON_KEY', 'SUPABASE_ANON_KEY'] as const
 
 function readEnv(name: string): string | undefined {
   const viteEnv = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env
@@ -14,7 +16,8 @@ function readEnv(name: string): string | undefined {
 }
 
 export function hasSupabaseBrowserEnv(): boolean {
-  return Boolean(readEnv('SUPABASE_URL')) && Boolean(readEnv('SUPABASE_ANON_KEY'))
+  return SUPABASE_URL_ENV_NAMES.some((name) => Boolean(readEnv(name)))
+    && SUPABASE_ANON_KEY_ENV_NAMES.some((name) => Boolean(readEnv(name)))
 }
 
 function requireEnv(...names: string[]): string {
@@ -34,8 +37,8 @@ export function getSupabaseClient(): SupabaseClient<Database> {
   }
 
   browserClient = createBrowserClient<Database>(
-    requireEnv('SUPABASE_URL'),
-    requireEnv('SUPABASE_ANON_KEY'),
+    requireEnv(...SUPABASE_URL_ENV_NAMES),
+    requireEnv(...SUPABASE_ANON_KEY_ENV_NAMES),
   )
 
   return browserClient
