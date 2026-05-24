@@ -22,7 +22,7 @@ const MODEL_ROUTES: Record<string, string> = {
   deal_ranking: 'gpt-4o-mini',
   what_if: 'gpt-4o-mini',
   identify: 'gpt-4o',
-  rebalancing: 'gpt-4o',
+  rebalancing: 'gpt-4o-mini',
 }
 
 type GitHubModelsRequest = {
