@@ -1,6 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-const GITHUB_TOKEN = Deno.env.get('GITHUB_TOKEN')!
+const GITHUB_TOKEN = Deno.env.get('GITHUB_TOKEN')?.trim() ?? ''
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
@@ -42,6 +42,10 @@ type CachedAiPayload = {
     completionTokens: number
     totalTokens: number
   }
+}
+
+function hasInvalidHeaderCharacters(value: string) {
+  return /[\r\n]/.test(value)
 }
 
 function jsonResponse(status: number, body: unknown) {
@@ -176,9 +180,9 @@ function extractContent(content: unknown): string {
 }
 
 async function recordUsageIfAuthenticated(req: Request, taskType: string, totalTokens: number) {
-  const authorization = req.headers.get('Authorization')
+  const authorization = req.headers.get('Authorization')?.trim() ?? ''
 
-  if (!authorization || !SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  if (!authorization || hasInvalidHeaderCharacters(authorization) || !SUPABASE_URL || !SUPABASE_ANON_KEY) {
     return
   }
 
@@ -215,6 +219,10 @@ Deno.serve(async (req) => {
     return jsonResponse(500, { error: 'Missing GITHUB_TOKEN environment variable.' })
   }
 
+  if (hasInvalidHeaderCharacters(GITHUB_TOKEN)) {
+    return jsonResponse(500, { error: 'Invalid GITHUB_TOKEN environment variable.' })
+  }
+
   let body: GitHubModelsRequest
   try {
     body = await req.json()
@@ -249,13 +257,15 @@ Deno.serve(async (req) => {
   }
 
   const model = resolveModel(taskType, requestedModel)
+  const upstreamHeaders = new Headers({
+    Authorization: `Bearer ${GITHUB_TOKEN}`,
+    'Content-Type': 'application/json',
+  })
+  upstreamHeaders.delete('anthropic-beta')
 
   const upstreamResponse = await fetch(ENDPOINT, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${GITHUB_TOKEN}`,
-      'Content-Type': 'application/json',
-    },
+    headers: upstreamHeaders,
     body: JSON.stringify({
       model,
       messages: [
