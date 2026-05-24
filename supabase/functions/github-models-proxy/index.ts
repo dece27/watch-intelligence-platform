@@ -42,10 +42,10 @@ type CachedAiPayload = {
     completionTokens: number
     totalTokens: number
   }
+}
 
-  function hasInvalidHeaderCharacters(value: string) {
-    return /[\r\n]/.test(value)
-  }
+function hasInvalidHeaderCharacters(value: string) {
+  return /[\r\n]/.test(value)
 }
 
 function jsonResponse(status: number, body: unknown) {
@@ -257,13 +257,15 @@ Deno.serve(async (req) => {
   }
 
   const model = resolveModel(taskType, requestedModel)
+  const upstreamHeaders = new Headers({
+    Authorization: `Bearer ${GITHUB_TOKEN}`,
+    'Content-Type': 'application/json',
+  })
+  upstreamHeaders.delete('anthropic-beta')
 
   const upstreamResponse = await fetch(ENDPOINT, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${GITHUB_TOKEN}`,
-      'Content-Type': 'application/json',
-    },
+    headers: upstreamHeaders,
     body: JSON.stringify({
       model,
       messages: [
