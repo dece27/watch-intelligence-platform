@@ -17,7 +17,7 @@ jobs:
     environment: ${{ github.event.inputs.github_environment || 'production' }}
     env:
       SUPABASE_URL: ${{ vars.SUPABASE_URL }}
-      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       WATCH_E2E_EMAIL: ${{ vars.WATCH_E2E_EMAIL }}
       WATCH_E2E_PASSWORD: ${{ secrets.WATCH_E2E_PASSWORD }}
@@ -32,7 +32,7 @@ jobs:
         run: |
           missing=()
           [ -n "${SUPABASE_URL:-}" ] || missing+=("SUPABASE_URL variable")
-          [ -n "${SUPABASE_ANON_KEY:-}" ] || missing+=("SUPABASE_ANON_KEY secret")
+          [ -n "${SUPABASE_ANON_KEY:-}" ] || missing+=("SUPABASE_ANON_KEY variable")
           [ -n "${SUPABASE_SERVICE_ROLE_KEY:-}" ] || missing+=("SUPABASE_SERVICE_ROLE_KEY secret")
 
           if [ "${#missing[@]}" -gt 0 ]; then
