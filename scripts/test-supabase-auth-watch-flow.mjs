@@ -14,6 +14,65 @@ function optionalEnv(name, fallback) {
   return process.env[name]?.trim() || fallback
 }
 
+function decodeJwtPayload(token, keyName) {
+  const parts = token.split('.')
+  if (parts.length < 2) {
+    throw new Error(`${keyName} is not a valid JWT token`)
+  }
+
+  const normalized = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+  const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4)
+
+  let decoded
+  try {
+    decoded = Buffer.from(padded, 'base64').toString('utf8')
+  } catch {
+    throw new Error(`${keyName} JWT payload could not be base64-decoded`)
+  }
+
+  try {
+    return JSON.parse(decoded)
+  } catch {
+    throw new Error(`${keyName} JWT payload is not valid JSON`)
+  }
+}
+
+function normalizeHostFromUrl(value, label) {
+  try {
+    return new URL(value).host.toLowerCase()
+  } catch {
+    throw new Error(`${label} is not a valid URL: ${value}`)
+  }
+}
+
+function getIssuerHostFromJwt(token, keyName) {
+  const payload = decodeJwtPayload(token, keyName)
+  if (!payload?.iss || typeof payload.iss !== 'string') {
+    throw new Error(`${keyName} is missing a valid "iss" claim`)
+  }
+  return normalizeHostFromUrl(payload.iss, `${keyName} iss claim`)
+}
+
+function assertSupabaseProjectAlignment({ supabaseUrl, supabaseAnonKey, supabaseServiceRoleKey }) {
+  const urlHost = normalizeHostFromUrl(supabaseUrl, 'SUPABASE_URL')
+  const anonIssuerHost = getIssuerHostFromJwt(supabaseAnonKey, 'SUPABASE_ANON_KEY')
+  const serviceIssuerHost = getIssuerHostFromJwt(supabaseServiceRoleKey, 'SUPABASE_SERVICE_ROLE_KEY')
+
+  if (anonIssuerHost !== serviceIssuerHost || anonIssuerHost !== urlHost) {
+    throw new Error(
+      [
+        'Supabase configuration mismatch detected.',
+        `SUPABASE_URL host: ${urlHost}`,
+        `SUPABASE_ANON_KEY project host: ${anonIssuerHost}`,
+        `SUPABASE_SERVICE_ROLE_KEY project host: ${serviceIssuerHost}`,
+        'Ensure all three values point to the same Supabase project in the selected GitHub Environment.',
+      ].join(' '),
+    )
+  }
+
+  return urlHost
+}
+
 function assert(condition, message) {
   if (!condition) {
     throw new Error(message)
@@ -50,6 +109,39 @@ function createServiceClient(url, serviceRoleKey) {
       detectSessionInUrl: false,
     },
   })
+}
+
+async function assertRequiredTablesExist({ serviceClient, tableNames, projectHost }) {
+  const missingTables = []
+
+  for (const tableName of tableNames) {
+    const { error } = await serviceClient.from(tableName).select('id').limit(1)
+    if (!error) {
+      continue
+    }
+
+    const errorMessage = (error.message || '').toLowerCase()
+    const isMissingTable =
+      errorMessage.includes(`could not find the table 'public.${tableName}'`) ||
+      errorMessage.includes(`relation "public.${tableName}" does not exist`)
+
+    if (isMissingTable) {
+      missingTables.push(tableName)
+      continue
+    }
+
+    throw new Error(`Schema preflight failed while checking public.${tableName}: ${error.message}`)
+  }
+
+  if (missingTables.length > 0) {
+    throw new Error(
+      [
+        `Required schema tables are missing in Supabase project "${projectHost}": ${missingTables.map((name) => `public.${name}`).join(', ')}.`,
+        'This usually means database migrations were not applied to this project.',
+        "Apply migrations to this project (for example with `supabase db push`) and rerun the workflow.",
+      ].join(' '),
+    )
+  }
 }
 
 async function ensureDummyUserCanLogin({ anonClient, serviceClient, email, password, displayName }) {
@@ -94,6 +186,18 @@ async function main() {
 
   const anonClient = createAnonClient(supabaseUrl, supabaseAnonKey)
   const serviceClient = createServiceClient(supabaseUrl, supabaseServiceRoleKey)
+
+  console.log('0) Validating Supabase project configuration and schema...')
+  const projectHost = assertSupabaseProjectAlignment({
+    supabaseUrl,
+    supabaseAnonKey,
+    supabaseServiceRoleKey,
+  })
+  await assertRequiredTablesExist({
+    serviceClient,
+    tableNames: ['profiles', 'user_preferences', 'watches'],
+    projectHost,
+  })
 
   console.log('1) Logging in dummy user (creating account if missing)...')
   const user = await ensureDummyUserCanLogin({
