@@ -24,17 +24,44 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Validate backup configuration
+        id: preflight
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          CLOUDFLARE_R2_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY }}
+          CLOUDFLARE_R2_SECRET_KEY: ${{ secrets.CLOUDFLARE_R2_SECRET_KEY }}
+          CLOUDFLARE_R2_ACCOUNT_ID: ${{ vars.CLOUDFLARE_R2_ACCOUNT_ID }}
+          CLOUDFLARE_R2_BUCKET: ${{ vars.CLOUDFLARE_R2_BUCKET }}
+        run: |
+          missing=()
+          [ -n "${SUPABASE_DB_URL:-}" ] || missing+=("SUPABASE_DB_URL secret")
+          [ -n "${CLOUDFLARE_R2_ACCESS_KEY:-}" ] || missing+=("CLOUDFLARE_R2_ACCESS_KEY secret")
+          [ -n "${CLOUDFLARE_R2_SECRET_KEY:-}" ] || missing+=("CLOUDFLARE_R2_SECRET_KEY secret")
+          [ -n "${CLOUDFLARE_R2_ACCOUNT_ID:-}" ] || missing+=("CLOUDFLARE_R2_ACCOUNT_ID variable")
+          [ -n "${CLOUDFLARE_R2_BUCKET:-}" ] || missing+=("CLOUDFLARE_R2_BUCKET variable")
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf '::warning::Skipping backup because required configuration is missing: %s\n' "$(IFS=', '; echo "${missing[*]}")"
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
       - name: Install Supabase CLI
+        if: steps.preflight.outputs.configured == 'true'
         uses: supabase/setup-cli@v2
         with:
           version: latest
 
       - name: Install rclone
+        if: steps.preflight.outputs.configured == 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y rclone
 
       - name: Dump database backup
+        if: steps.preflight.outputs.configured == 'true'
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
@@ -44,30 +71,29 @@ jobs:
           echo "BACKUP_FILE=$BACKUP_FILE" >> "$GITHUB_ENV"
 
       - name: Gzip backup file
+        if: steps.preflight.outputs.configured == 'true'
         run: |
           gzip -f "$BACKUP_FILE"
           echo "BACKUP_ARCHIVE=${BACKUP_FILE}.gz" >> "$GITHUB_ENV"
 
       - name: Upload backup to Cloudflare R2
+        if: steps.preflight.outputs.configured == 'true'
         run: |
           rclone copy "$BACKUP_ARCHIVE" "$R2_REMOTE_PATH/" --immutable
 
       - name: Delete R2 backups older than 30 days
+        if: steps.preflight.outputs.configured == 'true'
         run: |
           rclone delete "$R2_REMOTE_PATH/" --min-age 30d
           rclone rmdirs "$R2_REMOTE_PATH/" --leave-root
 
       - name: Send failure alert via Resend
-        if: failure()
+        if: ${{ failure() && steps.preflight.outputs.configured == 'true' && secrets.RESEND_API_KEY != '' && vars.BACKUP_ALERT_EMAIL_TO != '' }}
         env:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
         run: |
           FROM_EMAIL="${BACKUP_ALERT_EMAIL_FROM:-onboarding@resend.dev}"
           TO_EMAIL="${BACKUP_ALERT_EMAIL_TO:-}"
-          if [ -z "$TO_EMAIL" ]; then
-            echo "BACKUP_ALERT_EMAIL_TO repository variable is required to send Resend alerts."
-            exit 1
-          fi
 
           curl --fail-with-body --silent --show-error \
             -X POST https://api.resend.com/emails \
