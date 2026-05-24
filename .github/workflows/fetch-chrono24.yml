@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL || vars.SUPABASE_URL || vars.NEXT_PUBLIC_SUPABASE_URL || '' }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || '' }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || vars.SUPABASE_SERVICE_ROLE_KEY || '' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -26,12 +26,12 @@ jobs:
         run: pip install -r scripts/requirements-chrono24.txt
 
       - name: Fetch listings from Chrono24
-        if: ${{ env.SUPABASE_URL != '' && env.SUPABASE_SERVICE_ROLE_KEY != '' }}
-        run: python scripts/fetch-chrono24.py
-
-      - name: Skip fetch when Supabase secrets are missing
-        if: ${{ env.SUPABASE_URL == '' || env.SUPABASE_SERVICE_ROLE_KEY == '' }}
-        run: echo "Skipping Chrono24 fetch: set SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in repository secrets."
+        run: |
+          if [ -z "${SUPABASE_URL}" ] || [ -z "${SUPABASE_SERVICE_ROLE_KEY}" ]; then
+            echo "Skipping Chrono24 fetch: set SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in repository secrets or vars."
+            exit 0
+          fi
+          python scripts/fetch-chrono24.py
 
       - name: Report result
         if: failure()
