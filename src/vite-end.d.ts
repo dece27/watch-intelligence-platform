@@ -3,6 +3,8 @@ declare const GITHUB_RUNTIME_PERMANENT_NAME: string
 declare const BASE_KV_SERVICE_URL: string
 
 interface ImportMetaEnv {
+	readonly SUPABASE_URL?: string
+	readonly SUPABASE_ANON_KEY?: string
 	readonly VITE_WATCHCHARTS_API_KEY?: string
 	readonly VITE_WATCHCHARTS_BASE_URL?: string
 	readonly VITE_DEFAULT_ACCOUNT_PASSWORD_HASH?: string
