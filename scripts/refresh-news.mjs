@@ -43,16 +43,12 @@ const TAG_PATTERNS = [
   { pattern: /collaboration|collab/i, tag: 'collaboration' },
 ]
 
-function requireEnv(name) {
-  const value = process.env[name]?.trim()
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`)
-  }
-  return value
+function getOptionalEnv(name) {
+  return process.env[name]?.trim() || null
 }
 
 function createServiceClient() {
-  return createClient(requireEnv('SUPABASE_URL'), requireEnv('SUPABASE_SERVICE_ROLE_KEY'), {
+  return createClient(getOptionalEnv('SUPABASE_URL'), getOptionalEnv('SUPABASE_SERVICE_ROLE_KEY'), {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
@@ -174,6 +170,13 @@ async function fetchSource(parser, source) {
 }
 
 async function main() {
+  const supabaseUrl = getOptionalEnv('SUPABASE_URL')
+  const supabaseServiceRoleKey = getOptionalEnv('SUPABASE_SERVICE_ROLE_KEY')
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
+    console.log('Skipping: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not configured')
+    return
+  }
+
   const parser = new Parser({
     customFields: {
       item: ['content:encoded', 'media:content', 'media:thumbnail'],
