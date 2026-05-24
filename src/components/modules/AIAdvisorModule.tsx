@@ -292,7 +292,7 @@ export function AIAdvisorModule({ watches, userId, preferredCurrency = "USD" }: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [watches, preferredCurrency])
 
-  const generateSignals = async () => {
+  const generateSignals = async (forceRefresh = false) => {
     if (watches.length === 0) return
     
     setIsLoadingSignals(true)
@@ -320,7 +320,7 @@ ${watchSummary}`
             prompt: promptText,
             jsonMode: true,
             taskType: 'signal',
-            cacheKey: createAICacheKey('signal', watch.id, today, hashAIInput(watchSummary)),
+            cacheKey: forceRefresh ? undefined : createAICacheKey('signal', watch.id, today, hashAIInput(watchSummary)),
             cacheTtlSeconds: SIGNAL_CACHE_TTL_SECONDS,
           })
           const parsed = parseAIJson<{ signal?: string; reasoning?: string; confidence?: string }>(response)
@@ -854,7 +854,7 @@ Respond in valid JSON format:
             <Button 
               variant="outline" 
               size="sm"
-              onClick={generateSignals}
+              onClick={() => generateSignals(true)}
               disabled={isLoadingSignals}
             >
               {isLoadingSignals ? 'Analyzing...' : 'Refresh Signals'}
