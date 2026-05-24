@@ -1,22 +1,31 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { callGitHubModelsProxy } from '@/lib/github-models-proxy'
 
-const invoke = vi.fn()
-const getSupabaseClient = vi.fn(() => ({
-  functions: {
+const { invoke, getSupabaseClient, hasSupabaseBrowserEnv } = vi.hoisted(() => {
+  const invoke = vi.fn()
+  const getSupabaseClient = vi.fn(() => ({
+    functions: {
+      invoke,
+    },
+  }))
+
+  return {
     invoke,
-  },
-}))
+    getSupabaseClient,
+    hasSupabaseBrowserEnv: vi.fn(() => true),
+  }
+})
 
 vi.mock('@/lib/supabase/client', () => ({
   getSupabaseClient,
-  hasSupabaseBrowserEnv: vi.fn(() => true),
+  hasSupabaseBrowserEnv,
 }))
 
 describe('github models proxy client', () => {
   beforeEach(() => {
     invoke.mockReset()
     getSupabaseClient.mockClear()
+    hasSupabaseBrowserEnv.mockReturnValue(true)
   })
 
   it('surfaces structured edge function errors', async () => {
