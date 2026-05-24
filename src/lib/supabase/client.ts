@@ -14,7 +14,10 @@ function readEnv(name: string): string | undefined {
 }
 
 export function hasSupabaseBrowserEnv(): boolean {
-  return Boolean(readEnv('SUPABASE_URL')) && Boolean(readEnv('SUPABASE_ANON_KEY'))
+  return (
+    Boolean(readEnv('VITE_SUPABASE_URL') ?? readEnv('SUPABASE_URL')) &&
+    Boolean(readEnv('VITE_SUPABASE_ANON_KEY') ?? readEnv('SUPABASE_ANON_KEY'))
+  )
 }
 
 function requireEnv(...names: string[]): string {
@@ -34,8 +37,8 @@ export function getSupabaseClient(): SupabaseClient<Database> {
   }
 
   browserClient = createBrowserClient<Database>(
-    requireEnv('SUPABASE_URL'),
-    requireEnv('SUPABASE_ANON_KEY'),
+    requireEnv('VITE_SUPABASE_URL', 'SUPABASE_URL'),
+    requireEnv('VITE_SUPABASE_ANON_KEY', 'SUPABASE_ANON_KEY'),
   )
 
   return browserClient

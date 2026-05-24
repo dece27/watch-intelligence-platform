@@ -189,6 +189,10 @@ export interface Database {
           deleted_at: string | null
           created_at: string
           updated_at: string
+          category: string | null
+          movement: string | null
+          case_material: string | null
+          case_diameter: string | null
         }
         Insert: {
           id?: string
@@ -212,6 +216,10 @@ export interface Database {
           deleted_at?: string | null
           created_at?: string
           updated_at?: string
+          category?: string | null
+          movement?: string | null
+          case_material?: string | null
+          case_diameter?: string | null
         }
         Update: {
           id?: string
@@ -235,6 +243,10 @@ export interface Database {
           deleted_at?: string | null
           created_at?: string
           updated_at?: string
+          category?: string | null
+          movement?: string | null
+          case_material?: string | null
+          case_diameter?: string | null
         }
       }
       watch_photos: {

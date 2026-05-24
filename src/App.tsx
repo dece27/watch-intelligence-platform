@@ -26,6 +26,10 @@ import {
   prepareWatchForStorage,
 } from "@/lib/watchPhotoUtils"
 import { useKV } from "@/lib/useKV"
+import { hasSupabaseBrowserEnv, getSupabaseClient } from "@/lib/supabase/client"
+import { getWatches, createWatch, updateWatch, softDeleteWatch } from "@/lib/db/watches"
+import { getUserPreferences, upsertUserPreferences } from "@/lib/db/user"
+import { watchToInsert, watchToUpdate, rowToWatch } from "@/lib/db/watchMapper"
 
 function decodeLegacySharedSlug(value: string): string | null {
   try {
@@ -135,6 +139,16 @@ function App() {
       }
 
       try {
+        // Supabase path: load preferences from DB when a session is available.
+        if (currentUser.supabaseId && hasSupabaseBrowserEnv()) {
+          const client = getSupabaseClient()
+          const prefs = await getUserPreferences(client, currentUser.supabaseId)
+          if (!active) return
+          setPreferredCurrency(normalizeCurrency(prefs?.currency))
+          return
+        }
+
+        // KV fallback.
         const key = `user_preferences_${currentUser.id}`
         const stored = await window.spark.kv.get<UserPreferences>(key)
         if (!active) return
@@ -149,54 +163,89 @@ function App() {
     return () => {
       active = false
     }
-  }, [currentUser?.id])
+  }, [currentUser?.id, currentUser?.supabaseId])
 
   const watchList = watches || []
   const totalValue = watchList.reduce((sum, w) => sum + (w.currentValue || w.purchasePrice), 0)
 
   useEffect(() => {
     const loadWatches = async () => {
-      if (currentUser?.id) {
-        try {
-          const watchesKey = `watches_${currentUser.id}`
-          const loadedWatches = await window.spark.kv.get<Watch[]>(watchesKey) || []
+      if (!currentUser?.id) {
+        setWatches([])
+        setWatchesLoaded(false)
+        return
+      }
+
+      try {
+        // Supabase path: fetch rows from DB and hydrate photo refs from KV.
+        if (currentUser.supabaseId && hasSupabaseBrowserEnv()) {
+          const rows = await getWatches(currentUser.supabaseId, { limit: 1000, offset: 0 })
           const hydratedWatches = await Promise.all(
-            loadedWatches.map(async (watch) => {
+            rows.map(async (row) => {
+              const watch = rowToWatch(row)
               const rawImage = watch.imageUrl
-              if (!rawImage) {
-                return { ...watch, imageUrl: undefined }
-              }
+              if (!rawImage) return watch
 
               if (isWatchPhotoRef(rawImage)) {
                 let storedPhoto: string | undefined = undefined
                 try {
-                  storedPhoto = await window.spark.kv.get<string>(getWatchPhotoKey(currentUser.id, watch.id)) ?? undefined
+                  storedPhoto =
+                    (await window.spark.kv.get<string>(
+                      getWatchPhotoKey(currentUser.supabaseId!, watch.id),
+                    )) ?? undefined
                 } catch (error) {
                   console.error(`Error loading watch photo for ${watch.id}:`, error)
                 }
-                return {
-                  ...watch,
-                  imageUrl: sanitizeWatchImageUrl(storedPhoto),
-                }
+                return { ...watch, imageUrl: sanitizeWatchImageUrl(storedPhoto) }
               }
 
-              return {
-                ...watch,
-                imageUrl: sanitizeWatchImageUrl(rawImage),
-              }
-            })
+              return { ...watch, imageUrl: sanitizeWatchImageUrl(rawImage) }
+            }),
           )
-
           setWatches(hydratedWatches)
           setWatchesLoaded(true)
-        } catch (error) {
-          console.error('Error loading watches:', error)
-          setWatches([])
-          setWatchesLoaded(true)
+          return
         }
-      } else {
+
+        // KV fallback.
+        const watchesKey = `watches_${currentUser.id}`
+        const loadedWatches = (await window.spark.kv.get<Watch[]>(watchesKey)) || []
+        const hydratedWatches = await Promise.all(
+          loadedWatches.map(async (watch) => {
+            const rawImage = watch.imageUrl
+            if (!rawImage) {
+              return { ...watch, imageUrl: undefined }
+            }
+
+            if (isWatchPhotoRef(rawImage)) {
+              let storedPhoto: string | undefined = undefined
+              try {
+                storedPhoto =
+                  (await window.spark.kv.get<string>(
+                    getWatchPhotoKey(currentUser.id, watch.id),
+                  )) ?? undefined
+              } catch (error) {
+                console.error(`Error loading watch photo for ${watch.id}:`, error)
+              }
+              return {
+                ...watch,
+                imageUrl: sanitizeWatchImageUrl(storedPhoto),
+              }
+            }
+
+            return {
+              ...watch,
+              imageUrl: sanitizeWatchImageUrl(rawImage),
+            }
+          }),
+        )
+
+        setWatches(hydratedWatches)
+        setWatchesLoaded(true)
+      } catch (error) {
+        console.error('Error loading watches:', error)
         setWatches([])
-        setWatchesLoaded(false)
+        setWatchesLoaded(true)
       }
     }
     loadWatches()
@@ -234,6 +283,15 @@ function App() {
       })
     }
 
+    // Sign out from Supabase Auth when a session exists.
+    if (hasSupabaseBrowserEnv()) {
+      try {
+        await getSupabaseClient().auth.signOut()
+      } catch {
+        // Non-fatal: session cleanup best-effort only.
+      }
+    }
+
     await setPersistedUser(null)
     try {
       sessionStorage.removeItem("currentUserSession")
@@ -249,6 +307,27 @@ function App() {
     setPreferredCurrency(normalizedCurrency)
     if (!currentUser?.id) return
 
+    // Supabase path.
+    if (currentUser.supabaseId && hasSupabaseBrowserEnv()) {
+      try {
+        const client = getSupabaseClient()
+        await upsertUserPreferences(client, {
+          userId: currentUser.supabaseId,
+          currency: normalizedCurrency,
+          locale: 'en',
+          theme: 'dark',
+          showPurchasePrices: true,
+          emailPriceAlerts: true,
+          emailWeeklyDigest: false,
+          defaultPortfolioView: 'value',
+        })
+      } catch {
+        // Silent persistence failure; UI remains functional.
+      }
+      return
+    }
+
+    // KV fallback.
     const key = `user_preferences_${currentUser.id}`
     try {
       const existing = await window.spark.kv.get<UserPreferences>(key)
@@ -271,9 +350,59 @@ function App() {
 
   const handleUpdateWatches = async (updater: (currentWatches: Watch[]) => Watch[]) => {
     if (!currentUser?.id) return
-    
+
+    // Supabase path: diff old vs new and issue individual create/update/delete.
+    if (currentUser.supabaseId && hasSupabaseBrowserEnv()) {
+      try {
+        const supabaseUserId = currentUser.supabaseId
+        const prevWatches = watches
+        const nextWatches = updater(prevWatches)
+
+        // Prepare storage-ready versions (handles kv-photo: refs and data URLs).
+        const prepared = await Promise.all(
+          nextWatches.map((watch) => {
+            const existingDisplayUrl = prevWatches.find((w) => w.id === watch.id)?.imageUrl
+            return prepareWatchForStorage(
+              watch,
+              supabaseUserId,
+              (key, value) => window.spark.kv.set(key, value),
+              existingDisplayUrl,
+            )
+          }),
+        )
+
+        const prevIds = new Set(prevWatches.map((w) => w.id))
+        const nextIds = new Set(nextWatches.map((w) => w.id))
+
+        // Soft-delete watches that are no longer in the list.
+        await Promise.all(
+          prevWatches
+            .filter((w) => !nextIds.has(w.id))
+            .map((w) => softDeleteWatch(w.id)),
+        )
+
+        // Create or update watches.
+        await Promise.all(
+          prepared.map(({ watchForStorage }) => {
+            if (!prevIds.has(watchForStorage.id)) {
+              return createWatch(watchToInsert(watchForStorage, supabaseUserId))
+            }
+            return updateWatch(watchForStorage.id, watchToUpdate(watchForStorage))
+          }),
+        )
+
+        setWatches(prepared.map((p) => p.watchForDisplay))
+        console.log(`Synced ${nextWatches.length} watches to Supabase`)
+      } catch (error) {
+        console.error('Error syncing watches to Supabase:', error)
+        throw error
+      }
+      return
+    }
+
+    // KV fallback (original implementation).
     const watchesKey = `watches_${currentUser.id}`
-    
+
     try {
       const currentWatches = await window.spark.kv.get<Watch[]>(watchesKey) || []
       const updatedWatches = updater(currentWatches)
@@ -292,9 +421,9 @@ function App() {
       )
       const watchesForStorage = preparedWatches.map((watch) => watch.watchForStorage)
       const watchesForDisplay = preparedWatches.map((watch) => watch.watchForDisplay)
-      
+
       console.log(`Saving ${watchesForStorage.length} watches to key: ${watchesKey}`)
-      
+
       await window.spark.kv.set(watchesKey, watchesForStorage)
       setWatches(watchesForDisplay)
       console.log('Watches saved successfully')
