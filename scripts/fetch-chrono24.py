@@ -164,18 +164,23 @@ def main() -> None:
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
     total_upserted = 0
     total_skipped = 0
+    total_request_errors = 0
+    total_retrieved = 0
+    total_upsert_errors = 0
 
     for query_str in QUERIES:
         print(f"\nFetching: {query_str}")
         try:
             results = chrono24.query(query_str)
             listings = list(results.search(limit=LISTINGS_PER_QUERY))
+            total_retrieved += len(listings)
             print(f"  Retrieved {len(listings)} listings")
         except NoListingsFoundException:
             print(f"  No listings found for '{query_str}' — skipping")
             continue
         except RequestException as exc:
-            print(f"  Request error for '{query_str}': {exc} — skipping")
+            total_request_errors += 1
+            print(f"  Request error for '{query_str}': {type(exc).__name__}: {exc!r} — skipping")
             continue
 
         rows: list[dict[str, Any]] = []
@@ -190,15 +195,50 @@ def main() -> None:
             print(f"  No valid rows to upsert for '{query_str}'")
             continue
 
-        response = supabase.table("deal_listings").upsert(rows, on_conflict="id").execute()
+        try:
+            response = supabase.table("deal_listings").upsert(rows, on_conflict="id").execute()
+            response_error = getattr(response, "error", None)
+            if response_error:
+                total_upsert_errors += 1
+                print(f"  Supabase upsert error: {response_error}")
+                continue
+        except Exception as exc:  # defensive: supabase-py error surface varies by version
+            total_upsert_errors += 1
+            print(f"  Supabase upsert exception: {type(exc).__name__}: {exc}")
+            continue
 
-        if hasattr(response, "error") and response.error:
-            print(f"  Supabase upsert error: {response.error}")
+        total_upserted += len(rows)
+        print(f"  Upserted {len(rows)} rows")
+
+    print(
+        f"\nDone. Upserted: {total_upserted}  Skipped: {total_skipped}  "
+        f"Retrieved: {total_retrieved}  RequestErrors: {total_request_errors}  "
+        f"UpsertErrors: {total_upsert_errors}"
+    )
+
+    if total_upsert_errors > 0:
+        print("ERROR: One or more Supabase upserts failed.", file=sys.stderr)
+        sys.exit(1)
+
+    if total_upserted == 0:
+        if total_request_errors > 0:
+            print(
+                "ERROR: No listings were upserted and Chrono24 request errors occurred. "
+                "Check network access / bot protection and retry.",
+                file=sys.stderr,
+            )
+        elif total_retrieved > 0:
+            print(
+                "ERROR: Listings were retrieved but none were valid for upsert. "
+                "Verify field mapping in scripts/fetch-chrono24.py.",
+                file=sys.stderr,
+            )
         else:
-            total_upserted += len(rows)
-            print(f"  Upserted {len(rows)} rows")
-
-    print(f"\nDone. Upserted: {total_upserted}  Skipped: {total_skipped}")
+            print(
+                "ERROR: No listings were retrieved from Chrono24 for any query.",
+                file=sys.stderr,
+            )
+        sys.exit(1)
 
 
 if __name__ == "__main__":
