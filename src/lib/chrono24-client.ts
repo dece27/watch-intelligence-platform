@@ -15,12 +15,6 @@ const readEnv = (name: string): string | undefined => {
   return trimEnv(viteEnv?.[name] ?? processEnv?.[name])
 }
 
-const isLocalDevHost = () => {
-  if (typeof window === "undefined") return false
-  const host = window.location.hostname
-  return host === "localhost" || host === "127.0.0.1" || host === "[::1]"
-}
-
 // Derive the Supabase Edge Function URL from VITE_SUPABASE_URL so that live
 // fetching works in any deployed environment without requiring a build-time
 // VITE_CHRONO24_WRAPPER_BASE_URL.  The Edge Function reads CHRONO24_WRAPPER_BASE_URL
@@ -40,7 +34,6 @@ const resolveChrono24WrapperBaseUrl = () =>
   || readEnv("CHRONO24_WRAPPER_BASE_URL")
   || readEnv("CHRONO24_API_BASE_URL")
   || readEnv("CHRONO24_API_HOST")
-  || (import.meta.env.DEV && isLocalDevHost() ? "http://localhost:8000" : undefined)
   // Fall back to the Supabase Edge Function proxy so live fetching works in all
   // deployed environments without a build-time wrapper URL being required.
   || CHRONO24_EDGE_FN_BASE_URL

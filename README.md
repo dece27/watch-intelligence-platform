@@ -143,8 +143,9 @@ VITE_CHRONO24_WRAPPER_BASE_URL=http://localhost:8000
 Alternative accepted variable names: `VITE_CHRONO24_API_HOST`,
 `CHRONO24_WRAPPER_BASE_URL`, `CHRONO24_API_HOST`.
 
-When running the frontend on localhost, it also auto-falls back to
-`http://localhost:8000` if no Chrono24 base URL env is provided.
+If no Chrono24 base URL env is provided, the frontend will use the Supabase
+`chrono24-proxy` function URL derived from `VITE_SUPABASE_URL` /
+`NEXT_PUBLIC_SUPABASE_URL` when available.
 
 ### WatchCharts live market values (optional)
 

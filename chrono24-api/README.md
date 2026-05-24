@@ -36,8 +36,9 @@ Or add it to a `.env.local` file in the project root:
 VITE_CHRONO24_WRAPPER_BASE_URL=http://localhost:8000
 ```
 
-In local development on `localhost`, the frontend now defaults to
-`http://localhost:8000` automatically when no Chrono24 base URL env is set.
+If no Chrono24 base URL env is set, the frontend falls back to the Supabase
+`chrono24-proxy` function URL derived from `VITE_SUPABASE_URL` /
+`NEXT_PUBLIC_SUPABASE_URL` when available.
 
 ## Endpoints
 
