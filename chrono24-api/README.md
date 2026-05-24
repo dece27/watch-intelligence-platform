@@ -56,13 +56,19 @@ Query parameters:
 | `query` | string | `""` | Free-text search (e.g. `Rolex Submariner`) |
 | `brand` | string | `""` | Brand filter |
 | `model` | string | `""` | Model filter |
-| `limit` | int | `24` | Max listings to return (1–120) |
+| `detailed` | bool | `false` | Use `chrono24.detailed_search()` to include listing-page details |
+| `filters` | string | `""` | Comma-separated Chrono24 filter keys (e.g. `steel,automatic`) |
+| `min_year` | int | `null` | Minimum production year |
+| `max_year` | int | `null` | Maximum production year |
+| `min_price` | float | `null` | Minimum price in USD |
 | `max_price` | float | `null` | Maximum price in USD |
+| `page` | int | `1` | 1-indexed page number |
+| `limit` | int | `24` | Page size / max listings to return (1–120) |
 
 **Example:**
 
 ```
-GET http://localhost:8000/search?brand=Rolex&limit=10
+GET http://localhost:8000/search?query=Rolex+Datejust&filters=steel,automatic&min_year=2010&max_year=2024&limit=10
 ```
 
 **Response:**
