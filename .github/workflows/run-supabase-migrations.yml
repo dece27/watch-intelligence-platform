@@ -38,11 +38,41 @@ jobs:
         with:
           version: latest
 
-      - name: Disable IPv6
+      - name: Prefer IPv4 for Supabase host
         if: steps.preflight.outputs.configured == 'true'
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
-          sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1
-          sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1
+          python - <<'PY'
+          import os
+          import socket
+          from urllib.parse import urlparse
+
+          host = urlparse(os.environ["SUPABASE_DB_URL"]).hostname
+          if not host:
+              print("::error::Could not parse the hostname from SUPABASE_DB_URL.")
+              raise SystemExit(1)
+
+          try:
+              ipv4_addresses = sorted(
+                  {info[4][0] for info in socket.getaddrinfo(host, None, socket.AF_INET, socket.SOCK_STREAM)}
+              )
+          except socket.gaierror:
+              ipv4_addresses = []
+
+          if not ipv4_addresses:
+              print(f"::warning::No IPv4 address found for {host}; using the default DNS resolution.")
+              raise SystemExit(0)
+
+          ipv4 = ipv4_addresses[0]
+          print(f"Pinning {host} to IPv4 {ipv4} for this job.")
+          with open("/tmp/supabase-host-entry", "w", encoding="utf-8") as file:
+              file.write(f"{ipv4} {host}\n")
+          PY
+
+          if [ -f /tmp/supabase-host-entry ]; then
+            sudo tee -a /etc/hosts < /tmp/supabase-host-entry >/dev/null
+          fi
 
       - name: Apply migrations
         if: steps.preflight.outputs.configured == 'true'
