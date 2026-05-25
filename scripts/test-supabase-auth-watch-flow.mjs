@@ -45,26 +45,47 @@ function normalizeHostFromUrl(value, label) {
   }
 }
 
-function getIssuerHostFromJwt(token, keyName) {
+function getProjectRefFromHost(host, label) {
+  const hostname = host.toLowerCase()
+  const [projectRef] = hostname.split('.')
+  if (!projectRef) {
+    throw new Error(`${label} does not include a valid Supabase project host: ${host}`)
+  }
+  return projectRef
+}
+
+function getProjectRefFromJwt(token, keyName) {
   const payload = decodeJwtPayload(token, keyName)
   if (!payload?.iss || typeof payload.iss !== 'string') {
     throw new Error(`${keyName} is missing a valid "iss" claim`)
   }
-  return normalizeHostFromUrl(payload.iss, `${keyName} iss claim`)
+
+  const issuer = payload.iss.trim().toLowerCase()
+  if (issuer === 'supabase') {
+    if (!payload?.ref || typeof payload.ref !== 'string') {
+      throw new Error(`${keyName} has legacy iss="supabase" but is missing a valid "ref" claim`)
+    }
+    return payload.ref.trim().toLowerCase()
+  }
+
+  const issuerHost = normalizeHostFromUrl(payload.iss, `${keyName} iss claim`)
+  return getProjectRefFromHost(issuerHost, `${keyName} iss claim`)
 }
 
 function assertSupabaseProjectAlignment({ supabaseUrl, supabaseAnonKey, supabaseServiceRoleKey }) {
   const urlHost = normalizeHostFromUrl(supabaseUrl, 'SUPABASE_URL')
-  const anonIssuerHost = getIssuerHostFromJwt(supabaseAnonKey, 'SUPABASE_ANON_KEY')
-  const serviceIssuerHost = getIssuerHostFromJwt(supabaseServiceRoleKey, 'SUPABASE_SERVICE_ROLE_KEY')
+  const urlProjectRef = getProjectRefFromHost(urlHost, 'SUPABASE_URL')
+  const anonProjectRef = getProjectRefFromJwt(supabaseAnonKey, 'SUPABASE_ANON_KEY')
+  const serviceProjectRef = getProjectRefFromJwt(supabaseServiceRoleKey, 'SUPABASE_SERVICE_ROLE_KEY')
 
-  if (anonIssuerHost !== serviceIssuerHost || anonIssuerHost !== urlHost) {
+  if (anonProjectRef !== serviceProjectRef || anonProjectRef !== urlProjectRef) {
     throw new Error(
       [
         'Supabase configuration mismatch detected.',
         `SUPABASE_URL host: ${urlHost}`,
-        `SUPABASE_ANON_KEY project host: ${anonIssuerHost}`,
-        `SUPABASE_SERVICE_ROLE_KEY project host: ${serviceIssuerHost}`,
+        `SUPABASE_URL project ref: ${urlProjectRef}`,
+        `SUPABASE_ANON_KEY project ref: ${anonProjectRef}`,
+        `SUPABASE_SERVICE_ROLE_KEY project ref: ${serviceProjectRef}`,
         'Ensure all three values point to the same Supabase project in the selected GitHub Environment.',
       ].join(' '),
     )
