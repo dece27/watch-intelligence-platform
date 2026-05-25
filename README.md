@@ -144,7 +144,7 @@ VITE_WATCHCHARTS_API_KEY=your_key npm run dev
 
 ### Environment variable reference
 
-See `/home/runner/work/watch-intelligence-platform/watch-intelligence-platform/docs/env-vars.md` for the full environment variable, GitHub Actions secret, and variable reference.
+See `docs/env-vars.md` for the full environment variable, GitHub Actions secret, and variable reference.
 
 ### GitHub repository secrets
 
