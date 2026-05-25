@@ -204,6 +204,9 @@ async function main() {
   })
 
   const articles = Array.from(articlesById.values()).sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))
+  const now = new Date()
+  const cachedAt = now.toISOString()
+  const expiresAt = new Date(now.getTime() + 30 * 60 * 1000).toISOString()
 
   const { error } = await supabase
     .from('news_cache')
@@ -211,7 +214,8 @@ async function main() {
       {
         cache_key: 'feed_all',
         articles,
-        cached_at: new Date().toISOString(),
+        cached_at: cachedAt,
+        expires_at: expiresAt,
       },
       { onConflict: 'cache_key' },
     )
