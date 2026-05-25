@@ -136,7 +136,8 @@ async function assertRequiredTablesExist({ serviceClient, tableNames, projectHos
   const missingTables = []
 
   for (const tableName of tableNames) {
-    const { error } = await serviceClient.from(tableName).select('id').limit(1)
+    const probeColumn = tableName === 'user_preferences' ? 'user_id' : 'id'
+    const { error } = await serviceClient.from(tableName).select(probeColumn).limit(1)
     if (!error) {
       continue
     }
