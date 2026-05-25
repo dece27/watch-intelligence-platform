@@ -17,6 +17,9 @@
 | `VITE_BASE_PATH` | Base path for GitHub Pages deployments (set automatically by the deploy workflow) |
 | `RESEND_API_KEY` | Server-only API key used by scheduled workflows that send transactional email notifications |
 | `RESEND_FROM_EMAIL` | Optional sender address override for Resend-powered workflow notifications |
+| `CHRONO24_ACCESS_APPROVED` | Workflow control flag; set to `true` only when Chrono24 automated access is explicitly approved |
+| `CHRONO24_UPSTREAM_FAILURE_THRESHOLD` | Consecutive upstream-unavailable Chrono24 sync runs allowed before marking workflow as failed |
+| `CHRONO24_STALE_AFTER_HOURS` | Freshness window (hours) used to mark synced Chrono24 listings as stale |
 
 ## GitHub Actions secrets and variables
 
@@ -33,6 +36,9 @@
 ### Variables or secrets
 
 - `SUPABASE_PROJECT_REF` — Supabase project ref used by CLI workflows to link the hosted project before running migrations
+- `CHRONO24_ACCESS_APPROVED` — set `true` only after confirming approved Chrono24 automated access
+- `CHRONO24_UPSTREAM_FAILURE_THRESHOLD` — consecutive upstream failures allowed before fetch workflow failure
+- `CHRONO24_STALE_AFTER_HOURS` — stale-data threshold used in Chrono24 sync metrics and frontend status
 
 ### Variables
 
