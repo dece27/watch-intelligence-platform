@@ -10,6 +10,7 @@ on:
 jobs:
   migrate:
     runs-on: ubuntu-latest
+    environment: production
     env:
       SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
 
