@@ -64,7 +64,10 @@ create table if not exists public.user_preferences (
 create table if not exists public.share_tokens (
   id uuid default gen_random_uuid() primary key,
   user_id uuid references auth.users (id) on delete cascade not null,
-  token text unique not null default encode(gen_random_bytes(32), 'hex'),
+  token text unique not null default (
+    replace(gen_random_uuid()::text, '-', '')
+    || replace(gen_random_uuid()::text, '-', '')
+  ),
   access public.share_access default 'read_only' not null,
   hide_prices boolean default true,
   view_count integer default 0,
