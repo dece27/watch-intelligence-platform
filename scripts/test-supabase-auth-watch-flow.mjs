@@ -197,6 +197,24 @@ async function ensureDummyUserCanLogin({ anonClient, serviceClient, email, passw
   return secondSignIn.data.user
 }
 
+async function ensureUserBootstrapRows({ serviceClient, userId, displayName }) {
+  const { error: profileUpsertError } = await serviceClient
+    .from('profiles')
+    .upsert(
+      {
+        id: userId,
+        display_name: displayName,
+      },
+      { onConflict: 'id' },
+    )
+  expectNoError(profileUpsertError, 'Failed to ensure profile row')
+
+  const { error: preferencesUpsertError } = await serviceClient
+    .from('user_preferences')
+    .upsert({ user_id: userId }, { onConflict: 'user_id' })
+  expectNoError(preferencesUpsertError, 'Failed to ensure user_preferences row')
+}
+
 async function main() {
   const supabaseUrl = requireEnv('SUPABASE_URL', 'VITE_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_URL')
   const supabaseAnonKey = requireEnv('SUPABASE_ANON_KEY', 'VITE_SUPABASE_ANON_KEY', 'NEXT_PUBLIC_SUPABASE_ANON_KEY')
@@ -231,6 +249,11 @@ async function main() {
   })
 
   assert(user.email === dummyEmail, 'Logged-in user email does not match dummy email')
+  await ensureUserBootstrapRows({
+    serviceClient,
+    userId: user.id,
+    displayName: dummyDisplayName,
+  })
 
   console.log('2) Verifying user is present in Supabase auth/profiles...')
   const { data: authUserResponse, error: authUserError } = await serviceClient.auth.admin.getUserById(user.id)
