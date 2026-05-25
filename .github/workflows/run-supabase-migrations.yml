@@ -4,78 +4,32 @@ on:
   push:
     branches: [main]
     paths:
-      - 'supabase/migrations/*.sql'
-      - '.github/workflows/run-supabase-migrations.yml'
+      - 'supabase/migrations/**'
   workflow_dispatch:
-
-permissions:
-  contents: read
 
 jobs:
   migrate:
     runs-on: ubuntu-latest
-    environment: production
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
-      - name: Validate migration configuration
-        id: preflight
-        env:
-          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-        run: |
-          if [ -z "${SUPABASE_DB_URL:-}" ]; then
-            echo "::warning::Skipping migrations because SUPABASE_DB_URL secret is not configured."
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          echo "configured=true" >> "$GITHUB_OUTPUT"
-
-      - name: Install Supabase CLI
-        if: steps.preflight.outputs.configured == 'true'
-        uses: supabase/setup-cli@v2
+      - uses: supabase/setup-cli@v1
         with:
           version: latest
 
-      - name: Prefer IPv4 for Supabase host
-        if: steps.preflight.outputs.configured == 'true'
+      - name: Link Supabase project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
         env:
-          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-        run: |
-          python - <<'PY'
-          import os
-          import socket
-          from urllib.parse import urlparse
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
 
-          host = urlparse(os.environ["SUPABASE_DB_URL"]).hostname
-          if not host:
-              print("::error::Could not parse the hostname from SUPABASE_DB_URL.")
-              raise SystemExit(1)
-
-          try:
-              ipv4_addresses = sorted(
-                  {info[4][0] for info in socket.getaddrinfo(host, None, socket.AF_INET, socket.SOCK_STREAM)}
-              )
-          except socket.gaierror:
-              ipv4_addresses = []
-
-          if not ipv4_addresses:
-              print(f"::warning::No IPv4 address found for {host}; using the default DNS resolution.")
-              raise SystemExit(0)
-
-          ipv4 = ipv4_addresses[0]
-          print(f"Pinning {host} to IPv4 {ipv4} for this job.")
-          with open("/tmp/supabase-host-entry", "w", encoding="utf-8") as file:
-              file.write(f"{ipv4} {host}\n")
-          PY
-
-          if [ -f /tmp/supabase-host-entry ]; then
-            sudo tee -a /etc/hosts < /tmp/supabase-host-entry >/dev/null
-          fi
-
-      - name: Apply migrations
-        if: steps.preflight.outputs.configured == 'true'
+      - name: Run migrations
+        run: supabase db push
         env:
-          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-        run: supabase db push --db-url "$SUPABASE_DB_URL"
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Confirm migration status
+        run: supabase migration list
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
