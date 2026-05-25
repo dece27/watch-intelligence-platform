@@ -150,7 +150,7 @@ VITE_WATCHCHARTS_API_KEY=your_key npm run dev
 | `VITE_SUPABASE_ANON_KEY` | Public Supabase anon key used by the browser client (the app also accepts `NEXT_PUBLIC_SUPABASE_ANON_KEY` as a fallback) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-only Supabase service role key for GitHub Actions or Supabase server-side utilities; never expose it to the browser |
 | `SUPABASE_URL` | Optional server-only Supabase URL override for GitHub Actions or other non-browser utilities |
-| `SUPABASE_DB_URL` | Direct database connection string used for CLI tasks such as backups |
+| `SUPABASE_DB_URL` | Database connection string used by Supabase CLI jobs; prefer an IPv4-capable endpoint for GitHub Actions migration and backup workflows |
 | `GITHUB_TOKEN` | Server-only GitHub personal access token used by `supabase/functions/github-models-proxy` to call GitHub Models |
 | `VITE_WATCHCHARTS_API_KEY` | API key for WatchCharts market value lookups |
 | `VITE_WATCHCHARTS_BASE_URL` | Override for WatchCharts API base URL |
@@ -166,7 +166,7 @@ In **Settings → Secrets and variables → Actions**, add these repository secr
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY` — public Supabase anon key used at build time for static frontend workflows
 - `SUPABASE_URL` — same Supabase project URL for GitHub Actions scripts and server-side utilities
 - `SUPABASE_SERVICE_ROLE_KEY` — Supabase service role key for server-side Actions scripts only; never expose it to the browser
-- `SUPABASE_DB_URL` — direct database connection string used by migration and backup workflows
+- `SUPABASE_DB_URL` — database connection string used by migration and backup workflows; prefer the Supabase session pooler or another IPv4-capable endpoint for GitHub Actions
 - `RESEND_API_KEY` — Resend API key for alert notification emails
 
 ### Supabase Edge Function secrets
@@ -275,7 +275,7 @@ fails.
 
 Configure these GitHub **Actions secrets** before enabling it:
 
-- `SUPABASE_DB_URL`
+- `SUPABASE_DB_URL` (prefer the Supabase session pooler or another IPv4-capable endpoint for GitHub Actions)
 - `CLOUDFLARE_R2_ACCESS_KEY`
 - `CLOUDFLARE_R2_SECRET_KEY`
 - `RESEND_API_KEY`
