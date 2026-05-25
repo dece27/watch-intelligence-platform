@@ -51,6 +51,7 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        Relationships: []
       }
       subscriptions: {
         Row: {
@@ -95,6 +96,7 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        Relationships: []
       }
       user_preferences: {
         Row: {
@@ -130,6 +132,7 @@ export interface Database {
           default_portfolio_view?: 'value' | 'roi' | 'brand' | 'timeline' | null
           updated_at?: string
         }
+        Relationships: []
       }
       share_tokens: {
         Row: {
@@ -165,6 +168,7 @@ export interface Database {
           expires_at?: string | null
           created_at?: string
         }
+        Relationships: []
       }
       watches: {
         Row: {
@@ -248,6 +252,7 @@ export interface Database {
           case_material?: string | null
           case_diameter?: string | null
         }
+        Relationships: []
       }
       watch_photos: {
         Row: {
@@ -289,6 +294,7 @@ export interface Database {
           size_bytes?: number | null
           created_at?: string
         }
+        Relationships: []
       }
       watch_service_records: {
         Row: {
@@ -336,6 +342,7 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        Relationships: []
       }
       portfolio_snapshots: {
         Row: {
@@ -368,6 +375,7 @@ export interface Database {
           brand_breakdown?: Json | null
           created_at?: string
         }
+        Relationships: []
       }
       market_price_history: {
         Row: {
@@ -397,6 +405,7 @@ export interface Database {
           condition?: string | null
           recorded_at?: string
         }
+        Relationships: []
       }
       market_data_cache: {
         Row: {
@@ -423,6 +432,7 @@ export interface Database {
           computed_at?: string
           expires_at?: string
         }
+        Relationships: []
       }
       price_alerts: {
         Row: {
@@ -473,6 +483,7 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        Relationships: []
       }
       deal_listings: {
         Row: {
@@ -542,6 +553,7 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        Relationships: []
       }
       saved_deals: {
         Row: {
@@ -565,6 +577,7 @@ export interface Database {
           listing_snapshot?: Json
           saved_at?: string
         }
+        Relationships: []
       }
       news_cache: {
         Row: {
@@ -587,6 +600,7 @@ export interface Database {
           articles?: Json
           cached_at?: string
         }
+        Relationships: []
       }
       news_relevance_scores: {
         Row: {
@@ -613,6 +627,7 @@ export interface Database {
           reason?: string | null
           scored_at?: string
         }
+        Relationships: []
       }
       news_preferences: {
         Row: {
@@ -639,6 +654,7 @@ export interface Database {
           sort_mode?: NewsSortMode | null
           updated_at?: string
         }
+        Relationships: []
       }
       news_saved: {
         Row: {
@@ -662,6 +678,7 @@ export interface Database {
           article?: Json
           saved_at?: string
         }
+        Relationships: []
       }
       appraisals: {
         Row: {
@@ -703,6 +720,7 @@ export interface Database {
           report_data?: Json | null
           generated_at?: string
         }
+        Relationships: []
       }
       ai_usage_logs: {
         Row: {
@@ -732,6 +750,7 @@ export interface Database {
           tokens_used?: number | null
           created_at?: string
         }
+        Relationships: []
       }
       feedback: {
         Row: {
@@ -764,6 +783,7 @@ export interface Database {
           user_agent?: string | null
           created_at?: string
         }
+        Relationships: []
       }
     }
     Views: {
@@ -778,6 +798,7 @@ export interface Database {
           return_percent: number | null
           created_at: string
         }
+        Relationships: []
       }
       portfolio_brand_allocations: {
         Row: {
@@ -787,6 +808,7 @@ export interface Database {
           total_value: number
           allocation_percent: number
         }
+        Relationships: []
       }
       latest_market_prices: {
         Row: {
@@ -797,6 +819,7 @@ export interface Database {
           condition: string | null
           recorded_at: string
         }
+        Relationships: []
       }
       active_price_alerts: {
         Row: {
@@ -817,6 +840,7 @@ export interface Database {
           current_price_usd: number | null
           market_recorded_at: string | null
         }
+        Relationships: []
       }
       v_collection_summary: {
         Row: {
@@ -829,6 +853,7 @@ export interface Database {
           earliest_purchase: string | null
           latest_purchase: string | null
         }
+        Relationships: []
       }
     }
     Functions: {
