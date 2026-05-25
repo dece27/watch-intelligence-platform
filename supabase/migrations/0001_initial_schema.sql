@@ -35,7 +35,7 @@ create table if not exists public.profiles (
 );
 
 create table if not exists public.subscriptions (
-  id uuid default uuid_generate_v4() primary key,
+  id uuid default gen_random_uuid() primary key,
   user_id uuid references auth.users (id) on delete cascade unique not null,
   stripe_customer_id text unique,
   stripe_subscription_id text unique,
@@ -62,7 +62,7 @@ create table if not exists public.user_preferences (
 );
 
 create table if not exists public.share_tokens (
-  id uuid default uuid_generate_v4() primary key,
+  id uuid default gen_random_uuid() primary key,
   user_id uuid references auth.users (id) on delete cascade not null,
   token text unique not null default encode(gen_random_bytes(32), 'hex'),
   access public.share_access default 'read_only' not null,
@@ -74,7 +74,7 @@ create table if not exists public.share_tokens (
 );
 
 create table if not exists public.watches (
-  id uuid default uuid_generate_v4() primary key,
+  id uuid default gen_random_uuid() primary key,
   user_id uuid references auth.users (id) on delete cascade not null,
   brand text not null check (char_length(brand) <= 100),
   model text check (char_length(model) <= 200),
@@ -105,7 +105,7 @@ create table if not exists public.watches (
 );
 
 create table if not exists public.watch_photos (
-  id uuid default uuid_generate_v4() primary key,
+  id uuid default gen_random_uuid() primary key,
   watch_id uuid references public.watches (id) on delete cascade not null,
   user_id uuid references auth.users (id) on delete cascade not null,
   storage_path text not null,
@@ -119,7 +119,7 @@ create table if not exists public.watch_photos (
 );
 
 create table if not exists public.watch_service_records (
-  id uuid default uuid_generate_v4() primary key,
+  id uuid default gen_random_uuid() primary key,
   watch_id uuid references public.watches (id) on delete cascade not null,
   user_id uuid references auth.users (id) on delete cascade not null,
   service_date date not null,
@@ -135,7 +135,7 @@ create table if not exists public.watch_service_records (
 );
 
 create table if not exists public.portfolio_snapshots (
-  id uuid default uuid_generate_v4() primary key,
+  id uuid default gen_random_uuid() primary key,
   user_id uuid references auth.users (id) on delete cascade not null,
   snapshot_date date not null,
   total_cost_basis decimal(14, 2) not null,
@@ -147,7 +147,7 @@ create table if not exists public.portfolio_snapshots (
 );
 
 create table if not exists public.market_price_history (
-  id uuid default uuid_generate_v4() primary key,
+  id uuid default gen_random_uuid() primary key,
   brand text not null,
   reference text not null,
   price_usd decimal(14, 2) not null,
@@ -157,7 +157,7 @@ create table if not exists public.market_price_history (
 );
 
 create table if not exists public.market_data_cache (
-  id uuid default uuid_generate_v4() primary key,
+  id uuid default gen_random_uuid() primary key,
   cache_key text unique not null,
   data jsonb not null,
   source text,
@@ -166,7 +166,7 @@ create table if not exists public.market_data_cache (
 );
 
 create table if not exists public.price_alerts (
-  id uuid default uuid_generate_v4() primary key,
+  id uuid default gen_random_uuid() primary key,
   user_id uuid references auth.users (id) on delete cascade not null,
   brand text not null,
   reference text not null,
@@ -183,7 +183,7 @@ create table if not exists public.price_alerts (
 );
 
 create table if not exists public.deal_listings (
-  id uuid default uuid_generate_v4() primary key,
+  id uuid default gen_random_uuid() primary key,
   brand text not null,
   model text,
   reference text not null,
@@ -215,7 +215,7 @@ create table if not exists public.deal_listings (
 );
 
 create table if not exists public.saved_deals (
-  id uuid default uuid_generate_v4() primary key,
+  id uuid default gen_random_uuid() primary key,
   user_id uuid references auth.users (id) on delete cascade not null,
   listing_id uuid references public.deal_listings (id) on delete set null,
   listing_snapshot jsonb not null,
@@ -224,7 +224,7 @@ create table if not exists public.saved_deals (
 );
 
 create table if not exists public.news_cache (
-  id uuid default uuid_generate_v4() primary key,
+  id uuid default gen_random_uuid() primary key,
   cache_key text unique not null default 'feed_all',
   articles jsonb not null,
   article_count integer generated always as (jsonb_array_length(articles)) stored,
@@ -233,7 +233,7 @@ create table if not exists public.news_cache (
 );
 
 create table if not exists public.news_relevance_scores (
-  id uuid default uuid_generate_v4() primary key,
+  id uuid default gen_random_uuid() primary key,
   article_id text not null,
   user_id uuid references auth.users (id) on delete cascade not null,
   score smallint check (score >= 0 and score <= 100),
@@ -257,7 +257,7 @@ create table if not exists public.news_preferences (
 );
 
 create table if not exists public.news_saved (
-  id uuid default uuid_generate_v4() primary key,
+  id uuid default gen_random_uuid() primary key,
   user_id uuid references auth.users (id) on delete cascade not null,
   article_id text not null,
   article jsonb not null,
@@ -266,7 +266,7 @@ create table if not exists public.news_saved (
 );
 
 create table if not exists public.appraisals (
-  id uuid default uuid_generate_v4() primary key,
+  id uuid default gen_random_uuid() primary key,
   user_id uuid references auth.users (id) on delete cascade not null,
   watch_ids uuid[] not null,
   purpose public.appraisal_purpose not null,
@@ -280,7 +280,7 @@ create table if not exists public.appraisals (
 );
 
 create table if not exists public.ai_usage_logs (
-  id uuid default uuid_generate_v4() primary key,
+  id uuid default gen_random_uuid() primary key,
   user_id uuid references auth.users (id) on delete cascade not null,
   usage_date date default current_date not null,
   call_type text not null check (call_type in (
@@ -294,7 +294,7 @@ create table if not exists public.ai_usage_logs (
 );
 
 create table if not exists public.feedback (
-  id uuid default uuid_generate_v4() primary key,
+  id uuid default gen_random_uuid() primary key,
   user_id uuid references auth.users (id) on delete set null,
   message text not null check (char_length(message) <= 2000),
   rating smallint check (rating >= 1 and rating <= 5),
