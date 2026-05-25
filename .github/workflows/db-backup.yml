@@ -27,6 +27,9 @@ jobs:
       - name: Validate backup configuration
         id: preflight
         env:
+          # Note: SUPABASE_DB_URL uses port 5432 — only works if Supabase network
+          # restrictions allow the runner IP. For migrations use
+          # SUPABASE_ACCESS_TOKEN + supabase link instead.
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           CLOUDFLARE_R2_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY }}
           CLOUDFLARE_R2_SECRET_KEY: ${{ secrets.CLOUDFLARE_R2_SECRET_KEY }}
@@ -34,6 +37,8 @@ jobs:
           CLOUDFLARE_R2_BUCKET: ${{ vars.CLOUDFLARE_R2_BUCKET }}
         run: |
           missing=()
+          # Note: SUPABASE_DB_URL uses port 5432 — only works if Supabase network restrictions allow the runner IP.
+          # For migrations use SUPABASE_ACCESS_TOKEN + supabase link instead.
           [ -n "${SUPABASE_DB_URL:-}" ] || missing+=("SUPABASE_DB_URL secret")
           [ -n "${CLOUDFLARE_R2_ACCESS_KEY:-}" ] || missing+=("CLOUDFLARE_R2_ACCESS_KEY secret")
           [ -n "${CLOUDFLARE_R2_SECRET_KEY:-}" ] || missing+=("CLOUDFLARE_R2_SECRET_KEY secret")
@@ -63,6 +68,9 @@ jobs:
       - name: Prefer IPv4 for Supabase host
         if: steps.preflight.outputs.configured == 'true'
         env:
+          # Note: SUPABASE_DB_URL uses port 5432 — only works if Supabase network
+          # restrictions allow the runner IP. For migrations use
+          # SUPABASE_ACCESS_TOKEN + supabase link instead.
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
           python - <<'PY'
@@ -99,10 +107,15 @@ jobs:
       - name: Dump database backup
         if: steps.preflight.outputs.configured == 'true'
         env:
+          # Note: SUPABASE_DB_URL uses port 5432 — only works if Supabase network
+          # restrictions allow the runner IP. For migrations use
+          # SUPABASE_ACCESS_TOKEN + supabase link instead.
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
           BACKUP_DATE="$(date -u +%Y%m%d)"
           BACKUP_FILE="backup_${BACKUP_DATE}.sql"
+          # Note: SUPABASE_DB_URL uses port 5432 — only works if Supabase network restrictions allow the runner IP.
+          # For migrations use SUPABASE_ACCESS_TOKEN + supabase link instead.
           supabase db dump --db-url "$SUPABASE_DB_URL" > "$BACKUP_FILE"
           echo "BACKUP_FILE=$BACKUP_FILE" >> "$GITHUB_ENV"
 
