@@ -87,9 +87,12 @@ function mapScore(row: TableRow<'news_relevance_scores'>): NewsRelevanceScoreRec
 }
 
 function toCacheInsert(cacheKey: string, articles: Json): TableInsert<'news_cache'> {
+  const now = new Date()
   return {
     cache_key: cacheKey,
     articles,
+    cached_at: now.toISOString(),
+    expires_at: new Date(now.getTime() + 30 * 60 * 1000).toISOString(),
   }
 }
 

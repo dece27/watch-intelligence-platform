@@ -232,7 +232,7 @@ create table if not exists public.news_cache (
   articles jsonb not null,
   article_count integer generated always as (jsonb_array_length(articles)) stored,
   cached_at timestamptz default timezone('utc', now()) not null,
-  expires_at timestamptz generated always as (cached_at + interval '30 minutes') stored
+  expires_at timestamptz default (timezone('utc', now()) + interval '30 minutes') not null
 );
 
 create table if not exists public.news_relevance_scores (

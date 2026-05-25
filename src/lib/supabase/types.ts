@@ -573,19 +573,21 @@ export interface Database {
           articles: Json
           article_count: number | null
           cached_at: string
-          expires_at: string | null
+          expires_at: string
         }
         Insert: {
           id?: string
           cache_key?: string
           articles: Json
           cached_at?: string
+          expires_at?: string
         }
         Update: {
           id?: string
           cache_key?: string
           articles?: Json
           cached_at?: string
+          expires_at?: string
         }
       }
       news_relevance_scores: {
