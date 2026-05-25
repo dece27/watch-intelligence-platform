@@ -133,6 +133,15 @@ Listings → Run workflow** after configuring these repository secrets:
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 
+Recommended GitHub Environment variables for resilient sync behavior:
+
+- `CHRONO24_ACCESS_APPROVED` — set to `true` only after you confirm an approved
+  automated access path to Chrono24 (default: `false`, which safely skips sync)
+- `CHRONO24_UPSTREAM_FAILURE_THRESHOLD` — number of consecutive upstream-unavailable
+  runs before the workflow fails (default: `4`)
+- `CHRONO24_STALE_AFTER_HOURS` — cached listing freshness window used for stale
+  status reporting (default: `48`)
+
 ### WatchCharts live market values (optional)
 
 Set `VITE_WATCHCHARTS_API_KEY` (and optionally `VITE_WATCHCHARTS_BASE_URL`) to
