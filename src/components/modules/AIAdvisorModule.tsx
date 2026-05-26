@@ -50,7 +50,7 @@ const IDENTIFIER_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 const IDENTIFIER_MAX_DIMENSION = 800
 const IDENTIFIER_MAX_OUTPUT_KB = 500
 const IDENTIFIER_COMPRESSION_QUALITY = 0.75
-const IDENTIFIER_ALLOWED_DATA_URL_PATTERN = /^data:image\/(?:jpeg|jpg|png|webp|gif);base64,[a-z0-9+/]+=*$/i
+const IDENTIFIER_ALLOWED_DATA_URL_PATTERN = /^data:image\/(?:jpeg|png|webp|gif);base64,[a-z0-9+/]+=*$/i
 const SIGNAL_CACHE_TTL_SECONDS = 60 * 60 * 24
 const CHAT_CACHE_TTL_SECONDS = 60 * 30
 const IDENTIFY_CACHE_TTL_SECONDS = 60 * 60 * 24 * 7

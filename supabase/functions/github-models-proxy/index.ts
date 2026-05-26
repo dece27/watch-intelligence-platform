@@ -73,6 +73,8 @@ function estimateTokens(text: string) {
 
 function resolveUsageCallType(taskType: string) {
   switch (taskType) {
+    case 'identify':
+      return 'identify'
     case 'what_if':
       return 'chat'
     case 'deal_ranking':
@@ -188,7 +190,7 @@ function extractContent(content: unknown): string {
   return ''
 }
 
-const IDENTIFY_ALLOWED_DATA_URL_PATTERN = /^data:image\/(?:jpeg|jpg|png|webp|gif);base64,[a-z0-9+/]+=*$/i
+const VALID_IMAGE_DATA_URL_PATTERN = /^data:image\/(?:jpeg|png|webp|gif);base64,[a-z0-9+/]+=*$/i
 
 function normalizeIdentifyImageInput(value: unknown): string {
   if (typeof value !== 'string') {
@@ -200,7 +202,7 @@ function normalizeIdentifyImageInput(value: unknown): string {
     return ''
   }
 
-  if (IDENTIFY_ALLOWED_DATA_URL_PATTERN.test(trimmed)) {
+  if (VALID_IMAGE_DATA_URL_PATTERN.test(trimmed)) {
     return trimmed
   }
 
@@ -280,7 +282,7 @@ Deno.serve(async (req) => {
 
   if (taskType === 'identify' && !imageInput) {
     return jsonResponse(400, {
-      error: 'Identify requests require a valid HTTPS image URL or supported image data URL.',
+      error: 'Identify requests require a valid HTTPS-only image URL or supported image data URL.',
     })
   }
 
