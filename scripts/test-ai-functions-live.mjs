@@ -29,10 +29,7 @@ function parseJsonWithRecovery(payload) {
 
 const supabaseUrl = requireEnv('SUPABASE_URL')
 const supabaseAnonKey = requireEnv('SUPABASE_ANON_KEY')
-const defaultIdentifyImageUrl =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5V5gkAAAAASUVORK5CYII='
-const identifyImageUrl = process.env.AI_TEST_IMAGE_URL?.trim() || defaultIdentifyImageUrl
-const usingDefaultIdentifyImage = identifyImageUrl === defaultIdentifyImageUrl
+const identifyImageUrl = process.env.AI_TEST_IMAGE_URL?.trim() || ''
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
@@ -83,18 +80,21 @@ const testCases = [
       'Return JSON with impact and recommendation for selling one watch to free $5,000 in cash.',
     jsonMode: true,
   },
-  {
+]
+
+if (identifyImageUrl) {
+  testCases.push({
     taskType: 'identify',
     prompt: 'Identify this watch image and return JSON with brand, model, and confidence.',
     jsonMode: true,
     imageInput: identifyImageUrl,
-  },
-]
+  })
+}
 
 async function run() {
   console.log(`Running ${testCases.length} live AI function checks...`)
-  if (usingDefaultIdentifyImage) {
-    console.log('ℹ️ Using default minimal identify image. Set AI_TEST_IMAGE_URL to a real watch image for stronger validation.')
+  if (!identifyImageUrl) {
+    console.log('ℹ️ Skipping identify check because AI_TEST_IMAGE_URL is not set.')
   }
 
   for (const testCase of testCases) {
