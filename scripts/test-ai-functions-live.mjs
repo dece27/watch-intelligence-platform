@@ -48,7 +48,7 @@ const supabaseUrl = requireEnv('SUPABASE_URL')
 const supabaseAnonKey = requireEnv('SUPABASE_ANON_KEY')
 const identifyImageUrl =
   process.env.AI_TEST_IMAGE_URL?.trim() ||
-  'https://images.unsplash.com/photo-1523170335258-f5ed11844a49?w=800'
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5V5gkAAAAASUVORK5CYII='
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
