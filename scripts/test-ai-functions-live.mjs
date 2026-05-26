@@ -1,0 +1,140 @@
+import { createClient } from '@supabase/supabase-js'
+
+function requireEnv(name) {
+  const value = process.env[name]?.trim()
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${name}`)
+  }
+  return value
+}
+
+function preview(text, limit = 240) {
+  const compact = text.replace(/\s+/g, ' ').trim()
+  return compact.length > limit ? `${compact.slice(0, limit)}…` : compact
+}
+
+function extractJsonPayload(response) {
+  const trimmed = response.trim()
+  const fenced = trimmed.match(/```(?:[a-z0-9_-]+)?\s*([\s\S]*?)\s*```/i)
+  return fenced ? fenced[1].trim() : trimmed
+}
+
+function parseJsonWithRecovery(payload) {
+  try {
+    return JSON.parse(payload)
+  } catch {
+    throw new Error(`Response did not contain valid JSON: ${preview(payload)}`)
+  }
+}
+
+const supabaseUrl = requireEnv('SUPABASE_URL')
+const supabaseAnonKey = requireEnv('SUPABASE_ANON_KEY')
+const defaultIdentifyImageUrl =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5V5gkAAAAASUVORK5CYII='
+const identifyImageUrl = process.env.AI_TEST_IMAGE_URL?.trim() || defaultIdentifyImageUrl
+const usingDefaultIdentifyImage = identifyImageUrl === defaultIdentifyImageUrl
+
+const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+    detectSessionInUrl: false,
+  },
+})
+
+const testCases = [
+  {
+    taskType: 'general',
+    prompt: 'In one short sentence, explain why tracking watch service history matters.',
+    jsonMode: false,
+  },
+  {
+    taskType: 'chat',
+    prompt: 'Give one concise tip for first-time vintage watch buyers.',
+    jsonMode: false,
+  },
+  {
+    taskType: 'signal',
+    prompt:
+      'Return JSON with keys signal and rationale for a watch that recently rose 8% in value and has high demand.',
+    jsonMode: true,
+  },
+  {
+    taskType: 'deal_assessment',
+    prompt:
+      'Return JSON with keys verdict and summary for this listing: Rolex Submariner 124060, excellent condition, asking $8,900.',
+    jsonMode: true,
+  },
+  {
+    taskType: 'deal_ranking',
+    prompt:
+      'Return JSON with ranked_deals array for these deal ids [A,B,C] and include one-line reason for each.',
+    jsonMode: true,
+  },
+  {
+    taskType: 'rebalancing',
+    prompt:
+      'Return JSON with recommended_actions array to rebalance a collection that is 80% sport steel watches.',
+    jsonMode: true,
+  },
+  {
+    taskType: 'what_if',
+    prompt:
+      'Return JSON with impact and recommendation for selling one watch to free $5,000 in cash.',
+    jsonMode: true,
+  },
+  {
+    taskType: 'identify',
+    prompt: 'Identify this watch image and return JSON with brand, model, and confidence.',
+    jsonMode: true,
+    imageInput: identifyImageUrl,
+  },
+]
+
+async function run() {
+  console.log(`Running ${testCases.length} live AI function checks...`)
+  if (usingDefaultIdentifyImage) {
+    console.log('ℹ️ Using default minimal identify image. Set AI_TEST_IMAGE_URL to a real watch image for stronger validation.')
+  }
+
+  for (const testCase of testCases) {
+    const requestBody = {
+      prompt: testCase.prompt,
+      taskType: testCase.taskType,
+      jsonMode: testCase.jsonMode,
+      ...(testCase.imageInput ? { imageInput: testCase.imageInput } : {}),
+    }
+
+    const { data, error } = await supabase.functions.invoke('github-models-proxy', {
+      body: requestBody,
+    })
+
+    if (error) {
+      throw new Error(`Task "${testCase.taskType}" failed: ${error.message}`)
+    }
+
+    const content = typeof data?.content === 'string' ? data.content.trim() : ''
+    if (!content) {
+      throw new Error(`Task "${testCase.taskType}" returned empty content.`)
+    }
+
+    if (testCase.jsonMode) {
+      parseJsonWithRecovery(extractJsonPayload(content))
+    }
+
+    console.log(`✅ ${testCase.taskType}`)
+    console.log(`   model: ${data?.model || 'unknown'}`)
+    console.log(`   tokens: ${data?.usage?.totalTokens ?? 'unknown'}`)
+    console.log(`   response: ${preview(content)}`)
+  }
+
+  console.log('✅ All AI live function checks passed.')
+}
+
+try {
+  await run()
+} catch (error) {
+  const message = error instanceof Error ? error.message : String(error)
+  console.error(`❌ AI live function test failed: ${message}`)
+  process.exit(1)
+}

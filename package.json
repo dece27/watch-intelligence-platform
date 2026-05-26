@@ -20,6 +20,7 @@
     "test:sql": "supabase test db",
     "test:ts": "vitest run supabase/tests/typescript",
     "test:all": "npm run test:sql && npm run test:ts",
+    "test:ai-functions-live": "node scripts/test-ai-functions-live.mjs",
     "optimize": "vite optimize",
     "preview": "vite preview",
     "prepare": "husky",

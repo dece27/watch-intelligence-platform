@@ -1,0 +1,55 @@
+name: AI Functions Live Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      github_environment:
+        description: 'GitHub Environment with Supabase variables'
+        required: false
+        default: production
+
+permissions:
+  contents: read
+
+jobs:
+  test-ai-functions-live:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.github_environment || 'production' }}
+    env:
+      SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
+      AI_TEST_IMAGE_URL: ${{ vars.AI_TEST_IMAGE_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Preflight configuration check
+        id: preflight
+        run: |
+          missing=()
+          [ -n "${SUPABASE_URL:-}" ] || missing+=("SUPABASE_URL variable")
+          [ -n "${SUPABASE_ANON_KEY:-}" ] || missing+=("SUPABASE_ANON_KEY variable")
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf '::warning::Skipping AI live function test because required configuration is missing: %s\n' "$(IFS=', '; echo "${missing[*]}")"
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node
+        if: steps.preflight.outputs.configured == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.preflight.outputs.configured == 'true'
+        run: npm ci
+
+      - name: Run AI live function test
+        if: steps.preflight.outputs.configured == 'true'
+        run: npm run test:ai-functions-live
