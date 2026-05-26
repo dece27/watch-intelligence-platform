@@ -630,7 +630,7 @@ def main() -> None:
             latest_cached = fetch_latest_listing_timestamp(supabase)
             is_stale, age_hours = compute_listing_staleness(latest_cached)
             no_cached_listings = latest_cached is None
-            hard_upstream_failure = sustained_upstream_failure or no_cached_listings
+            hard_upstream_failure = sustained_upstream_failure
             metrics = {
                 "source": SOURCE_NAME,
                 "status": "upstream_unavailable",
@@ -779,9 +779,7 @@ def main() -> None:
     latest_cached = fetch_latest_listing_timestamp(supabase)
     is_stale, age_hours = compute_listing_staleness(latest_cached)
     no_cached_listings = latest_cached is None
-    hard_upstream_failure = status == "upstream_unavailable" and (
-        sustained_upstream_failure or no_cached_listings
-    )
+    hard_upstream_failure = status == "upstream_unavailable" and sustained_upstream_failure
 
     metrics = {
         "source": SOURCE_NAME,
@@ -817,8 +815,14 @@ def main() -> None:
     )
 
     if status == "upstream_unavailable" and not hard_upstream_failure:
+        cached_state_note = (
+            " No cached listings are currently available; retrying until the configured failure "
+            "threshold is reached."
+            if no_cached_listings
+            else " Cached listings were preserved."
+        )
         print(
-            "::warning::Chrono24 upstream unavailable on this run; cached listings were preserved. "
+            f"::warning::Chrono24 upstream unavailable on this run;{cached_state_note} "
             f"Consecutive upstream failures: {consecutive_upstream_failures}/"
             f"{CHRONO24_UPSTREAM_FAILURE_THRESHOLD}."
         )
