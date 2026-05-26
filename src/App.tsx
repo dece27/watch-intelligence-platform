@@ -190,6 +190,7 @@ function App() {
 
   const watchList = watches || []
   const totalValue = watchList.reduce((sum, w) => sum + (w.currentValue || w.purchasePrice), 0)
+  const activeUserId = supabaseUserId ?? currentUser?.id ?? undefined
 
   useEffect(() => {
     const loadWatches = async () => {
@@ -466,7 +467,7 @@ function App() {
             onUpdate={handleUpdateWatches}
             triggerAdd={triggerAddWatch}
             onTriggerComplete={() => setTriggerAddWatch(false)}
-            currentUserId={currentUser?.id}
+            currentUserId={activeUserId}
             vaultName={currentUser?.vaultName}
             preferredCurrency={preferredCurrency}
           />
@@ -476,9 +477,9 @@ function App() {
       case 'market':
         return <MarketModule watches={watchList} preferredCurrency={preferredCurrency} />
       case 'ai-advisor':
-        return <AIAdvisorModule watches={watchList} userId={currentUser?.id || ""} preferredCurrency={preferredCurrency} />
+        return <AIAdvisorModule watches={watchList} userId={activeUserId || ""} preferredCurrency={preferredCurrency} />
       case 'deals':
-        return <DealsModule watches={watchList} userId={currentUser?.id || ""} preferredCurrency={preferredCurrency} />
+        return <DealsModule watches={watchList} userId={activeUserId || ""} preferredCurrency={preferredCurrency} />
       case 'appraisal':
         return <AppraisalModule watches={watchList} preferredCurrency={preferredCurrency} />
       case 'news':
@@ -490,7 +491,7 @@ function App() {
           <CollectionModule
             watches={watchList}
             onUpdate={handleUpdateWatches}
-            currentUserId={currentUser?.id}
+            currentUserId={activeUserId}
             vaultName={currentUser?.vaultName}
             preferredCurrency={preferredCurrency}
           />
@@ -502,7 +503,7 @@ function App() {
           <CollectionModule
             watches={watchList}
             onUpdate={handleUpdateWatches}
-            currentUserId={currentUser?.id}
+            currentUserId={activeUserId}
             vaultName={currentUser?.vaultName}
             preferredCurrency={preferredCurrency}
           />
@@ -512,7 +513,7 @@ function App() {
           <CollectionModule
             watches={watchList}
             onUpdate={handleUpdateWatches}
-            currentUserId={currentUser?.id}
+            currentUserId={activeUserId}
             vaultName={currentUser?.vaultName}
             preferredCurrency={preferredCurrency}
           />

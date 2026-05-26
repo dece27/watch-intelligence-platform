@@ -16,6 +16,8 @@ import {
 } from "@/lib/deal-listings-client"
 import { FALLBACK_DEALS } from "@/lib/fallback-deals"
 import { convertCurrency, formatCurrency, normalizeCurrency } from "@/lib/currency"
+import { listSavedDeals, removeSavedDeal, saveDeal } from "@/lib/db/deals"
+import { getSupabaseClient, hasSupabaseBrowserEnv } from "@/lib/supabase/client"
 import { toast } from "sonner"
 
 interface DealsModuleProps {
@@ -209,6 +211,34 @@ export function DealsModule({ watches, userId, preferredCurrency = "USD" }: Deal
       window.clearTimeout(timeout)
     }
   }, [preferences, preferencesLoaded, userId])
+
+  useEffect(() => {
+    let active = true
+
+    const loadFavorites = async () => {
+      if (!userId || !hasSupabaseBrowserEnv()) {
+        if (active) {
+          setFavorites([])
+        }
+        return
+      }
+
+      try {
+        const savedDeals = await listSavedDeals(getSupabaseClient(), userId)
+        if (!active) return
+        setFavorites(savedDeals.map((deal) => deal.listingId).filter((listingId): listingId is string => Boolean(listingId)))
+      } catch (error) {
+        if (!active) return
+        console.error("[DealsModule] Failed to load saved deals.", error)
+        setFavorites([])
+      }
+    }
+
+    void loadFavorites()
+    return () => {
+      active = false
+    }
+  }, [userId])
 
   useEffect(() => {
     const currentCurrency = normalizeCurrency(preferredCurrency)
@@ -458,9 +488,28 @@ Return every deal id exactly once.`
     fetchDeals()
   }
 
-  const toggleFavorite = (id: string, event: MouseEvent) => {
+  const toggleFavorite = async (deal: Deal, event: MouseEvent) => {
     event.stopPropagation()
-    setFavorites((current) => (current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id]))
+    const { id } = deal
+    const isFavorite = favorites.includes(id)
+
+    setFavorites((current) => (isFavorite ? current.filter((entry) => entry !== id) : [...current, id]))
+
+    if (!userId || !hasSupabaseBrowserEnv()) {
+      return
+    }
+
+    try {
+      if (isFavorite) {
+        await removeSavedDeal(getSupabaseClient(), userId, id)
+      } else {
+        await saveDeal(getSupabaseClient(), userId, id, JSON.parse(JSON.stringify(deal)))
+      }
+    } catch (error) {
+      setFavorites((current) => (isFavorite ? [...current, id] : current.filter((entry) => entry !== id)))
+      console.error("[DealsModule] Failed to persist saved deal.", error)
+      toast.error("Unable to update saved deals right now.")
+    }
   }
 
   const handleViewDetails = (deal: Deal) => {
@@ -667,7 +716,9 @@ Return every deal id exactly once.`
                   size="sm"
                   variant="ghost"
                   className="absolute top-2 right-2 bg-black/50 hover:bg-black/70"
-                  onClick={(event) => toggleFavorite(deal.id, event)}
+                  onClick={(event) => {
+                    void toggleFavorite(deal, event)
+                  }}
                 >
                   <Heart
                     size={20}

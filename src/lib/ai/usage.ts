@@ -1,4 +1,6 @@
 import type { User } from '@/lib/types'
+import { recordAiUsage as recordAiUsageRpc } from '@/lib/db/ai-usage'
+import { getSupabaseClient, hasSupabaseBrowserEnv } from '@/lib/supabase/client'
 
 export interface UserAIUsage {
   userId: string
@@ -16,7 +18,27 @@ const estimateTokenCount = (text: string) => Math.ceil(new TextEncoder().encode(
 
 export const getAiUsageDateKey = (date = new Date()) => date.toISOString().slice(0, 10)
 
+async function getSupabaseSessionUserId(): Promise<string | null> {
+  if (!hasSupabaseBrowserEnv()) {
+    return null
+  }
+
+  try {
+    const {
+      data: { session },
+    } = await getSupabaseClient().auth.getSession()
+    return session?.user.id ?? null
+  } catch {
+    return null
+  }
+}
+
 export async function resolveCurrentUserId(): Promise<string | null> {
+  const supabaseUserId = await getSupabaseSessionUserId()
+  if (supabaseUserId) {
+    return supabaseUserId
+  }
+
   try {
     const persisted = await window.spark.kv.get<User>('currentUser')
     if (persisted?.id) return persisted.id
@@ -35,9 +57,25 @@ export async function resolveCurrentUserId(): Promise<string | null> {
 }
 
 export async function recordAiUsage(userId: string, prompt: string, response: string) {
+  const tokensUsed = estimateTokenCount(prompt) + estimateTokenCount(response)
+
+  if (hasSupabaseBrowserEnv()) {
+    const supabaseUserId = await getSupabaseSessionUserId()
+    if (supabaseUserId && supabaseUserId === userId) {
+      try {
+        await recordAiUsageRpc(getSupabaseClient(), 'general', tokensUsed)
+        if (typeof window.dispatchEvent === 'function') {
+          window.dispatchEvent(new CustomEvent(AI_USAGE_UPDATED_EVENT))
+        }
+        return
+      } catch {
+        // Fall through to KV persistence when Supabase is temporarily unavailable.
+      }
+    }
+  }
+
   const usageKey = `ai_usage_${userId}`
   const existing = await window.spark.kv.get<UserAIUsage>(usageKey)
-  const tokensUsed = estimateTokenCount(prompt) + estimateTokenCount(response)
   const usageDate = getAiUsageDateKey()
   const nextUsage = {
     userId,
