@@ -20,7 +20,11 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        run: |
+          git init .
+          git remote add origin "https://github.com/${{ github.repository }}.git"
+          git fetch --depth=2 origin "${{ github.sha }}"
+          git checkout --detach FETCH_HEAD
 
       # ── Node.js / npm ────────────────────────────────────────────────────────
       - name: Set up Node.js 20
@@ -31,4 +35,3 @@ jobs:
 
       - name: Install JavaScript dependencies
         run: npm ci
-
