@@ -28,6 +28,7 @@ jobs:
       CHRONO24_STALE_AFTER_HOURS: ${{ vars.CHRONO24_STALE_AFTER_HOURS || '48' }}
       FLARESOLVERR_ENABLED: ${{ vars.FLARESOLVERR_ENABLED || 'false' }}
       FLARESOLVERR_URL: ${{ vars.FLARESOLVERR_URL || 'http://localhost:8191' }}
+      FLARESOLVERR_MAX_TIMEOUT_MS: ${{ vars.FLARESOLVERR_MAX_TIMEOUT_MS || '60000' }}
 
     steps:
       - uses: actions/checkout@v6

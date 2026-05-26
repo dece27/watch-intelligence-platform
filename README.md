@@ -141,6 +141,12 @@ Recommended GitHub Environment variables for resilient sync behavior:
   runs before the workflow fails (default: `4`)
 - `CHRONO24_STALE_AFTER_HOURS` — cached listing freshness window used for stale
   status reporting (default: `48`)
+- `FLARESOLVERR_ENABLED` — set to `true` to proxy Chrono24 requests through
+  the FlareSolverr service container (default: `false`)
+- `FLARESOLVERR_URL` — FlareSolverr base URL used by the sync script
+  (default: `http://localhost:8191`)
+- `FLARESOLVERR_MAX_TIMEOUT_MS` — per-request FlareSolverr timeout in
+  milliseconds (default: `60000`)
 
 ### WatchCharts live market values (optional)
 
