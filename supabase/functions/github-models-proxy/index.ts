@@ -11,7 +11,7 @@ const MAX_CACHE_TTL_SECONDS = 60 * 60 * 24 * 7
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, anthropic-beta, anthropic-version',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
 const MODEL_ROUTES: Record<string, string> = {
