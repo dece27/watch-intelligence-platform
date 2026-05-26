@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
+import { listAiUsageLogs } from '@/lib/db/ai-usage'
 import { installSparkKVFallback } from '@/lib/sparkKV'
+import { getSupabaseClient, hasSupabaseBrowserEnv } from '@/lib/supabase/client'
 import {
   AI_USAGE_UPDATED_EVENT,
   DEFAULT_DAILY_AI_QUOTA,
@@ -27,6 +29,20 @@ const buildQuotaState = (usage?: UserAIUsage, limit = DEFAULT_DAILY_AI_QUOTA): A
     used,
     remaining: Math.max(limit - used, 0),
     percentUsed: limit > 0 ? Math.min((used / limit) * 100, 100) : 0,
+  }
+}
+
+const mapUsageLogsToUsage = (userId: string, logs: Awaited<ReturnType<typeof listAiUsageLogs>>): UserAIUsage => {
+  const usageDate = getAiUsageDateKey()
+  const todaysLogs = logs.filter((log) => log.usageDate === usageDate)
+
+  return {
+    userId,
+    aiTokensUsed: logs.reduce((sum, log) => sum + (log.tokensUsed || 0), 0),
+    aiRequestsCount: logs.reduce((sum, log) => sum + log.callCount, 0),
+    dailyRequestsUsed: todaysLogs.reduce((sum, log) => sum + log.callCount, 0),
+    usageDate,
+    lastUsedAt: logs[0]?.createdAt,
   }
 }
 
@@ -58,6 +74,16 @@ export function useAIQuota(limit = DEFAULT_DAILY_AI_QUOTA) {
           return
         }
 
+        if (hasSupabaseBrowserEnv()) {
+          try {
+            const usageLogs = await listAiUsageLogs(getSupabaseClient(), activeUserId)
+            updateFromUsage(mapUsageLogsToUsage(activeUserId, usageLogs))
+            return
+          } catch {
+            // Fall back to KV below when Supabase usage cannot be read.
+          }
+        }
+
         const usage = await window.spark.kv.get<UserAIUsage>(`ai_usage_${activeUserId}`)
         updateFromUsage(usage)
       } catch {
@@ -65,11 +91,8 @@ export function useAIQuota(limit = DEFAULT_DAILY_AI_QUOTA) {
       }
     }
 
-    const handleUsageUpdated = (event: Event) => {
-      const detail = (event as CustomEvent<UserAIUsage>).detail
-      if (!detail) return
-      if (activeUserId && detail.userId !== activeUserId) return
-      updateFromUsage(detail)
+    const handleUsageUpdated = () => {
+      void loadQuota()
     }
 
     void loadQuota()

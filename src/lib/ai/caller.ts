@@ -136,9 +136,6 @@ export async function callAI({
       cacheKey,
       cacheTtlSeconds,
     })
-
-    await recordUsageForActiveUser(prompt, response)
-
     return response
   } catch (error) {
     if (isDailyLimitFailure(error)) {

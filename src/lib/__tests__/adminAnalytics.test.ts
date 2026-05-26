@@ -97,7 +97,7 @@ describe('adminAnalytics helpers', () => {
     expect(usage.lastUsedAt).toEqual(expect.any(String))
   })
 
-  it('tracks LLM usage for persisted current user', async () => {
+  it('does not write fallback KV usage for proxy-backed LLM calls', async () => {
     const store: KvStore = new Map([['currentUser', { id: 'persisted-user' }]])
     const sparkWindow = createSparkWindow(store)
     ;(globalThis as { window?: unknown }).window = sparkWindow
@@ -110,10 +110,10 @@ describe('adminAnalytics helpers', () => {
       jsonMode: true,
       taskType: 'general',
     }))
-    expect(store.has('ai_usage_persisted-user')).toBe(true)
+    expect(store.has('ai_usage_persisted-user')).toBe(false)
   })
 
-  it('tracks LLM usage from sessionStorage fallback when persisted user is missing', async () => {
+  it('does not write fallback KV usage from sessionStorage when the proxy succeeds', async () => {
     const store: KvStore = new Map()
     const sparkWindow = createSparkWindow(store)
     ;(globalThis as { window?: unknown }).window = sparkWindow
@@ -123,7 +123,7 @@ describe('adminAnalytics helpers', () => {
 
     await callTrackedLlm('hello', 'gpt-model')
 
-    expect(store.has('ai_usage_session-user')).toBe(true)
+    expect(store.has('ai_usage_session-user')).toBe(false)
   })
 
   it('does not write usage when no user can be resolved', async () => {

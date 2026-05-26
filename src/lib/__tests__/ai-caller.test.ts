@@ -51,7 +51,7 @@ describe('ai caller helpers', () => {
     expect(parseAIJson<Array<{ id: string }>>('Ranking output: [{"id":"deal-1"}] done')).toEqual([{ id: 'deal-1' }])
   })
 
-  it('forwards cache settings and records usage for the active user', async () => {
+  it('forwards cache settings without duplicating proxy-side usage writes', async () => {
     const store: KvStore = new Map([['currentUser', { id: 'user-1' }]])
     ;(globalThis as { window?: unknown }).window = createSparkWindow(store)
 
@@ -70,7 +70,7 @@ describe('ai caller helpers', () => {
       cacheKey: 'ai:chat:user-1',
       cacheTtlSeconds: 900,
     })
-    expect(store.has('ai_usage_user-1')).toBe(true)
+    expect(store.has('ai_usage_user-1')).toBe(false)
   })
 
   it('maps quota failures to DailyLimitError', async () => {
