@@ -555,6 +555,19 @@ export function createSupabaseTestHarness(initial?: {
           }
         }
 
+        if (name === 'soft_delete_own_watch') {
+          const watchId = (params as { p_watch_id: string } | null | undefined)?.p_watch_id
+          if (session.userId) {
+            const watch = state.watches.find(
+              (row) => row.id === watchId && row.user_id === session.userId && row.deleted_at === null,
+            )
+            if (watch) {
+              watch.deleted_at = nextTimestamp()
+            }
+          }
+          return { data: null, error: null }
+        }
+
         throw new Error(`RPC ${name} not implemented in test harness`)
       },
     }

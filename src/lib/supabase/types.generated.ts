@@ -892,6 +892,12 @@ export interface Database {
         }
         Returns: boolean
       }
+      soft_delete_own_watch: {
+        Args: {
+          p_watch_id: string
+        }
+        Returns: undefined
+      }
       soft_delete_watch: {
         Args: {
           p_watch_id: string

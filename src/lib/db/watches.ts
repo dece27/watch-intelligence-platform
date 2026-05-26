@@ -16,7 +16,7 @@ export interface GetWatchesOptions {
 const SEARCH_LIMIT = 25
 const SEARCH_OFFSET = 0
 
-type WatchClient = Pick<SupabaseClient<Database>, 'from'>
+type WatchClient = Pick<SupabaseClient<Database>, 'from' | 'rpc'>
 
 function assertPagination(limit: number, offset: number): void {
   if (!Number.isInteger(limit) || limit <= 0) {
@@ -133,19 +133,13 @@ export async function updateWatch(id: string, data: WatchUpdate): Promise<WatchR
 
 /**
  * Soft-deletes an accessible watch row by timestamping `deleted_at`.
+ * Uses a SECURITY DEFINER RPC so that the SELECT RLS policy's
+ * `deleted_at IS NULL` guard does not block the update.
  */
-export async function softDeleteWatch(id: string): Promise<WatchRow> {
+export async function softDeleteWatch(id: string): Promise<void> {
   const client = getClient()
-  const { data: deletedWatch, error } = await client
-    .from('watches')
-    .update({ deleted_at: new Date().toISOString() })
-    .eq('id', id)
-    .is('deleted_at', null)
-    .select('*')
-    .maybeSingle()
-
+  const { error } = await client.rpc('soft_delete_own_watch', { p_watch_id: id })
   throwDatabaseError(`soft-delete watch ${id}`, error)
-  return requireWatch(deletedWatch, id, 'soft-delete watch')
 }
 
 /**
