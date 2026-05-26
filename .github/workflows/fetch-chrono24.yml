@@ -51,7 +51,53 @@ jobs:
             echo "Skipping Chrono24 fetch: configure SUPABASE_URL as an Environment variable and SUPABASE_SERVICE_ROLE_KEY as a secret in the selected GitHub Environment."
             exit 0
           fi
+          set +e
           python scripts/fetch-chrono24.py
+          fetch_exit_code=$?
+          set -e
+
+          if [ "${fetch_exit_code}" -eq 0 ]; then
+            exit 0
+          fi
+
+          if [ ! -f "${CHRONO24_SYNC_METRICS_PATH}" ]; then
+            echo "::error::Chrono24 fetch failed before metrics were written."
+            exit "${fetch_exit_code}"
+          fi
+
+          python - <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          metrics_path = Path(os.environ["CHRONO24_SYNC_METRICS_PATH"])
+          metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+          status = str(metrics.get("status") or "")
+
+          if status in {"failed_upsert", "mapping_empty"}:
+              print(f"::error::Chrono24 fetch failed with fatal status '{status}'.")
+              sys.exit(1)
+
+          if status == "upstream_unavailable":
+              consecutive = metrics.get("consecutive_upstream_failures", 0)
+              threshold = metrics.get(
+                  "upstream_failure_threshold",
+                  os.environ.get("CHRONO24_UPSTREAM_FAILURE_THRESHOLD", "n/a"),
+              )
+              print(
+                  "::warning::Chrono24 upstream is unavailable; "
+                  f"observability captured {consecutive} consecutive failures "
+                  f"(threshold {threshold}) without failing the workflow."
+              )
+              sys.exit(0)
+
+          print(
+              "::error::Chrono24 fetch exited non-zero with an unexpected status "
+              f"'{status or 'unknown'}'."
+          )
+          sys.exit(1)
+          PY
 
       - name: Chrono24 sync observability summary
         if: always()

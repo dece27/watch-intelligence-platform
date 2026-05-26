@@ -18,7 +18,7 @@
 | `RESEND_API_KEY` | Server-only API key used by scheduled workflows that send transactional email notifications |
 | `RESEND_FROM_EMAIL` | Optional sender address override for Resend-powered workflow notifications |
 | `CHRONO24_ACCESS_APPROVED` | Workflow control flag; set to `true` only when Chrono24 automated access is explicitly approved |
-| `CHRONO24_UPSTREAM_FAILURE_THRESHOLD` | Consecutive upstream-unavailable Chrono24 sync runs allowed before marking workflow as failed |
+| `CHRONO24_UPSTREAM_FAILURE_THRESHOLD` | Consecutive upstream-unavailable Chrono24 sync runs surfaced in the sync observability output as a sustained upstream failure |
 | `CHRONO24_STALE_AFTER_HOURS` | Freshness window (hours) used to mark synced Chrono24 listings as stale |
 | `FLARESOLVERR_ENABLED` | Enables routing Chrono24 fetch requests through FlareSolverr in the sync workflow |
 | `FLARESOLVERR_URL` | Base URL for the FlareSolverr service used by `scripts/fetch-chrono24.py` |
@@ -40,7 +40,7 @@
 
 - `SUPABASE_PROJECT_REF` — Supabase project ref used by CLI workflows to link the hosted project before running migrations
 - `CHRONO24_ACCESS_APPROVED` — set `true` only after confirming approved Chrono24 automated access
-- `CHRONO24_UPSTREAM_FAILURE_THRESHOLD` — consecutive upstream failures allowed before fetch workflow failure
+- `CHRONO24_UPSTREAM_FAILURE_THRESHOLD` — consecutive upstream failures surfaced in fetch observability output as sustained upstream failure
 - `CHRONO24_STALE_AFTER_HOURS` — stale-data threshold used in Chrono24 sync metrics and frontend status
 - `FLARESOLVERR_ENABLED` — set `true` to route Chrono24 requests through FlareSolverr
 - `FLARESOLVERR_URL` — FlareSolverr URL consumed by the Chrono24 sync script

@@ -138,7 +138,8 @@ Recommended GitHub Environment variables for resilient sync behavior:
 - `CHRONO24_ACCESS_APPROVED` — set to `true` only after you confirm an approved
   automated access path to Chrono24 (default: `false`, which safely skips sync)
 - `CHRONO24_UPSTREAM_FAILURE_THRESHOLD` — number of consecutive upstream-unavailable
-  runs before the workflow fails (default: `4`)
+  runs surfaced in sync observability output as a sustained upstream failure
+  (default: `4`)
 - `CHRONO24_STALE_AFTER_HOURS` — cached listing freshness window used for stale
   status reporting (default: `48`)
 - `FLARESOLVERR_ENABLED` — set to `true` to proxy Chrono24 requests through
