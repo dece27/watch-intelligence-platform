@@ -142,6 +142,63 @@ const normalizeRecommendation = (value: string, fallback: string) => {
   return trimmed
 }
 
+const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+const extractSectionValue = (response: string, sectionNames: string[], stopNames: string[]) => {
+  const escapedSection = sectionNames.map(escapeRegex).join('|')
+  const sectionPattern = stopNames.length > 0
+    ? new RegExp(
+      `(?:^|\\n)\\s*(?:\\d+[.):-]?\\s*)?(?:${escapedSection})\\s*[:\\-]\\s*([\\s\\S]*?)(?=\\n\\s*(?:\\d+[.):-]?\\s*)?(?:${stopNames.map(escapeRegex).join('|')})\\s*[:\\-]|$)`,
+      'i',
+    )
+    : new RegExp(
+      `(?:^|\\n)\\s*(?:\\d+[.):-]?\\s*)?(?:${escapedSection})\\s*[:\\-]\\s*([\\s\\S]*?)$`,
+      'i',
+    )
+  const match = response.match(sectionPattern)
+  return match?.[1]?.trim() || ''
+}
+
+const parseRebalanceAnalysisFromText = (response: string): RebalanceAnalysis => {
+  const normalized = extractJsonPayload(response)
+  const concentrationRisk = extractSectionValue(
+    normalized,
+    ['CONCENTRATION RISK', 'CONCENTRATION', 'RISK'],
+    ['SELL RECOMMENDATION', 'SELL', 'BUY RECOMMENDATION', 'BUY', 'STRATEGIC SCORE', 'SCORE'],
+  )
+  const sellRecommendation = extractSectionValue(
+    normalized,
+    ['SELL RECOMMENDATION', 'SELL'],
+    ['BUY RECOMMENDATION', 'BUY', 'STRATEGIC SCORE', 'SCORE'],
+  )
+  const buyRecommendation = extractSectionValue(
+    normalized,
+    ['BUY RECOMMENDATION', 'BUY'],
+    ['STRATEGIC SCORE', 'SCORE'],
+  )
+  const scoreMatch = normalized.match(/\b(?:strategic\s*score|score)\b[\s:.-]*(10|[0-9])(?:\s*\/\s*10)?\b|\b(10|[0-9])\s*\/\s*10\b/i)
+  const extractedScore = scoreMatch?.[1] ?? scoreMatch?.[2]
+  const score = extractedScore !== undefined ? Number(extractedScore) : DEFAULT_STRATEGIC_SCORE
+  const normalizedScore = Number.isFinite(score) && score >= 0 && score <= 10
+    ? score
+    : DEFAULT_STRATEGIC_SCORE
+  const explanation = extractSectionValue(
+    normalized,
+    ['STRATEGIC SCORE EXPLANATION', 'EXPLANATION', 'STRATEGIC SCORE', 'SCORE'],
+    [],
+  ) || 'No explanation provided.'
+
+  return {
+    concentrationRisk: concentrationRisk || 'No concentration risk identified.',
+    sell: normalizeRecommendation(sellRecommendation, DEFAULT_NO_SELL_ACTION),
+    buy: normalizeRecommendation(buyRecommendation, DEFAULT_NO_BUY_ACTION),
+    strategicScore: {
+      score: normalizedScore,
+      explanation,
+    },
+  }
+}
+
 const parseRebalanceAnalysis = (response: string): RebalanceAnalysis => {
   try {
     const parsed = parseJsonObjectWithRecovery(response)
@@ -164,7 +221,8 @@ const parseRebalanceAnalysis = (response: string): RebalanceAnalysis => {
       }
     }
   } catch (error) {
-    throw new Error(`Malformed rebalancing analysis response: ${error instanceof Error ? error.message : String(error)}`)
+    console.warn("[AIAdvisorModule] Rebalancing response was not strict JSON. Falling back to text parsing.", error)
+    return parseRebalanceAnalysisFromText(response)
   }
 }
 
