@@ -237,14 +237,16 @@ def patch_chrono24_session(cookies: dict[str, str], user_agent: str) -> None:
     original_get_response = chrono24_session._get_tenacity_wrapped_response
 
     def patched_get_response(*args: Any, max_attempts: int = 8, **kwargs: Any) -> Any:
-        input_headers = kwargs.get("headers", {}) or {}
-        headers = dict(input_headers)
+        input_headers = kwargs.pop("headers", {}) or {}
+        base_headers = getattr(chrono24_session, "DEFAULT_HEADERS", {})
+        headers = dict(base_headers) if isinstance(base_headers, dict) else {}
+        headers.update(dict(input_headers))
         headers["user-agent"] = user_agent
         headers["User-Agent"] = user_agent
+        chrono24_session.DEFAULT_HEADERS = headers
 
         input_cookies = kwargs.get("cookies", {}) or {}
         merged_cookies = {**dict(input_cookies), **cookies}
-        kwargs["headers"] = headers
         kwargs["cookies"] = merged_cookies
 
         return original_get_response(*args, max_attempts=max_attempts, **kwargs)
