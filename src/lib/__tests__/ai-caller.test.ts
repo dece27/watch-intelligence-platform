@@ -105,4 +105,26 @@ describe('ai caller helpers', () => {
     expect(createAICacheKey('signal', 'watch-1', getTodayCacheBucket(new Date('2026-05-23T00:00:00Z')))).toBe('ai:signal:watch-1:2026-05-23')
     expect(hashAIInput('same-input')).toBe(hashAIInput('same-input'))
   })
+
+  it('forwards identify image input to the proxy', async () => {
+    const store: KvStore = new Map([['currentUser', { id: 'user-1' }]])
+    ;(globalThis as { window?: unknown }).window = createSparkWindow(store)
+
+    await expect(callAI({
+      prompt: 'identify this watch',
+      taskType: 'identify',
+      jsonMode: true,
+      imageInput: 'https://example.com/watch.jpg',
+    })).resolves.toBe('proxy-response')
+
+    expect(callGitHubModelsProxy).toHaveBeenCalledWith({
+      prompt: 'identify this watch',
+      model: 'auto',
+      jsonMode: true,
+      taskType: 'identify',
+      imageInput: 'https://example.com/watch.jpg',
+      cacheKey: undefined,
+      cacheTtlSeconds: 21600,
+    })
+  })
 })

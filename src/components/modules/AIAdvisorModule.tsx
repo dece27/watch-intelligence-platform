@@ -491,8 +491,6 @@ Provide expert, concise advice (2-3 paragraphs max) about their collection, watc
     try {
       const promptText = `You are a luxury watch expert. Analyze this watch image and identify it.
 
-Image source (URL or base64-encoded photo): ${safeIdentifierImage}
-
 Based on the image, identify:
 - Brand
 - Model name
@@ -513,6 +511,7 @@ Respond in valid JSON format:
         prompt: promptText,
         jsonMode: true,
         taskType: 'identify',
+        imageInput: safeIdentifierImage,
         cacheKey: createAICacheKey('identify', hashAIInput(safeIdentifierImage)),
         cacheTtlSeconds: IDENTIFY_CACHE_TTL_SECONDS,
       })

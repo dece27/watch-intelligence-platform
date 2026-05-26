@@ -15,6 +15,7 @@ interface GitHubModelsProxyRequest {
   model?: string
   jsonMode?: boolean
   taskType?: GitHubModelsTaskType
+  imageInput?: string
   cacheKey?: string
   cacheTtlSeconds?: number
 }
@@ -76,6 +77,7 @@ export async function callGitHubModelsProxy({
   model,
   jsonMode,
   taskType = 'general',
+  imageInput,
   cacheKey,
   cacheTtlSeconds,
 }: GitHubModelsProxyRequest): Promise<string> {
@@ -95,6 +97,7 @@ export async function callGitHubModelsProxy({
         model,
         jsonMode,
         taskType,
+        ...(imageInput ? { imageInput } : {}),
         cacheKey,
         cacheTtlSeconds,
       },

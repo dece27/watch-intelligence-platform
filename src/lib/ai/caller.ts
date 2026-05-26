@@ -19,6 +19,7 @@ export interface CallAIOptions {
   model?: string
   jsonMode?: boolean
   taskType?: GitHubModelsTaskType
+  imageInput?: string
   cacheKey?: string
   cacheTtlSeconds?: number
 }
@@ -124,6 +125,7 @@ export async function callAI({
   model = 'auto',
   jsonMode = false,
   taskType = 'general',
+  imageInput,
   cacheKey,
   cacheTtlSeconds = DEFAULT_CACHE_TTL_SECONDS,
 }: CallAIOptions): Promise<string> {
@@ -133,6 +135,7 @@ export async function callAI({
       model,
       jsonMode,
       taskType,
+      ...(imageInput ? { imageInput } : {}),
       cacheKey,
       cacheTtlSeconds,
     })

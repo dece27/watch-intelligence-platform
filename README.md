@@ -169,9 +169,11 @@ In **Settings → Secrets and variables → Actions**, add these repository secr
 - `NEXT_PUBLIC_SUPABASE_URL` — Supabase project URL used at build time for static frontend workflows
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY` — public Supabase anon key used at build time for static frontend workflows
 - `SUPABASE_URL` — same Supabase project URL for GitHub Actions scripts and server-side utilities
+- `SUPABASE_ANON_KEY` — public Supabase anon key used by the Supabase Edge Function deploy workflow to sync function secrets
 - `SUPABASE_SERVICE_ROLE_KEY` — Supabase service role key for server-side Actions scripts only; never expose it to the browser
 - `SUPABASE_DB_URL` — database connection string used by backup workflows or other direct database connections
 - `SUPABASE_ACCESS_TOKEN` — Supabase personal access token used by CLI workflows such as hosted migration runs
+- `MODELS_GITHUB_TOKEN` — GitHub PAT with `models:read` used to populate the Edge Function runtime `GITHUB_TOKEN` secret
 - `RESEND_API_KEY` — Resend API key for alert notification emails
 
 Also add this GitHub **Actions variable** (or secret):
@@ -183,8 +185,29 @@ Also add this GitHub **Actions variable** (or secret):
 Set these in Supabase with `npx supabase secrets set KEY=value`:
 
 - `GITHUB_TOKEN` — PAT with `models:read` scope only
+- `SUPABASE_URL` — Supabase project URL (used by function-side auth and caching clients)
+- `SUPABASE_ANON_KEY` — Supabase anon key (used to call `record_ai_usage` with user auth context)
 - `SUPABASE_SERVICE_ROLE_KEY` — service role key for Edge Function admin operations
 - `RESEND_API_KEY` — Resend API key for alert emails sent from Edge Functions
+
+### Supabase Edge Function deployment
+
+This repository includes `.github/workflows/deploy-supabase-functions.yml`, which:
+
+- links to your hosted Supabase project using `SUPABASE_PROJECT_REF`
+- syncs required Edge Function secrets (`GITHUB_TOKEN`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`)
+- deploys `github-models-proxy`
+
+The workflow runs on pushes to `main` that modify `supabase/functions/**`, and can also be run manually from Actions.
+
+### AI operational checks
+
+After deployment, verify:
+
+1. The frontend can invoke `github-models-proxy` without Edge Function errors.
+2. `market_data_cache` entries are created/read for cache-backed AI calls.
+3. `record_ai_usage` writes rows in `ai_usage_logs` for authenticated users.
+4. AI flows work end-to-end for `signal`, `chat`, `deal_ranking`, `deal_assessment`, `rebalancing`, `what_if`, and `identify`.
 
 ### Local development
 
