@@ -29,9 +29,10 @@ function parseJsonWithRecovery(payload) {
 
 const supabaseUrl = requireEnv('SUPABASE_URL')
 const supabaseAnonKey = requireEnv('SUPABASE_ANON_KEY')
-const identifyImageUrl =
-  process.env.AI_TEST_IMAGE_URL?.trim() ||
+const defaultIdentifyImageUrl =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5V5gkAAAAASUVORK5CYII='
+const identifyImageUrl = process.env.AI_TEST_IMAGE_URL?.trim() || defaultIdentifyImageUrl
+const usingDefaultIdentifyImage = identifyImageUrl === defaultIdentifyImageUrl
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
@@ -92,6 +93,9 @@ const testCases = [
 
 async function run() {
   console.log(`Running ${testCases.length} live AI function checks...`)
+  if (usingDefaultIdentifyImage) {
+    console.log('ℹ️ Using default minimal identify image. Set AI_TEST_IMAGE_URL to a real watch image for stronger validation.')
+  }
 
   for (const testCase of testCases) {
     const requestBody = {
