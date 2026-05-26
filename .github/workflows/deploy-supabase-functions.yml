@@ -1,0 +1,65 @@
+name: Deploy Supabase Functions
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/**'
+      - '.github/workflows/deploy-supabase-functions.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-functions:
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      MODELS_GITHUB_TOKEN: ${{ secrets.MODELS_GITHUB_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: supabase/setup-cli@v2
+        with:
+          version: latest
+
+      - name: Validate required configuration
+        run: |
+          missing=()
+          [ -n "${SUPABASE_PROJECT_REF:-}" ] || missing+=("SUPABASE_PROJECT_REF variable")
+          [ -n "${SUPABASE_URL:-}" ] || missing+=("SUPABASE_URL secret")
+          [ -n "${SUPABASE_ANON_KEY:-}" ] || missing+=("SUPABASE_ANON_KEY secret")
+          [ -n "${SUPABASE_SERVICE_ROLE_KEY:-}" ] || missing+=("SUPABASE_SERVICE_ROLE_KEY secret")
+          [ -n "${MODELS_GITHUB_TOKEN:-}" ] || missing+=("MODELS_GITHUB_TOKEN secret")
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf 'Missing required configuration:\n' >&2
+            printf ' - %s\n' "${missing[@]}" >&2
+            exit 1
+          fi
+
+      - name: Link Supabase project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Sync Edge Function secrets
+        run: |
+          supabase secrets set \
+            GITHUB_TOKEN="$MODELS_GITHUB_TOKEN" \
+            SUPABASE_URL="$SUPABASE_URL" \
+            SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
+            SUPABASE_SERVICE_ROLE_KEY="$SUPABASE_SERVICE_ROLE_KEY" \
+            --project-ref "$SUPABASE_PROJECT_REF"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Deploy GitHub Models proxy function
+        run: supabase functions deploy github-models-proxy --project-ref "$SUPABASE_PROJECT_REF"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

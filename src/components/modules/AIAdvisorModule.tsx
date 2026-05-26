@@ -50,7 +50,7 @@ const IDENTIFIER_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 const IDENTIFIER_MAX_DIMENSION = 800
 const IDENTIFIER_MAX_OUTPUT_KB = 500
 const IDENTIFIER_COMPRESSION_QUALITY = 0.75
-const IDENTIFIER_ALLOWED_DATA_URL_PATTERN = /^data:image\/(?:jpeg|jpg|png|webp|gif);base64,[a-z0-9+/]+=*$/i
+const IDENTIFIER_ALLOWED_DATA_URL_PATTERN = /^data:image\/(?:jpeg|png|webp|gif);base64,[a-z0-9+/]+=*$/i
 const SIGNAL_CACHE_TTL_SECONDS = 60 * 60 * 24
 const CHAT_CACHE_TTL_SECONDS = 60 * 30
 const IDENTIFY_CACHE_TTL_SECONDS = 60 * 60 * 24 * 7
@@ -491,8 +491,6 @@ Provide expert, concise advice (2-3 paragraphs max) about their collection, watc
     try {
       const promptText = `You are a luxury watch expert. Analyze this watch image and identify it.
 
-Image source (URL or base64-encoded photo): ${safeIdentifierImage}
-
 Based on the image, identify:
 - Brand
 - Model name
@@ -513,6 +511,7 @@ Respond in valid JSON format:
         prompt: promptText,
         jsonMode: true,
         taskType: 'identify',
+        imageInput: safeIdentifierImage,
         cacheKey: createAICacheKey('identify', hashAIInput(safeIdentifierImage)),
         cacheTtlSeconds: IDENTIFY_CACHE_TTL_SECONDS,
       })

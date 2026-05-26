@@ -8,10 +8,12 @@
 | `VITE_SUPABASE_ANON_KEY` | Public Supabase anon key used by the browser client (the app also accepts `NEXT_PUBLIC_SUPABASE_ANON_KEY` as a fallback) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-only Supabase service role key for GitHub Actions or Supabase server-side utilities; never expose it to the browser |
 | `SUPABASE_URL` | Optional server-only Supabase URL override for GitHub Actions or other non-browser utilities |
+| `SUPABASE_ANON_KEY` | Optional server-side anon key used by workflows that sync Supabase Edge Function runtime secrets |
 | `SUPABASE_DB_URL` | Database connection string used by Supabase CLI backup jobs or other direct Postgres access outside the migration workflow |
 | `SUPABASE_ACCESS_TOKEN` | Personal access token used by Supabase CLI GitHub Actions jobs that authenticate through the Supabase Management API |
 | `SUPABASE_PROJECT_REF` | Supabase project reference used by GitHub Actions to link the CLI to the correct hosted project |
 | `GITHUB_TOKEN` | Server-only GitHub personal access token used by `supabase/functions/github-models-proxy` to call GitHub Models |
+| `MODELS_GITHUB_TOKEN` | GitHub Actions secret containing a PAT with `models:read`, used to populate the Edge Function `GITHUB_TOKEN` secret during deploy |
 | `VITE_WATCHCHARTS_API_KEY` | API key for WatchCharts market value lookups |
 | `VITE_WATCHCHARTS_BASE_URL` | Override for WatchCharts API base URL |
 | `VITE_BASE_PATH` | Base path for GitHub Pages deployments (set automatically by the deploy workflow) |
@@ -31,9 +33,11 @@
 - `NEXT_PUBLIC_SUPABASE_URL` — Supabase project URL used at build time for static frontend workflows
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY` — public Supabase anon key used at build time for static frontend workflows
 - `SUPABASE_URL` — same Supabase project URL for GitHub Actions scripts and server-side utilities
+- `SUPABASE_ANON_KEY` — public Supabase anon key used by the Supabase Edge Function deploy workflow
 - `SUPABASE_SERVICE_ROLE_KEY` — Supabase service role key for server-side Actions scripts only; never expose it to the browser
 - `SUPABASE_DB_URL` — database connection string used by backup workflows or other direct database connections
 - `SUPABASE_ACCESS_TOKEN` — Supabase personal access token used by CLI workflows such as hosted migration runs
+- `MODELS_GITHUB_TOKEN` — GitHub PAT with `models:read` used by the Supabase Edge Function deploy workflow
 - `RESEND_API_KEY` — Resend API key for alert notification emails
 
 ### Variables or secrets

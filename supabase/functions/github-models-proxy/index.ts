@@ -30,6 +30,7 @@ type GitHubModelsRequest = {
   model?: unknown
   jsonMode?: unknown
   taskType?: unknown
+  imageInput?: unknown
   cacheKey?: unknown
   cacheTtlSeconds?: unknown
 }
@@ -72,6 +73,8 @@ function estimateTokens(text: string) {
 
 function resolveUsageCallType(taskType: string) {
   switch (taskType) {
+    case 'identify':
+      return 'identify'
     case 'what_if':
       return 'chat'
     case 'deal_ranking':
@@ -187,6 +190,30 @@ function extractContent(content: unknown): string {
   return ''
 }
 
+const VALID_IMAGE_DATA_URL_PATTERN = /^data:image\/(?:jpeg|png|webp|gif);base64,[a-z0-9+/]+=*$/i
+
+function normalizeIdentifyImageInput(value: unknown): string {
+  if (typeof value !== 'string') {
+    return ''
+  }
+
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return ''
+  }
+
+  if (VALID_IMAGE_DATA_URL_PATTERN.test(trimmed)) {
+    return trimmed
+  }
+
+  try {
+    const parsedUrl = new URL(trimmed)
+    return parsedUrl.protocol === 'https:' ? parsedUrl.href : ''
+  } catch {
+    return ''
+  }
+}
+
 async function recordUsageIfAuthenticated(req: Request, taskType: string, totalTokens: number) {
   const authorization = req.headers.get('Authorization')?.trim() ?? ''
 
@@ -244,12 +271,19 @@ Deno.serve(async (req) => {
   const taskType = typeof body.taskType === 'string' && body.taskType.trim()
     ? body.taskType.trim()
     : 'general'
+  const imageInput = normalizeIdentifyImageInput(body.imageInput)
   const cacheKey = typeof body.cacheKey === 'string' ? body.cacheKey.trim() : ''
   const rawCacheTtl = typeof body.cacheTtlSeconds === 'number' ? body.cacheTtlSeconds : DEFAULT_CACHE_TTL_SECONDS
   const cacheTtlSeconds = Math.min(Math.max(Math.round(rawCacheTtl), 0), MAX_CACHE_TTL_SECONDS)
 
   if (!prompt) {
     return jsonResponse(400, { error: 'Prompt is required.' })
+  }
+
+  if (taskType === 'identify' && !imageInput) {
+    return jsonResponse(400, {
+      error: 'Identify requests require a valid HTTPS-only image URL or supported image data URL.',
+    })
   }
 
   if (cacheKey) {
@@ -265,6 +299,30 @@ Deno.serve(async (req) => {
   }
 
   const model = resolveModel(taskType, requestedModel)
+  const messages = taskType === 'identify'
+    ? [
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text: prompt,
+          },
+          {
+            type: 'image_url',
+            image_url: {
+              url: imageInput,
+            },
+          },
+        ],
+      },
+    ]
+    : [
+      {
+        role: 'user',
+        content: prompt,
+      },
+    ]
   const upstreamHeaders = new Headers({
     Authorization: `Bearer ${GITHUB_TOKEN}`,
     'Content-Type': 'application/json',
@@ -276,12 +334,7 @@ Deno.serve(async (req) => {
     headers: upstreamHeaders,
     body: JSON.stringify({
       model,
-      messages: [
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
+      messages,
       temperature: jsonMode ? 0.2 : 0.7,
       response_format: jsonMode ? { type: 'json_object' } : undefined,
     }),
