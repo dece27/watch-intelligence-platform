@@ -23,25 +23,8 @@ function parseJsonWithRecovery(payload) {
   try {
     return JSON.parse(payload)
   } catch {
-    // Continue with extraction recovery paths.
+    throw new Error(`Response did not contain valid JSON: ${preview(payload)}`)
   }
-
-  const candidates = [
-    [payload.indexOf('{'), payload.lastIndexOf('}')],
-    [payload.indexOf('['), payload.lastIndexOf(']')],
-  ]
-    .filter(([start, end]) => start >= 0 && end > start)
-    .sort((a, b) => a[0] - b[0])
-
-  for (const [start, end] of candidates) {
-    try {
-      return JSON.parse(payload.slice(start, end + 1))
-    } catch {
-      // Try next extraction candidate.
-    }
-  }
-
-  throw new Error(`Response did not contain valid JSON: ${preview(payload)}`)
 }
 
 const supabaseUrl = requireEnv('SUPABASE_URL')
