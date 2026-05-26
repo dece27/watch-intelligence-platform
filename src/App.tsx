@@ -28,7 +28,7 @@ import {
 import { useKV } from "@/lib/useKV"
 import { hasSupabaseBrowserEnv, getSupabaseClient } from "@/lib/supabase/client"
 import { getWatches, createWatch, updateWatch, softDeleteWatch } from "@/lib/db/watches"
-import { getUserPreferences, upsertUserPreferences } from "@/lib/db/user"
+import { getUserPreferences, upsertUserPreferences, getSharedCollectionBySlug } from "@/lib/db/user"
 import { watchToInsert, watchToUpdate, rowToWatch } from "@/lib/db/watchMapper"
 
 function decodeLegacySharedSlug(value: string): string | null {
@@ -107,6 +107,24 @@ function App() {
       setSharedLoading(true)
       setSharedError(null)
       try {
+        // Supabase path: look up by slug in the database first so shared
+        // collections survive beyond local storage and are accessible across
+        // devices.
+        if (hasSupabaseBrowserEnv()) {
+          try {
+            const client = getSupabaseClient()
+            const supabaseShared = await getSharedCollectionBySlug(client, sharedSlug)
+            if (supabaseShared) {
+              setSharedCollection(supabaseShared)
+              return
+            }
+          } catch {
+            // Non-fatal: fall through to KV lookup.
+          }
+        }
+
+        // KV path: used when Supabase is unavailable or the slug was created
+        // before the Supabase migration, including legacy base64-encoded slugs.
         const key = `shared_collection_${sharedSlug}`
         let shared = await window.spark.kv.get<SharedCollectionRecord>(key)
 
@@ -296,17 +314,6 @@ function App() {
   }
 
   const handleLogout = async () => {
-    if (currentUser) {
-      await window.spark.kv.set(`vaultMetadata_${currentUser.id}`, {
-        userId: currentUser.id,
-        vaultName: currentUser.vaultName,
-        createdAt: currentUser.createdAt,
-        lastAccessed: new Date().toISOString(),
-        watchCount: watchList.length,
-        totalValue: totalValue
-      })
-    }
-
     // Sign out from Supabase Auth when a session exists.
     if (hasSupabaseBrowserEnv()) {
       try {

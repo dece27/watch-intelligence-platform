@@ -1,5 +1,6 @@
 import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js'
 import type { Database, TableInsert, TableRow, TableUpdate } from '@/lib/supabase/types'
+import type { SharedCollectionRecord, SharedWatch } from '@/lib/types'
 
 export interface ProfileRecord {
   id: string
@@ -54,7 +55,7 @@ export interface ShareTokenRecord {
   createdAt: string
 }
 
-export interface SharedCollectionRecord {
+export interface SupabaseShareCollectionRecord {
   token: string
   userId: string
   access: Database['public']['Enums']['share_access']
@@ -264,7 +265,7 @@ export async function createShareToken(
 export async function getSharedCollection(
   client: Pick<SupabaseClient<Database>, 'rpc'>,
   token: string,
-): Promise<SharedCollectionRecord | null> {
+): Promise<SupabaseShareCollectionRecord | null> {
   const { data, error } = await client.rpc('get_shared_collection', { p_token: token })
   throwIfError(error)
 
@@ -283,5 +284,100 @@ export async function getSharedCollection(
     lastViewed: share.last_viewed ?? undefined,
     expiresAt: share.expires_at ?? undefined,
     watches: (share.watches as unknown[]) ?? [],
+  }
+}
+
+/**
+ * Creates or updates a share token identified by a human-readable slug.
+ *
+ * Requires an active Supabase Auth session (the RPC uses auth.uid()).
+ * Throws an error with message 'slug_taken' if the slug is owned by a
+ * different user.
+ *
+ * Added in migration 0015; uses `any` cast because the RPC is not yet
+ * present in the auto-generated Database type definitions.
+ */
+export async function createOrUpdateShareBySlug(
+  client: Pick<SupabaseClient<Database>, 'rpc'>,
+  slug: string,
+  options?: { hidePrices?: boolean; expiresAt?: string | null },
+): Promise<ShareTokenRecord> {
+  const { data, error } = await (client as any).rpc('create_or_update_share_by_slug', {
+    p_slug: slug,
+    p_hide_prices: options?.hidePrices ?? true,
+    p_expires_at: options?.expiresAt ?? null,
+  })
+
+  throwIfError(error as PostgrestError | null)
+  const share = (data ?? [])[0]
+  if (!share) {
+    throw new Error('Failed to create share token with slug')
+  }
+
+  return mapShareToken(share)
+}
+
+/**
+ * Looks up a shared collection by its human-readable slug.
+ *
+ * Returns an app-level SharedCollectionRecord (same type used by the KV
+ * path) so callers can treat both paths uniformly.
+ *
+ * Added in migration 0015; uses `any` cast because the RPC is not yet
+ * present in the auto-generated Database type definitions.
+ */
+export async function getSharedCollectionBySlug(
+  client: Pick<SupabaseClient<Database>, 'rpc'>,
+  slug: string,
+): Promise<SharedCollectionRecord | null> {
+  const { data, error } = await (client as any).rpc('get_shared_collection_by_slug', {
+    p_slug: slug,
+  })
+
+  throwIfError(error as PostgrestError | null)
+  const share = (data ?? [])[0]
+  if (!share) {
+    return null
+  }
+
+  const watches: SharedWatch[] = Array.isArray(share.watches)
+    ? (share.watches as any[]).map(mapSupabaseSharedWatch)
+    : []
+
+  return {
+    slug,
+    ownerUserId: share.user_id as string,
+    ownerVaultName: (share.display_name as string | null) ?? 'Shared Vault',
+    createdAt: (share.created_at as string | null) ?? new Date().toISOString(),
+    updatedAt: (share.created_at as string | null) ?? new Date().toISOString(),
+    watches,
+  }
+}
+
+function mapSupabaseSharedWatch(raw: any): SharedWatch {
+  const conditionMap: Record<string, SharedWatch['condition']> = {
+    unworn: 'mint',
+    mint: 'mint',
+    excellent: 'excellent',
+    'very good': 'excellent',
+    good: 'good',
+    fair: 'fair',
+  }
+
+  return {
+    id: raw.id as string,
+    brand: raw.brand as string,
+    model: raw.model as string,
+    referenceNumber: raw.referenceNumber as string | undefined,
+    year: raw.year as number | undefined,
+    condition: conditionMap[raw.condition as string] ?? 'good',
+    category: (raw.category as SharedWatch['category']) ?? 'dress',
+    imageUrl: raw.imageUrl as string | undefined,
+    movement: raw.movement as string | undefined,
+    caseMaterial: raw.caseMaterial as string | undefined,
+    caseDiameter: raw.caseDiameter as string | undefined,
+    notes: raw.notes as string | undefined,
+    hasBox: Boolean(raw.hasBox),
+    hasPapers: Boolean(raw.hasPapers),
   }
 }

@@ -6,6 +6,8 @@ import { Copy, Check, ShareNetwork } from "@phosphor-icons/react"
 import { toast } from "sonner"
 import { SharedCollectionRecord, Watch } from "@/lib/types"
 import { buildSharedCollectionUrl, getSharedCollectionPrefix } from "@/lib/sitePath"
+import { hasSupabaseBrowserEnv, getSupabaseClient } from "@/lib/supabase/client"
+import { createOrUpdateShareBySlug } from "@/lib/db/user"
 
 interface ShareCollectionModalProps {
   open: boolean
@@ -87,6 +89,29 @@ export function ShareCollectionModal({ open, onOpenChange, userId, vaultName, wa
 
     setIsPublishing(true)
     try {
+      const now = new Date().toISOString()
+
+      // Supabase path: persist share token in the database when a session is
+      // active so the link survives beyond local storage.
+      if (hasSupabaseBrowserEnv()) {
+        try {
+          const supabase = getSupabaseClient()
+          const { data: { session } } = await supabase.auth.getSession()
+          if (session?.user.id) {
+            await createOrUpdateShareBySlug(supabase, slug)
+          }
+        } catch (supabaseError: any) {
+          if (supabaseError?.message === 'slug_taken') {
+            toast.error("That URL is already taken. Try a different custom URL.")
+            return
+          }
+          // Non-fatal: fall through to KV write so the share still works.
+        }
+      }
+
+      // KV path: always write so shared collections are accessible to viewers
+      // regardless of whether they have a Supabase session (the App.tsx loader
+      // falls back to KV when Supabase is unavailable).
       const key = `shared_collection_${slug}`
       const existing = await window.spark.kv.get<SharedCollectionRecord>(key)
 
@@ -95,7 +120,6 @@ export function ShareCollectionModal({ open, onOpenChange, userId, vaultName, wa
         return
       }
 
-      const now = new Date().toISOString()
       const record: SharedCollectionRecord = {
         slug,
         ownerUserId: userId,
