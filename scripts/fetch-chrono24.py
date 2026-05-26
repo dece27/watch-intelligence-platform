@@ -698,6 +698,23 @@ def main() -> None:
         except NoListingsFoundException:
             print(f"  No listings found for '{query_str}' — skipping")
             continue
+        except StopIteration as exc:
+            total_request_errors += 1
+            remember_upstream_error(
+                stage="chrono24_query",
+                message=(
+                    "chrono24.query/search returned an empty iterator before listings could be parsed"
+                ),
+                error_type=type(exc).__name__,
+            )
+            print(
+                f"  Upstream response could not be parsed for '{query_str}': "
+                f"{type(exc).__name__}: {exc!r} — treating as upstream unavailable"
+            )
+            if LAST_UPSTREAM_ERROR:
+                last_upstream_error = {"query": query_str, **LAST_UPSTREAM_ERROR}
+                print(f"  Upstream diagnostics: {json.dumps(last_upstream_error, sort_keys=True)}")
+            continue
         except RequestException as exc:
             total_request_errors += 1
             print(f"  Request error for '{query_str}': {type(exc).__name__}: {exc!r} — skipping")
