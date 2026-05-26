@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/dialog"
 import { ChatCircleDots } from "@phosphor-icons/react"
 import { toast } from "sonner"
+import { hasSupabaseBrowserEnv, getSupabaseClient } from "@/lib/supabase/client"
+import { submitFeedbackToSupabase } from "@/lib/db/feedback"
 
 interface FeedbackModalProps {
   open: boolean
@@ -38,6 +40,27 @@ export function FeedbackModal({ open, onClose, userEmail }: FeedbackModalProps) 
       id: `feedback_${Date.now()}`
     }
 
+    // Supabase path: persist feedback in the database when a session is active.
+    // Writing to Supabase first ensures durable storage; the KV write below
+    // keeps the admin feedback dashboard (which reads from KV) up-to-date.
+    if (hasSupabaseBrowserEnv()) {
+      try {
+        const supabase = getSupabaseClient()
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session?.user.id) {
+          await submitFeedbackToSupabase(supabase, {
+            userId: session.user.id,
+            message: feedbackData.feedback,
+            userEmail: userEmail || undefined,
+          })
+        }
+      } catch {
+        // Non-fatal: KV write below ensures feedback is not lost.
+      }
+    }
+
+    // KV path: always write so the admin feedback dashboard (which reads from
+    // KV) has visibility of all submissions regardless of Supabase session.
     await window.spark.kv.set(`feedback_${feedbackData.id}`, feedbackData)
 
     const allFeedback = await window.spark.kv.get<string[]>("all_feedback_ids") || []
