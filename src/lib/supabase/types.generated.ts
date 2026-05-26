@@ -1,193 +1,20 @@
-import type { Database as GeneratedDatabase } from './types.generated'
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
 
-export type {
-  AlertDirection,
-  AppraisalPurpose,
-  Json,
-  NewsSortMode,
-  ShareAccess,
-  SubscriptionPlan,
-  SubscriptionStatus,
-  WatchCondition,
-} from './types.generated'
+export type WatchCondition = 'Unworn' | 'Mint' | 'Excellent' | 'Very Good' | 'Good' | 'Fair'
+export type SubscriptionPlan = 'free' | 'enthusiast' | 'investor' | 'enterprise'
+export type SubscriptionStatus = 'active' | 'trialing' | 'past_due' | 'canceled' | 'paused'
+export type AlertDirection = 'above' | 'below'
+export type AppraisalPurpose = 'insurance' | 'estate' | 'collateral' | 'personal'
+export type NewsSortMode = 'recent' | 'relevant'
+export type ShareAccess = 'read_only'
 
-type Relationship = {
-  foreignKeyName: string
-  columns: string[]
-  isOneToOne: boolean
-  referencedRelation: string
-  referencedColumns: string[]
-}
-
-type RelationshipOverrides = {
-  profiles: [
-    {
-      foreignKeyName: 'profiles_id_fkey'
-      columns: ['id']
-      isOneToOne: true
-      referencedRelation: 'users'
-      referencedColumns: ['id']
-    },
-  ]
-  subscriptions: [
-    {
-      foreignKeyName: 'subscriptions_user_id_fkey'
-      columns: ['user_id']
-      isOneToOne: true
-      referencedRelation: 'users'
-      referencedColumns: ['id']
-    },
-  ]
-  user_preferences: [
-    {
-      foreignKeyName: 'user_preferences_user_id_fkey'
-      columns: ['user_id']
-      isOneToOne: true
-      referencedRelation: 'users'
-      referencedColumns: ['id']
-    },
-  ]
-  share_tokens: [
-    {
-      foreignKeyName: 'share_tokens_user_id_fkey'
-      columns: ['user_id']
-      isOneToOne: false
-      referencedRelation: 'users'
-      referencedColumns: ['id']
-    },
-  ]
-  watches: [
-    {
-      foreignKeyName: 'watches_user_id_fkey'
-      columns: ['user_id']
-      isOneToOne: false
-      referencedRelation: 'users'
-      referencedColumns: ['id']
-    },
-  ]
-  watch_photos: [
-    {
-      foreignKeyName: 'watch_photos_watch_id_fkey'
-      columns: ['watch_id']
-      isOneToOne: false
-      referencedRelation: 'watches'
-      referencedColumns: ['id']
-    },
-    {
-      foreignKeyName: 'watch_photos_user_id_fkey'
-      columns: ['user_id']
-      isOneToOne: false
-      referencedRelation: 'users'
-      referencedColumns: ['id']
-    },
-  ]
-  watch_service_records: [
-    {
-      foreignKeyName: 'watch_service_records_watch_id_fkey'
-      columns: ['watch_id']
-      isOneToOne: false
-      referencedRelation: 'watches'
-      referencedColumns: ['id']
-    },
-    {
-      foreignKeyName: 'watch_service_records_user_id_fkey'
-      columns: ['user_id']
-      isOneToOne: false
-      referencedRelation: 'users'
-      referencedColumns: ['id']
-    },
-  ]
-  portfolio_snapshots: [
-    {
-      foreignKeyName: 'portfolio_snapshots_user_id_fkey'
-      columns: ['user_id']
-      isOneToOne: false
-      referencedRelation: 'users'
-      referencedColumns: ['id']
-    },
-  ]
-  price_alerts: [
-    {
-      foreignKeyName: 'price_alerts_user_id_fkey'
-      columns: ['user_id']
-      isOneToOne: false
-      referencedRelation: 'users'
-      referencedColumns: ['id']
-    },
-  ]
-  saved_deals: [
-    {
-      foreignKeyName: 'saved_deals_user_id_fkey'
-      columns: ['user_id']
-      isOneToOne: false
-      referencedRelation: 'users'
-      referencedColumns: ['id']
-    },
-    {
-      foreignKeyName: 'saved_deals_listing_id_fkey'
-      columns: ['listing_id']
-      isOneToOne: false
-      referencedRelation: 'deal_listings'
-      referencedColumns: ['id']
-    },
-  ]
-  news_relevance_scores: [
-    {
-      foreignKeyName: 'news_relevance_scores_user_id_fkey'
-      columns: ['user_id']
-      isOneToOne: false
-      referencedRelation: 'users'
-      referencedColumns: ['id']
-    },
-  ]
-  news_preferences: [
-    {
-      foreignKeyName: 'news_preferences_user_id_fkey'
-      columns: ['user_id']
-      isOneToOne: true
-      referencedRelation: 'users'
-      referencedColumns: ['id']
-    },
-  ]
-  news_saved: [
-    {
-      foreignKeyName: 'news_saved_user_id_fkey'
-      columns: ['user_id']
-      isOneToOne: false
-      referencedRelation: 'users'
-      referencedColumns: ['id']
-    },
-  ]
-  appraisals: [
-    {
-      foreignKeyName: 'appraisals_user_id_fkey'
-      columns: ['user_id']
-      isOneToOne: false
-      referencedRelation: 'users'
-      referencedColumns: ['id']
-    },
-  ]
-  ai_usage_logs: [
-    {
-      foreignKeyName: 'ai_usage_logs_user_id_fkey'
-      columns: ['user_id']
-      isOneToOne: false
-      referencedRelation: 'users'
-      referencedColumns: ['id']
-    },
-  ]
-  feedback: [
-    {
-      foreignKeyName: 'feedback_user_id_fkey'
-      columns: ['user_id']
-      isOneToOne: false
-      referencedRelation: 'users'
-      referencedColumns: ['id']
-    },
-  ]
-}
-
-type AddRelationships<T extends GeneratedDatabase> = {
+export interface Database {
   public: {
     Tables: {
       profiles: {
@@ -746,21 +573,19 @@ type AddRelationships<T extends GeneratedDatabase> = {
           articles: Json
           article_count: number | null
           cached_at: string
-          expires_at: string
+          expires_at: string | null
         }
         Insert: {
           id?: string
           cache_key?: string
           articles: Json
           cached_at?: string
-          expires_at?: string
         }
         Update: {
           id?: string
           cache_key?: string
           articles?: Json
           cached_at?: string
-          expires_at?: string
         }
       }
       news_relevance_scores: {
@@ -942,17 +767,160 @@ type AddRelationships<T extends GeneratedDatabase> = {
       }
     }
     Views: {
-      [Name in keyof T['public']['Views']]: T['public']['Views'][Name] &
-        (T['public']['Views'][Name] extends { Relationships: infer Existing extends readonly Relationship[] }
-          ? { Relationships: Existing }
-          : { Relationships: [] })
+      portfolio_snapshot: {
+        Row: {
+          user_id: string
+          snapshot_date: string
+          total_cost_basis: number
+          total_market_value: number
+          watch_count: number
+          brand_breakdown: Json | null
+          return_percent: number | null
+          created_at: string
+        }
+      }
+      portfolio_brand_allocations: {
+        Row: {
+          user_id: string
+          brand: string
+          watch_count: number
+          total_value: number
+          allocation_percent: number
+        }
+      }
+      latest_market_prices: {
+        Row: {
+          brand: string
+          reference: string
+          price_usd: number
+          source: string
+          condition: string | null
+          recorded_at: string
+        }
+      }
+      active_price_alerts: {
+        Row: {
+          id: string
+          user_id: string
+          brand: string
+          reference: string
+          direction: AlertDirection
+          target_price: number
+          currency: string | null
+          is_active: boolean
+          last_checked: string | null
+          triggered_at: string | null
+          trigger_price: number | null
+          notified_at: string | null
+          created_at: string
+          updated_at: string
+          current_price_usd: number | null
+          market_recorded_at: string | null
+        }
+      }
+      v_collection_summary: {
+        Row: {
+          user_id: string
+          active_count: number
+          sold_count: number
+          total_cost_basis: number | null
+          brand_count: number
+          full_set_count: number
+          earliest_purchase: string | null
+          latest_purchase: string | null
+        }
+      }
     }
-    Functions: T['public']['Functions']
-    Enums: T['public']['Enums']
+    Functions: {
+      check_and_increment_ai_usage: {
+        Args: {
+          p_user_id: string
+          p_call_type: string
+          p_plan: SubscriptionPlan
+        }
+        Returns: boolean
+      }
+      create_share_token: {
+        Args: {
+          p_hide_prices?: boolean | null
+          p_expires_at?: string | null
+        }
+        Returns: Database['public']['Tables']['share_tokens']['Row'][]
+      }
+      get_shared_collection: {
+        Args: {
+          p_token: string
+        }
+        Returns: {
+          token: string
+          user_id: string
+          access: ShareAccess
+          hide_prices: boolean
+          display_name: string | null
+          view_count: number
+          last_viewed: string | null
+          expires_at: string | null
+          watches: Json
+        }[]
+      }
+      get_my_collection_summary: {
+        Args: Record<PropertyKey, never>
+        Returns: Database['public']['Views']['v_collection_summary']['Row'][]
+      }
+      get_portfolio_trend: {
+        Args: {
+          p_days?: number | null
+        }
+        Returns: {
+          snapshot_date: string
+          total_market_value: number
+          total_cost_basis: number
+        }[]
+      }
+      record_ai_usage: {
+        Args: {
+          p_call_type: string
+          p_tokens?: number | null
+          p_usage_date?: string | null
+          p_increment?: number | null
+        }
+        Returns: Database['public']['Tables']['ai_usage_logs']['Row'][]
+      }
+      record_share_view: {
+        Args: {
+          p_token: string
+        }
+        Returns: boolean
+      }
+      soft_delete_watch: {
+        Args: {
+          p_watch_id: string
+          p_user_id: string
+        }
+        Returns: undefined
+      }
+      upsert_portfolio_snapshot: {
+        Args: {
+          p_user_id: string
+          p_total_cost: number
+          p_total_value: number
+          p_watch_count: number
+          p_brand_breakdown: Json
+        }
+        Returns: undefined
+      }
+    }
+    Enums: {
+      watch_condition: WatchCondition
+      subscription_plan: SubscriptionPlan
+      subscription_status: SubscriptionStatus
+      alert_direction: AlertDirection
+      appraisal_purpose: AppraisalPurpose
+      news_sort_mode: NewsSortMode
+      share_access: ShareAccess
+    }
   }
 }
-
-export type Database = AddRelationships<GeneratedDatabase>
 
 type PublicSchema = Database['public']
 

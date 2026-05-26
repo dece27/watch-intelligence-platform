@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "scripts": {
     "dev": "vite",
     "kill": "fuser -k 5000/tcp",
@@ -13,7 +16,7 @@
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",
     "db:migrate": "supabase db push",
-    "db:types": "supabase gen types typescript --local > src/lib/supabase/types.ts",
+    "db:types": "supabase gen types typescript --local > src/lib/supabase/types.generated.ts",
     "test:sql": "supabase test db",
     "test:ts": "vitest run supabase/tests/typescript",
     "test:all": "npm run test:sql && npm run test:ts",
@@ -55,8 +58,8 @@
     "@radix-ui/react-toggle": "^1.1.2",
     "@radix-ui/react-toggle-group": "^1.1.2",
     "@radix-ui/react-tooltip": "^1.1.8",
-    "@supabase/ssr": "0.5.2",
-    "@supabase/supabase-js": "2.49.4",
+    "@supabase/ssr": "0.10.3",
+    "@supabase/supabase-js": "^2.106.1",
     "@tailwindcss/container-queries": "^0.1.1",
     "@tailwindcss/vite": "^4.3.0",
     "@tanstack/react-query": "^5.100.14",
