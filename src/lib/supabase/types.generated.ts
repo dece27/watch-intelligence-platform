@@ -580,12 +580,14 @@ export interface Database {
           cache_key?: string
           articles: Json
           cached_at?: string
+          expires_at?: string | null
         }
         Update: {
           id?: string
           cache_key?: string
           articles?: Json
           cached_at?: string
+          expires_at?: string | null
         }
       }
       news_relevance_scores: {
