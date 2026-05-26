@@ -362,11 +362,9 @@ async function main() {
   assert(reloadedWatch.cover_photo_url === watchInsert.cover_photo_url, 'Reloaded watch photo mismatch')
 
   console.log('7) Deleting the created watch and validating deletion...')
-  const { error: softDeleteError } = await anonClient
-    .from('watches')
-    .update({ deleted_at: new Date().toISOString() })
-    .eq('id', createdWatch.id)
-    .is('deleted_at', null)
+  const { error: softDeleteError } = await anonClient.rpc('soft_delete_own_watch', {
+    p_watch_id: createdWatch.id,
+  })
   expectNoError(softDeleteError, 'Failed to soft-delete watch')
 
   const { data: activeWatchAfterDelete, error: activeWatchAfterDeleteError } = await anonClient
