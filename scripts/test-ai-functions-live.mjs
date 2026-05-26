@@ -41,7 +41,7 @@ function parseJsonWithRecovery(payload) {
     }
   }
 
-  throw new Error('Response did not contain valid JSON.')
+  throw new Error(`Response did not contain valid JSON: ${preview(payload)}`)
 }
 
 const supabaseUrl = requireEnv('SUPABASE_URL')
