@@ -23,6 +23,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 import chrono24
+import requests
+from chrono24 import session as chrono24_session
 from chrono24.exceptions import NoListingsFoundException, RequestException
 from supabase import Client, create_client
 
@@ -56,6 +58,14 @@ def env_int(name: str, default: int) -> int:
 
 CHRONO24_UPSTREAM_FAILURE_THRESHOLD = env_int("CHRONO24_UPSTREAM_FAILURE_THRESHOLD", 4)
 CHRONO24_STALE_AFTER_HOURS = env_int("CHRONO24_STALE_AFTER_HOURS", 48)
+FLARESOLVERR_ENABLED = os.environ.get("FLARESOLVERR_ENABLED", "false").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+FLARESOLVERR_URL = os.environ.get("FLARESOLVERR_URL", "http://localhost:8191").rstrip("/")
+FLARESOLVERR_MAX_TIMEOUT_MS = env_int("FLARESOLVERR_MAX_TIMEOUT_MS", 60000)
 
 
 QUERIES = [
@@ -166,6 +176,81 @@ def compute_listing_staleness(latest_timestamp: str | None) -> tuple[bool, float
 
     age_hours = round((datetime.now(timezone.utc) - parsed).total_seconds() / 3600, 2)
     return age_hours >= CHRONO24_STALE_AFTER_HOURS, age_hours
+
+
+def resolve_cloudflare_credentials() -> tuple[dict[str, str], str]:
+    endpoint = f"{FLARESOLVERR_URL}/v1"
+    payload = {
+        "cmd": "request.get",
+        "url": "https://www.chrono24.com/",
+        "maxTimeout": FLARESOLVERR_MAX_TIMEOUT_MS,
+    }
+
+    try:
+        response = requests.post(endpoint, json=payload, timeout=90)
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        raise RuntimeError(
+            f"Failed to reach FlareSolverr at {endpoint}: {type(exc).__name__}: {exc}"
+        ) from exc
+
+    try:
+        body = response.json()
+    except ValueError as exc:
+        raise RuntimeError("FlareSolverr returned a non-JSON response.") from exc
+
+    if body.get("status") != "ok":
+        message = body.get("message") or "unknown FlareSolverr error"
+        raise RuntimeError(f"FlareSolverr request failed: {message}")
+
+    solution = body.get("solution")
+    if not isinstance(solution, dict):
+        raise RuntimeError("FlareSolverr response missing solution payload.")
+
+    raw_cookies = solution.get("cookies")
+    if not isinstance(raw_cookies, list):
+        raise RuntimeError("FlareSolverr response missing cookies list in solution payload.")
+
+    user_agent = solution.get("userAgent")
+    if not isinstance(user_agent, str) or not user_agent.strip():
+        raise RuntimeError("FlareSolverr response missing solution.userAgent.")
+
+    cookies: dict[str, str] = {}
+    for cookie in raw_cookies:
+        if not isinstance(cookie, dict):
+            continue
+        name = cookie.get("name")
+        value = cookie.get("value")
+        if isinstance(name, str) and name and isinstance(value, str):
+            cookies[name] = value
+
+    if not cookies:
+        raise RuntimeError("FlareSolverr did not return usable cookies.")
+
+    return cookies, user_agent
+
+
+def patch_chrono24_session(cookies: dict[str, str], user_agent: str) -> None:
+    if getattr(chrono24_session._get_tenacity_wrapped_response, "_watchvault_flaresolverr_patch", False):
+        return
+
+    original_get_response = chrono24_session._get_tenacity_wrapped_response
+
+    def patched_get_response(*args: Any, max_attempts: int = 8, **kwargs: Any) -> Any:
+        input_headers = kwargs.get("headers", {}) or {}
+        headers = dict(input_headers)
+        headers["user-agent"] = user_agent
+        headers["User-Agent"] = user_agent
+
+        input_cookies = kwargs.get("cookies", {}) or {}
+        merged_cookies = {**dict(input_cookies), **cookies}
+        kwargs["headers"] = headers
+        kwargs["cookies"] = merged_cookies
+
+        return original_get_response(*args, max_attempts=max_attempts, **kwargs)
+
+    patched_get_response._watchvault_flaresolverr_patch = True  # type: ignore[attr-defined]
+    chrono24_session._get_tenacity_wrapped_response = patched_get_response
 
 
 def fetch_previous_health(supabase: Client) -> dict[str, Any]:
@@ -313,6 +398,7 @@ def main() -> None:
     previous_health = fetch_previous_health(supabase)
     previous_consecutive_failures = int(previous_health.get("consecutive_upstream_failures") or 0)
     previous_last_success_at = previous_health.get("last_success_at")
+    flaresolverr_resolved: bool | None = None
 
     if not CHRONO24_ACCESS_APPROVED:
         latest_cached = fetch_latest_listing_timestamp(supabase)
@@ -338,6 +424,8 @@ def main() -> None:
             "consecutive_upstream_failures": 0,
             "sustained_upstream_failure": False,
             "failed": False,
+            "flaresolverr_enabled": FLARESOLVERR_ENABLED,
+            "flaresolverr_resolved": flaresolverr_resolved,
         }
         print(summary)
         print(
@@ -354,6 +442,76 @@ def main() -> None:
             previous_last_success_at=previous_last_success_at,
         )
         return
+
+    if FLARESOLVERR_ENABLED:
+        print(f"FlareSolverr enabled. Initializing via {FLARESOLVERR_URL}/v1")
+        try:
+            cookies, user_agent = resolve_cloudflare_credentials()
+            patch_chrono24_session(cookies, user_agent)
+            flaresolverr_resolved = True
+            print(
+                "FlareSolverr initialized successfully and Chrono24 session patch applied."
+            )
+        except Exception as exc:
+            flaresolverr_resolved = False
+            summary = (
+                "FlareSolverr initialization failed; treating run as upstream unavailable and "
+                "preserving cached listings."
+            )
+            print(f"  FlareSolverr initialization error: {type(exc).__name__}: {exc}")
+            print(
+                "::warning::FlareSolverr initialization failed; preserving cached listings for this run."
+            )
+
+            consecutive_upstream_failures = previous_consecutive_failures + 1
+            sustained_upstream_failure = (
+                consecutive_upstream_failures >= CHRONO24_UPSTREAM_FAILURE_THRESHOLD
+            )
+            latest_cached = fetch_latest_listing_timestamp(supabase)
+            is_stale, age_hours = compute_listing_staleness(latest_cached)
+            metrics = {
+                "source": SOURCE_NAME,
+                "status": "upstream_unavailable",
+                "attempted_at": attempted_at,
+                "upserted": 0,
+                "skipped": 0,
+                "retrieved": 0,
+                "request_errors": 0,
+                "upsert_errors": 0,
+                "query_count": len(QUERIES),
+                "request_error_rate": 0,
+                "cached_listing_last_updated_at": latest_cached,
+                "cached_listing_age_hours": age_hours,
+                "cached_listing_is_stale": is_stale,
+                "stale_after_hours": CHRONO24_STALE_AFTER_HOURS,
+                "consecutive_upstream_failures": consecutive_upstream_failures,
+                "sustained_upstream_failure": sustained_upstream_failure,
+                "upstream_failure_threshold": CHRONO24_UPSTREAM_FAILURE_THRESHOLD,
+                "failed": sustained_upstream_failure,
+                "flaresolverr_enabled": FLARESOLVERR_ENABLED,
+                "flaresolverr_resolved": flaresolverr_resolved,
+            }
+            write_sync_metrics(metrics)
+            persist_observability(
+                supabase,
+                status="upstream_unavailable",
+                summary=summary,
+                metrics=metrics,
+                consecutive_upstream_failures=consecutive_upstream_failures,
+                previous_last_success_at=previous_last_success_at,
+            )
+
+            if sustained_upstream_failure:
+                print(
+                    "ERROR: FlareSolverr failed and Chrono24 upstream has been unavailable for too many "
+                    "consecutive runs.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+
+            return
+    else:
+        print("FlareSolverr disabled; using direct Chrono24 requests.")
 
     total_upserted = 0
     total_skipped = 0
@@ -451,6 +609,8 @@ def main() -> None:
         "sustained_upstream_failure": sustained_upstream_failure,
         "upstream_failure_threshold": CHRONO24_UPSTREAM_FAILURE_THRESHOLD,
         "failed": status in {"failed_upsert", "mapping_empty"} or sustained_upstream_failure,
+        "flaresolverr_enabled": FLARESOLVERR_ENABLED,
+        "flaresolverr_resolved": flaresolverr_resolved,
     }
 
     print(
