@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "scripts": {
     "dev": "vite",
     "kill": "fuser -k 5000/tcp",
@@ -13,7 +16,7 @@
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",
     "db:migrate": "supabase db push",
-    "db:types": "supabase gen types typescript --local > src/lib/supabase/types.ts",
+    "db:types": "supabase gen types typescript --local > src/lib/supabase/types.generated.ts",
     "test:sql": "supabase test db",
     "test:ts": "vitest run supabase/tests/typescript",
     "test:all": "npm run test:sql && npm run test:ts",
