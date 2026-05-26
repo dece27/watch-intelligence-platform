@@ -108,7 +108,7 @@ const testCases = [
 ]
 
 async function run() {
-  console.log(`Running ${testCases.length} live AI function checks against ${supabaseUrl}...`)
+  console.log(`Running ${testCases.length} live AI function checks...`)
 
   for (const testCase of testCases) {
     const requestBody = {
