@@ -18,15 +18,21 @@ jobs:
     env:
       SUPABASE_URL: ${{ vars.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      CHRONO24_ACCESS_APPROVED: ${{ vars.CHRONO24_ACCESS_APPROVED || 'false' }}
+      CHRONO24_UPSTREAM_FAILURE_THRESHOLD: ${{ vars.CHRONO24_UPSTREAM_FAILURE_THRESHOLD || '4' }}
+      CHRONO24_STALE_AFTER_HOURS: ${{ vars.CHRONO24_STALE_AFTER_HOURS || '48' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
           cache: pip
           cache-dependency-path: scripts/requirements-chrono24.txt
+
+      - name: Set metrics path
+        run: echo "CHRONO24_SYNC_METRICS_PATH=${RUNNER_TEMP}/chrono24-sync-metrics.json" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: pip install -r scripts/requirements-chrono24.txt
@@ -38,6 +44,56 @@ jobs:
             exit 0
           fi
           python scripts/fetch-chrono24.py
+
+      - name: Chrono24 sync observability summary
+        if: always()
+        run: |
+          if [ ! -f "${CHRONO24_SYNC_METRICS_PATH}" ]; then
+            {
+              echo "## Chrono24 sync summary"
+              echo
+              echo "- Metrics file not generated."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          metrics_path = Path(os.environ["CHRONO24_SYNC_METRICS_PATH"])
+          metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+
+          def value(name, default="n/a"):
+              raw = metrics.get(name, default)
+              return default if raw in ("", None) else raw
+
+          lines = [
+              "## Chrono24 sync summary",
+              "",
+              f"- Status: `{value('status')}`",
+              f"- Upserted: `{value('upserted', 0)}`",
+              f"- Retrieved: `{value('retrieved', 0)}`",
+              f"- Request errors: `{value('request_errors', 0)}` / `{value('query_count', 0)}`",
+              f"- Request error rate: `{value('request_error_rate', 0)}`",
+              f"- Consecutive upstream failures: `{value('consecutive_upstream_failures', 0)}` (threshold `{value('upstream_failure_threshold', os.environ.get('CHRONO24_UPSTREAM_FAILURE_THRESHOLD', 'n/a'))}`)",
+              f"- Cached listings stale: `{value('cached_listing_is_stale', True)}` (age hours: `{value('cached_listing_age_hours')}`; stale after `{value('stale_after_hours', os.environ.get('CHRONO24_STALE_AFTER_HOURS', 'n/a'))}`)",
+              f"- Cached listing last updated: `{value('cached_listing_last_updated_at')}`",
+              f"- Sustained upstream failure: `{value('sustained_upstream_failure', False)}`",
+          ]
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary_file:
+              summary_file.write("\n".join(str(line) for line in lines) + "\n")
+          PY
+
+      - name: Upload Chrono24 sync metrics artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chrono24-sync-metrics
+          path: ${{ env.CHRONO24_SYNC_METRICS_PATH }}
+          if-no-files-found: ignore
 
       - name: Report result
         if: failure()

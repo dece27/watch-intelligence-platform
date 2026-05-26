@@ -133,6 +133,15 @@ Listings → Run workflow** after configuring these repository secrets:
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 
+Recommended GitHub Environment variables for resilient sync behavior:
+
+- `CHRONO24_ACCESS_APPROVED` — set to `true` only after you confirm an approved
+  automated access path to Chrono24 (default: `false`, which safely skips sync)
+- `CHRONO24_UPSTREAM_FAILURE_THRESHOLD` — number of consecutive upstream-unavailable
+  runs before the workflow fails (default: `4`)
+- `CHRONO24_STALE_AFTER_HOURS` — cached listing freshness window used for stale
+  status reporting (default: `48`)
+
 ### WatchCharts live market values (optional)
 
 Set `VITE_WATCHCHARTS_API_KEY` (and optionally `VITE_WATCHCHARTS_BASE_URL`) to
@@ -144,19 +153,7 @@ VITE_WATCHCHARTS_API_KEY=your_key npm run dev
 
 ### Environment variable reference
 
-| Variable | Description |
-|---|---|
-| `VITE_SUPABASE_URL` | Supabase project URL used by the browser client (the app also accepts `NEXT_PUBLIC_SUPABASE_URL` as a fallback) |
-| `VITE_SUPABASE_ANON_KEY` | Public Supabase anon key used by the browser client (the app also accepts `NEXT_PUBLIC_SUPABASE_ANON_KEY` as a fallback) |
-| `SUPABASE_SERVICE_ROLE_KEY` | Server-only Supabase service role key for GitHub Actions or Supabase server-side utilities; never expose it to the browser |
-| `SUPABASE_URL` | Optional server-only Supabase URL override for GitHub Actions or other non-browser utilities |
-| `SUPABASE_DB_URL` | Direct database connection string used for CLI tasks such as backups |
-| `GITHUB_TOKEN` | Server-only GitHub personal access token used by `supabase/functions/github-models-proxy` to call GitHub Models |
-| `VITE_WATCHCHARTS_API_KEY` | API key for WatchCharts market value lookups |
-| `VITE_WATCHCHARTS_BASE_URL` | Override for WatchCharts API base URL |
-| `VITE_BASE_PATH` | Base path for GitHub Pages deployments (set automatically by the deploy workflow) |
-| `RESEND_API_KEY` | Server-only API key used by scheduled workflows that send transactional email notifications |
-| `RESEND_FROM_EMAIL` | Optional sender address override for Resend-powered workflow notifications |
+See `docs/env-vars.md` for the full environment variable, GitHub Actions secret, and variable reference.
 
 ### GitHub repository secrets
 
@@ -166,8 +163,13 @@ In **Settings → Secrets and variables → Actions**, add these repository secr
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY` — public Supabase anon key used at build time for static frontend workflows
 - `SUPABASE_URL` — same Supabase project URL for GitHub Actions scripts and server-side utilities
 - `SUPABASE_SERVICE_ROLE_KEY` — Supabase service role key for server-side Actions scripts only; never expose it to the browser
-- `SUPABASE_DB_URL` — direct database connection string used by migration and backup workflows
+- `SUPABASE_DB_URL` — database connection string used by backup workflows or other direct database connections
+- `SUPABASE_ACCESS_TOKEN` — Supabase personal access token used by CLI workflows such as hosted migration runs
 - `RESEND_API_KEY` — Resend API key for alert notification emails
+
+Also add this GitHub **Actions variable** (or secret):
+
+- `SUPABASE_PROJECT_REF` — Supabase project reference used by the migration workflow to link the hosted project before running `supabase db push`
 
 ### Supabase Edge Function secrets
 
@@ -275,7 +277,7 @@ fails.
 
 Configure these GitHub **Actions secrets** before enabling it:
 
-- `SUPABASE_DB_URL`
+- `SUPABASE_DB_URL` (prefer the Supabase session pooler or another IPv4-capable endpoint for GitHub Actions)
 - `CLOUDFLARE_R2_ACCESS_KEY`
 - `CLOUDFLARE_R2_SECRET_KEY`
 - `RESEND_API_KEY`

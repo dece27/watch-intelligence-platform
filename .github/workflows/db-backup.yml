@@ -27,6 +27,9 @@ jobs:
       - name: Validate backup configuration
         id: preflight
         env:
+          # Note: SUPABASE_DB_URL uses port 5432 — only works if Supabase network
+          # restrictions allow the runner IP. For migrations use
+          # SUPABASE_ACCESS_TOKEN + supabase link instead.
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           CLOUDFLARE_R2_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY }}
           CLOUDFLARE_R2_SECRET_KEY: ${{ secrets.CLOUDFLARE_R2_SECRET_KEY }}
@@ -34,6 +37,8 @@ jobs:
           CLOUDFLARE_R2_BUCKET: ${{ vars.CLOUDFLARE_R2_BUCKET }}
         run: |
           missing=()
+          # Note: SUPABASE_DB_URL uses port 5432 — only works if Supabase network restrictions allow the runner IP.
+          # For migrations use SUPABASE_ACCESS_TOKEN + supabase link instead.
           [ -n "${SUPABASE_DB_URL:-}" ] || missing+=("SUPABASE_DB_URL secret")
           [ -n "${CLOUDFLARE_R2_ACCESS_KEY:-}" ] || missing+=("CLOUDFLARE_R2_ACCESS_KEY secret")
           [ -n "${CLOUDFLARE_R2_SECRET_KEY:-}" ] || missing+=("CLOUDFLARE_R2_SECRET_KEY secret")
@@ -60,13 +65,57 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y rclone
 
+      - name: Prefer IPv4 for Supabase host
+        if: steps.preflight.outputs.configured == 'true'
+        env:
+          # Note: SUPABASE_DB_URL uses port 5432 — only works if Supabase network
+          # restrictions allow the runner IP. For migrations use
+          # SUPABASE_ACCESS_TOKEN + supabase link instead.
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          python - <<'PY'
+          import os
+          import socket
+          from urllib.parse import urlparse
+
+          host = urlparse(os.environ["SUPABASE_DB_URL"]).hostname
+          if not host:
+              print("::error::Could not parse the hostname from SUPABASE_DB_URL.")
+              raise SystemExit(1)
+
+          try:
+              ipv4_addresses = sorted(
+                  {info[4][0] for info in socket.getaddrinfo(host, None, socket.AF_INET, socket.SOCK_STREAM)}
+              )
+          except socket.gaierror:
+              ipv4_addresses = []
+
+          if not ipv4_addresses:
+              print(f"::warning::No IPv4 address found for {host}; using the default DNS resolution.")
+              raise SystemExit(0)
+
+          ipv4 = ipv4_addresses[0]
+          print(f"Pinning {host} to IPv4 {ipv4} for this job.")
+          with open("/tmp/supabase-host-entry", "w", encoding="utf-8") as file:
+              file.write(f"{ipv4} {host}\n")
+          PY
+
+          if [ -f /tmp/supabase-host-entry ]; then
+            sudo tee -a /etc/hosts < /tmp/supabase-host-entry >/dev/null
+          fi
+
       - name: Dump database backup
         if: steps.preflight.outputs.configured == 'true'
         env:
+          # Note: SUPABASE_DB_URL uses port 5432 — only works if Supabase network
+          # restrictions allow the runner IP. For migrations use
+          # SUPABASE_ACCESS_TOKEN + supabase link instead.
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
           BACKUP_DATE="$(date -u +%Y%m%d)"
           BACKUP_FILE="backup_${BACKUP_DATE}.sql"
+          # Note: SUPABASE_DB_URL uses port 5432 — only works if Supabase network restrictions allow the runner IP.
+          # For migrations use SUPABASE_ACCESS_TOKEN + supabase link instead.
           supabase db dump --db-url "$SUPABASE_DB_URL" > "$BACKUP_FILE"
           echo "BACKUP_FILE=$BACKUP_FILE" >> "$GITHUB_ENV"
 

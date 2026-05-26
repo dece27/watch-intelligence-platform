@@ -15,10 +15,11 @@ Environment variables required:
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import sys
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import chrono24
@@ -28,10 +29,33 @@ from supabase import Client, create_client
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+SOURCE_NAME = "chrono24"
+CHRONO24_ACCESS_APPROVED = os.environ.get("CHRONO24_ACCESS_APPROVED", "false").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+CHRONO24_SYNC_METRICS_PATH = os.environ.get("CHRONO24_SYNC_METRICS_PATH")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
     print("ERROR: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set.")
     sys.exit(1)
+
+
+def env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        print(f"Warning: invalid integer for {name}={raw!r}; using default {default}")
+        return default
+
+
+CHRONO24_UPSTREAM_FAILURE_THRESHOLD = env_int("CHRONO24_UPSTREAM_FAILURE_THRESHOLD", 4)
+CHRONO24_STALE_AFTER_HOURS = env_int("CHRONO24_STALE_AFTER_HOURS", 48)
 
 
 QUERIES = [
@@ -118,6 +142,129 @@ def fallback_reference(url: str) -> str:
     return hashlib.sha256(url.encode()).hexdigest()[:16]
 
 
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def parse_timestamp(timestamp: str | None) -> datetime | None:
+    if not timestamp:
+        return None
+
+    normalized = timestamp.replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def compute_listing_staleness(latest_timestamp: str | None) -> tuple[bool, float | None]:
+    parsed = parse_timestamp(latest_timestamp)
+    if parsed is None:
+        return True, None
+
+    age_hours = round((datetime.now(timezone.utc) - parsed).total_seconds() / 3600, 2)
+    return age_hours >= CHRONO24_STALE_AFTER_HOURS, age_hours
+
+
+def fetch_previous_health(supabase: Client) -> dict[str, Any]:
+    try:
+        response = (
+            supabase.table("sync_health")
+            .select("*")
+            .eq("source", SOURCE_NAME)
+            .limit(1)
+            .execute()
+        )
+        rows = getattr(response, "data", None) or []
+        return rows[0] if rows else {}
+    except Exception as exc:
+        print(
+            f"  Warning: unable to read sync_health (non-fatal): {type(exc).__name__}: {exc}"
+        )
+        return {}
+
+
+def fetch_latest_listing_timestamp(supabase: Client) -> str | None:
+    try:
+        response = (
+            supabase.table("deal_listings")
+            .select("updated_at")
+            .eq("source", SOURCE_NAME)
+            .order("updated_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        rows = getattr(response, "data", None) or []
+        if not rows:
+            return None
+        return rows[0].get("updated_at")
+    except Exception as exc:
+        print(
+            f"  Warning: unable to inspect cached deal_listings staleness (non-fatal): "
+            f"{type(exc).__name__}: {exc}"
+        )
+        return None
+
+
+def write_sync_metrics(metrics: dict[str, Any]) -> None:
+    print(f"SYNC_METRICS_JSON={json.dumps(metrics, sort_keys=True)}")
+    if not CHRONO24_SYNC_METRICS_PATH:
+        return
+
+    try:
+        with open(CHRONO24_SYNC_METRICS_PATH, "w", encoding="utf-8") as metrics_file:
+            json.dump(metrics, metrics_file, indent=2, sort_keys=True)
+    except Exception as exc:
+        print(f"  Warning: unable to write sync metrics file (non-fatal): {type(exc).__name__}: {exc}")
+
+
+def persist_observability(
+    supabase: Client,
+    *,
+    status: str,
+    summary: str,
+    metrics: dict[str, Any],
+    consecutive_upstream_failures: int,
+    previous_last_success_at: str | None = None,
+) -> None:
+    payload = {
+        "source": SOURCE_NAME,
+        "status": status,
+        "summary": summary,
+        "metrics": metrics,
+        "consecutive_upstream_failures": consecutive_upstream_failures,
+        "last_attempt_at": metrics["attempted_at"],
+        "last_success_at": metrics["attempted_at"] if status == "success" else previous_last_success_at,
+        "updated_at": metrics["attempted_at"],
+    }
+
+    try:
+        supabase.table("sync_runs").insert(
+            {
+                "source": SOURCE_NAME,
+                "status": status,
+                "summary": summary,
+                "metrics": metrics,
+                "created_at": metrics["attempted_at"],
+            }
+        ).execute()
+    except Exception as exc:
+        print(
+            f"  Warning: unable to insert sync_runs observability row (non-fatal): "
+            f"{type(exc).__name__}: {exc}"
+        )
+
+    try:
+        supabase.table("sync_health").upsert(payload, on_conflict="source").execute()
+    except Exception as exc:
+        print(
+            f"  Warning: unable to update sync_health observability row (non-fatal): "
+            f"{type(exc).__name__}: {exc}"
+        )
+
+
 def to_deal_listing(listing: dict[str, Any]) -> dict[str, Any] | None:
     """
     Convert a chrono24 library listing dict to the WatchVault deal_listings
@@ -162,6 +309,52 @@ def to_deal_listing(listing: dict[str, Any]) -> dict[str, Any] | None:
 
 def main() -> None:
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    attempted_at = utc_now_iso()
+    previous_health = fetch_previous_health(supabase)
+    previous_consecutive_failures = int(previous_health.get("consecutive_upstream_failures") or 0)
+    previous_last_success_at = previous_health.get("last_success_at")
+
+    if not CHRONO24_ACCESS_APPROVED:
+        latest_cached = fetch_latest_listing_timestamp(supabase)
+        is_stale, age_hours = compute_listing_staleness(latest_cached)
+        summary = (
+            "Chrono24 sync skipped because CHRONO24_ACCESS_APPROVED is not true. "
+            "Configure an approved data-access path first."
+        )
+        metrics = {
+            "source": SOURCE_NAME,
+            "status": "skipped_unapproved_access",
+            "attempted_at": attempted_at,
+            "upserted": 0,
+            "retrieved": 0,
+            "request_errors": 0,
+            "upsert_errors": 0,
+            "query_count": len(QUERIES),
+            "request_error_rate": 0,
+            "cached_listing_last_updated_at": latest_cached,
+            "cached_listing_age_hours": age_hours,
+            "cached_listing_is_stale": is_stale,
+            "stale_after_hours": CHRONO24_STALE_AFTER_HOURS,
+            "consecutive_upstream_failures": 0,
+            "sustained_upstream_failure": False,
+            "failed": False,
+        }
+        print(summary)
+        print(
+            "::warning::Chrono24 sync skipped because CHRONO24_ACCESS_APPROVED is not true. "
+            "This run is non-fatal and preserves existing cached listings."
+        )
+        write_sync_metrics(metrics)
+        persist_observability(
+            supabase,
+            status="skipped_unapproved_access",
+            summary=summary,
+            metrics=metrics,
+            consecutive_upstream_failures=0,
+            previous_last_success_at=previous_last_success_at,
+        )
+        return
+
     total_upserted = 0
     total_skipped = 0
     total_request_errors = 0
@@ -210,34 +403,98 @@ def main() -> None:
         total_upserted += len(rows)
         print(f"  Upserted {len(rows)} rows")
 
+    request_error_rate = round(total_request_errors / len(QUERIES), 4) if QUERIES else 0
+
+    if total_upsert_errors > 0:
+        status = "failed_upsert"
+        summary = "One or more Supabase upserts failed."
+    elif total_upserted > 0:
+        status = "success"
+        summary = "Chrono24 sync completed successfully."
+    elif total_request_errors > 0 or total_retrieved == 0:
+        status = "upstream_unavailable"
+        summary = "Chrono24 upstream unavailable or blocked; preserving cached listings."
+    else:
+        status = "mapping_empty"
+        summary = (
+            "Listings were retrieved but none were valid for upsert. "
+            "Verify mapping in scripts/fetch-chrono24.py."
+        )
+
+    consecutive_upstream_failures = (
+        previous_consecutive_failures + 1 if status == "upstream_unavailable" else 0
+    )
+    sustained_upstream_failure = (
+        status == "upstream_unavailable"
+        and consecutive_upstream_failures >= CHRONO24_UPSTREAM_FAILURE_THRESHOLD
+    )
+
+    latest_cached = fetch_latest_listing_timestamp(supabase)
+    is_stale, age_hours = compute_listing_staleness(latest_cached)
+
+    metrics = {
+        "source": SOURCE_NAME,
+        "status": status,
+        "attempted_at": attempted_at,
+        "upserted": total_upserted,
+        "skipped": total_skipped,
+        "retrieved": total_retrieved,
+        "request_errors": total_request_errors,
+        "upsert_errors": total_upsert_errors,
+        "query_count": len(QUERIES),
+        "request_error_rate": request_error_rate,
+        "cached_listing_last_updated_at": latest_cached,
+        "cached_listing_age_hours": age_hours,
+        "cached_listing_is_stale": is_stale,
+        "stale_after_hours": CHRONO24_STALE_AFTER_HOURS,
+        "consecutive_upstream_failures": consecutive_upstream_failures,
+        "sustained_upstream_failure": sustained_upstream_failure,
+        "upstream_failure_threshold": CHRONO24_UPSTREAM_FAILURE_THRESHOLD,
+        "failed": status in {"failed_upsert", "mapping_empty"} or sustained_upstream_failure,
+    }
+
     print(
         f"\nDone. Upserted: {total_upserted}  Skipped: {total_skipped}  "
         f"Retrieved: {total_retrieved}  RequestErrors: {total_request_errors}  "
-        f"UpsertErrors: {total_upsert_errors}"
+        f"UpsertErrors: {total_upsert_errors}  Status: {status}  "
+        f"ConsecutiveUpstreamFailures: {consecutive_upstream_failures}"
     )
 
-    if total_upsert_errors > 0:
+    if status == "upstream_unavailable" and not sustained_upstream_failure:
+        print(
+            "::warning::Chrono24 upstream unavailable on this run; cached listings were preserved. "
+            f"Consecutive upstream failures: {consecutive_upstream_failures}/"
+            f"{CHRONO24_UPSTREAM_FAILURE_THRESHOLD}."
+        )
+
+    write_sync_metrics(metrics)
+    persist_observability(
+        supabase,
+        status=status,
+        summary=summary,
+        metrics=metrics,
+        consecutive_upstream_failures=consecutive_upstream_failures,
+        previous_last_success_at=previous_last_success_at,
+    )
+
+    if status == "failed_upsert":
         print("ERROR: One or more Supabase upserts failed.", file=sys.stderr)
         sys.exit(1)
 
-    if total_upserted == 0:
-        if total_request_errors > 0:
-            print(
-                "ERROR: No listings were upserted and Chrono24 request errors occurred. "
-                "Check network access / bot protection and retry.",
-                file=sys.stderr,
-            )
-        elif total_retrieved > 0:
-            print(
-                "ERROR: Listings were retrieved but none were valid for upsert. "
-                "Verify field mapping in scripts/fetch-chrono24.py.",
-                file=sys.stderr,
-            )
-        else:
-            print(
-                "ERROR: No listings were retrieved from Chrono24 for any query.",
-                file=sys.stderr,
-            )
+    if status == "mapping_empty":
+        print(
+            "ERROR: Listings were retrieved but none were valid for upsert. "
+            "Verify field mapping in scripts/fetch-chrono24.py.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    if sustained_upstream_failure:
+        print(
+            "ERROR: Chrono24 upstream has been unavailable for too many consecutive runs. "
+            "Investigate upstream access and sync pipeline health.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
 

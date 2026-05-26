@@ -19,6 +19,8 @@ jobs:
       SUPABASE_URL: ${{ vars.SUPABASE_URL }}
       SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       WATCH_E2E_EMAIL: ${{ vars.WATCH_E2E_EMAIL }}
       WATCH_E2E_PASSWORD: ${{ secrets.WATCH_E2E_PASSWORD }}
       WATCH_E2E_NAME: ${{ vars.WATCH_E2E_NAME }}
@@ -34,6 +36,8 @@ jobs:
           [ -n "${SUPABASE_URL:-}" ] || missing+=("SUPABASE_URL variable")
           [ -n "${SUPABASE_ANON_KEY:-}" ] || missing+=("SUPABASE_ANON_KEY variable")
           [ -n "${SUPABASE_SERVICE_ROLE_KEY:-}" ] || missing+=("SUPABASE_SERVICE_ROLE_KEY secret")
+          [ -n "${SUPABASE_PROJECT_REF:-}" ] || missing+=("SUPABASE_PROJECT_REF variable")
+          [ -n "${SUPABASE_ACCESS_TOKEN:-}" ] || missing+=("SUPABASE_ACCESS_TOKEN secret")
 
           if [ "${#missing[@]}" -gt 0 ]; then
             printf '::warning::Skipping auth/watch flow test because required configuration is missing: %s\n' "$(IFS=', '; echo "${missing[*]}")"
@@ -49,6 +53,20 @@ jobs:
         with:
           node-version: '20'
           cache: npm
+
+      - name: Setup Supabase CLI
+        if: steps.preflight.outputs.configured == 'true'
+        uses: supabase/setup-cli@v2
+        with:
+          version: latest
+
+      - name: Link Supabase project
+        if: steps.preflight.outputs.configured == 'true'
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
+
+      - name: Apply pending Supabase migrations
+        if: steps.preflight.outputs.configured == 'true'
+        run: supabase db push
 
       - name: Install dependencies
         if: steps.preflight.outputs.configured == 'true'

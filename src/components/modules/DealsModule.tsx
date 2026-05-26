@@ -14,6 +14,7 @@ import {
   areDealListingsConfigured,
   fetchDealListings,
 } from "@/lib/deal-listings-client"
+import { FALLBACK_DEALS } from "@/lib/fallback-deals"
 import { convertCurrency, formatCurrency, normalizeCurrency } from "@/lib/currency"
 import { toast } from "sonner"
 
@@ -33,6 +34,7 @@ const DEAL_SCORE_DIVISOR = 2
 const FALLBACK_QUERY_BRANDS = ["Rolex", "Omega"] as const
 const MAX_BRANDS_TO_QUERY = 2
 const TARGET_LIVE_DEAL_COUNT = 24
+const DEFAULT_STALE_AFTER_HOURS = 48
 
 const toTitleCase = (value: string) =>
   value
@@ -224,14 +226,20 @@ export function DealsModule({ watches, userId, preferredCurrency = "USD" }: Deal
     return convertCurrency(amount, sourceCurrency || "USD", preferredCurrency)
   }, [preferredCurrency])
 
+  const buildFallbackDeals = useCallback(() => {
+    return FALLBACK_DEALS
+      .slice(0, TARGET_LIVE_DEAL_COUNT)
+      .map((deal) => scoreHeuristically(deal, watches, preferences))
+  }, [preferences, watches])
+
   const fetchDeals = useCallback(async () => {
     setIsLoading(true)
     setErrorMessage(null)
 
     if (!areDealListingsConfigured) {
-      setDeals([])
+      setDeals(buildFallbackDeals())
       setIsLiveData(false)
-      setErrorMessage("Supabase deal listings are not configured.")
+      setErrorMessage("Supabase deal listings are not configured. Showing fallback deals.")
       setIsLoading(false)
       return
     }
@@ -249,8 +257,24 @@ export function DealsModule({ watches, userId, preferredCurrency = "USD" }: Deal
       })
 
       if (uniqueDeals.length === 0) {
-        throw new Error("No synced deal listings are available yet.")
+        setDeals(buildFallbackDeals())
+        setIsLiveData(false)
+        setErrorMessage("No synced deal listings are available yet. Showing fallback deals.")
+        return
       }
+
+      const newestListingTimestampMs = uniqueDeals.reduce<number>((latest, deal) => {
+        if (!deal.listedAt) return latest
+        const timestamp = Date.parse(deal.listedAt)
+        if (!Number.isFinite(timestamp)) return latest
+        return Math.max(latest, timestamp)
+      }, 0)
+      const staleAfterHours = Number(
+        (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env?.VITE_CHRONO24_STALE_AFTER_HOURS
+        || DEFAULT_STALE_AFTER_HOURS
+      )
+      const listingAgeMs = newestListingTimestampMs > 0 ? Date.now() - newestListingTimestampMs : Number.POSITIVE_INFINITY
+      const listingsAreStale = listingAgeMs > staleAfterHours * 60 * 60 * 1000
 
       const heuristicScored = uniqueDeals.map((deal) => scoreHeuristically(deal, watches, preferences))
 
@@ -355,15 +379,21 @@ Return every deal id exactly once.`
       }
 
       setDeals(scoredDeals)
-      setIsLiveData(true)
+      setIsLiveData(!listingsAreStale)
+      if (listingsAreStale) {
+        setErrorMessage(
+          "Live sync is temporarily stale. Showing the latest cached synced listings until the next successful refresh."
+        )
+      }
     } catch (error) {
-      setDeals([])
+      setDeals(buildFallbackDeals())
       setIsLiveData(false)
-      setErrorMessage(error instanceof Error ? error.message : "Deal listings unavailable")
+      const message = error instanceof Error ? error.message : "Deal listings unavailable"
+      setErrorMessage(`${message}. Showing fallback deals.`)
     } finally {
       setIsLoading(false)
     }
-  }, [preferences, preferredCurrency, userId, watches])
+  }, [buildFallbackDeals, preferences, preferredCurrency, userId, watches])
 
   useEffect(() => {
     if (!preferencesLoaded) return
