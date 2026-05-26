@@ -144,4 +144,10 @@ async function run() {
   console.log('✅ All AI live function checks passed.')
 }
 
-await run()
+try {
+  await run()
+} catch (error) {
+  const message = error instanceof Error ? error.message : String(error)
+  console.error(`❌ AI live function test failed: ${message}`)
+  process.exit(1)
+}
