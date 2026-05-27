@@ -17,10 +17,16 @@ interface LoginScreenProps {
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const ADMIN_LOGIN_IDENTIFIER = "administrator"
+const ADMIN_SUPABASE_AUTH_EMAIL = "administrator@watchvault.local"
 
 function isValidLoginIdentifier(value: string): boolean {
   const normalized = value.trim().toLowerCase()
   return normalized === ADMIN_LOGIN_IDENTIFIER || EMAIL_REGEX.test(normalized)
+}
+
+function toSupabaseAuthEmail(loginIdentifier: string): string {
+  const normalized = loginIdentifier.trim().toLowerCase()
+  return normalized === ADMIN_LOGIN_IDENTIFIER ? ADMIN_SUPABASE_AUTH_EMAIL : normalized
 }
 
 /**
@@ -261,15 +267,12 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
         })
 
         // Establish a Supabase Auth session so the DB layer can use RLS.
-        // Non-admin users only — the administrator account has no real email.
-        if (normalizedLoginIdentifier !== ADMIN_LOGIN_IDENTIFIER) {
-          await trySupabaseAuth(
-            normalizedLoginIdentifier,
-            password.trim(),
-            user.name,
-            user.vaultName,
-          )
-        }
+        await trySupabaseAuth(
+          toSupabaseAuthEmail(normalizedLoginIdentifier),
+          password.trim(),
+          user.name,
+          user.vaultName,
+        )
 
         await ensureUserIndexed(user.id)
         await onLogin(user, rememberMe)
@@ -320,7 +323,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
 
       // Establish a Supabase Auth session for the new account.
       await trySupabaseAuth(
-        normalizedLoginIdentifier,
+        toSupabaseAuthEmail(normalizedLoginIdentifier),
         password.trim(),
         trimmedName,
         trimmedVaultName,
