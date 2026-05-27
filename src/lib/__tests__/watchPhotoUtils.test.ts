@@ -136,17 +136,16 @@ describe('sanitizeWatchImageUrl', () => {
 // ---------------------------------------------------------------------------
 
 describe('prepareWatchForStorage', () => {
-  it('saves a new data-URL photo to KV and returns a kv-photo ref for storage', async () => {
+  it('persists a new data-URL photo directly on the watch record', async () => {
     const kvSet = vi.fn().mockResolvedValue(undefined)
     const dataUrl = 'data:image/jpeg;base64,/9j/new='
     const watch = makeWatch('watch-2', dataUrl)
 
     const result = await prepareWatchForStorage(watch, 'user-1', kvSet, undefined)
 
-    expect(result.watchForStorage.imageUrl).toBe('kv-photo:watch-2')
+    expect(result.watchForStorage.imageUrl).toBe(dataUrl)
     expect(result.watchForDisplay.imageUrl).toBe(dataUrl)
-    expect(kvSet).toHaveBeenCalledOnce()
-    expect(kvSet).toHaveBeenCalledWith('watch_photo_user-1_watch-2', dataUrl)
+    expect(kvSet).not.toHaveBeenCalled()
   })
 
   it('passes a valid HTTPS URL through unchanged without a KV write', async () => {
@@ -187,40 +186,30 @@ describe('prepareWatchForStorage', () => {
 // ---------------------------------------------------------------------------
 // prepareWatchForStorage — bug regression
 //
-// Root cause: sanitizeWatchImageUrl("kv-photo:watch-X") returns undefined
-// because kv-photo: is neither a data: URL nor an HTTPS URL. Without the
-// isWatchPhotoRef guard, handleUpdateWatches would overwrite every existing
-// watch's imageUrl with undefined whenever any watch was saved, effectively
-// deleting all previously uploaded photos from the vault.
+// Root cause: uploaded photos were rewritten to kv-photo placeholders backed by
+// Spark KV, so Supabase never stored the actual image payload. Legacy refs must
+// still be preserved or migrated without wiping the image.
 // ---------------------------------------------------------------------------
 
 describe('prepareWatchForStorage — kv-photo reference preservation (bug regression)', () => {
-  it('preserves a kv-photo ref in storage when the watch already has a stored photo', async () => {
+  it('migrates a kv-photo ref to the hydrated image URL when one is available', async () => {
     const kvSet = vi.fn().mockResolvedValue(undefined)
-    // This is exactly how a watch looks when loaded fresh from KV after its
-    // photo was previously uploaded and saved.
     const watch = makeWatch('watch-1', 'kv-photo:watch-1')
     const existingDisplayUrl = 'data:image/jpeg;base64,/9j/existing='
 
     const result = await prepareWatchForStorage(watch, 'user-1', kvSet, existingDisplayUrl)
 
-    // Storage must keep the kv-photo ref — NOT become undefined.
-    expect(result.watchForStorage.imageUrl).toBe('kv-photo:watch-1')
-    // Display should use the already-hydrated data URL from React state.
+    expect(result.watchForStorage.imageUrl).toBe(existingDisplayUrl)
     expect(result.watchForDisplay.imageUrl).toBe(existingDisplayUrl)
-    // The photo is already in KV — no duplicate write should occur.
     expect(kvSet).not.toHaveBeenCalled()
   })
 
-  it('kv-photo ref is NOT wiped (the specific pre-fix regression)', async () => {
-    // Before the fix, sanitizeWatchImageUrl("kv-photo:watch-X") returned undefined,
-    // so this assertion would have failed: imageUrl would be undefined.
+  it('kv-photo ref is preserved when no hydrated image URL is available yet', async () => {
     const kvSet = vi.fn().mockResolvedValue(undefined)
     const watch = makeWatch('watch-existing', 'kv-photo:watch-existing')
 
     const result = await prepareWatchForStorage(watch, 'user-1', kvSet, undefined)
 
-    expect(result.watchForStorage.imageUrl).not.toBeUndefined()
     expect(result.watchForStorage.imageUrl).toBe('kv-photo:watch-existing')
   })
 
@@ -237,14 +226,13 @@ describe('prepareWatchForStorage — kv-photo reference preservation (bug regres
     expect(kvSet).not.toHaveBeenCalled()
   })
 
-  it('does not touch KV when only metadata (not the photo) is updated on an existing watch', async () => {
-    // Simulates editing a watch's brand/model without changing the photo.
+  it('migrates the existing photo without touching KV when only metadata changes', async () => {
     const kvSet = vi.fn().mockResolvedValue(undefined)
     const watch = { ...makeWatch('watch-8', 'kv-photo:watch-8'), brand: 'Omega', model: 'Updated' }
 
     const result = await prepareWatchForStorage(watch, 'user-1', kvSet, 'data:image/jpeg;base64,/9j/photo=')
 
-    expect(result.watchForStorage.imageUrl).toBe('kv-photo:watch-8')
+    expect(result.watchForStorage.imageUrl).toBe('data:image/jpeg;base64,/9j/photo=')
     expect(result.watchForStorage.brand).toBe('Omega')
     expect(result.watchForStorage.model).toBe('Updated')
     expect(kvSet).not.toHaveBeenCalled()
