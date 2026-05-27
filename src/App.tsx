@@ -402,6 +402,12 @@ function App() {
       try {
         // Supabase path: fetch rows from DB and hydrate photo refs from KV.
         if (supabaseUserId && persistenceState === 'supabase-ready') {
+          type LegacyPhotoMigrationCandidate = {
+            id: string
+            imageUrl: string
+            expectedUpdatedAt: string
+          }
+
           let rows = await getWatches(supabaseUserId, { limit: 1000, offset: 0 })
           const kvWatches = (await window.spark.kv.get<Watch[]>(getUserWatchesKey(currentUser.id))) || []
           const pendingOutboxOps =
@@ -419,14 +425,14 @@ function App() {
                   ? watch
                   : { ...watch, id: crypto.randomUUID() }
 
-                if (isWatchPhotoRef(watch.imageUrl)) {
-                  const legacyPhoto = await window.spark.kv.get<string>(getWatchPhotoKey(currentUser.id, watch.id))
-                  if (legacyPhoto) {
-                    await window.spark.kv.set(getWatchPhotoKey(supabaseUserId, migratedWatch.id), legacyPhoto)
-                  }
-                }
+                const legacyPhoto = isWatchPhotoRef(watch.imageUrl)
+                  ? await window.spark.kv.get<string>(getWatchPhotoKey(currentUser.id, watch.id))
+                  : undefined
+
                 return prepareWatchForStorage(
-                  migratedWatch,
+                  legacyPhoto
+                    ? { ...migratedWatch, imageUrl: legacyPhoto }
+                    : migratedWatch,
                   supabaseUserId,
                   (key, value) => window.spark.kv.set(key, value),
                 )
@@ -441,11 +447,21 @@ function App() {
             rows = await getWatches(supabaseUserId, { limit: 1000, offset: 0 })
           }
 
-          const storageWatches = rows.map((row) => rowToWatch(row))
-          const hydratedWatches = await Promise.all(
-            storageWatches.map(async (watch) => {
+          const hydratedResults = await Promise.all(
+            rows.map(async (row): Promise<{
+              displayWatch: Watch
+              cacheWatch: Watch
+              migrationCandidate: LegacyPhotoMigrationCandidate | null
+            }> => {
+              const watch = rowToWatch(row)
               const rawImage = watch.imageUrl
-              if (!rawImage) return watch
+              if (!rawImage) {
+                return {
+                  displayWatch: watch,
+                  cacheWatch: watch,
+                  migrationCandidate: null,
+                }
+              }
 
               if (isWatchPhotoRef(rawImage)) {
                 let storedPhoto: string | undefined = undefined
@@ -457,17 +473,66 @@ function App() {
                 } catch (error) {
                   console.error(`Error loading watch photo for ${watch.id}:`, error)
                 }
-                return { ...watch, imageUrl: sanitizeWatchImageUrl(storedPhoto) }
+
+                const sanitizedStoredPhoto = sanitizeWatchImageUrl(storedPhoto)
+                return {
+                  displayWatch: { ...watch, imageUrl: sanitizedStoredPhoto },
+                  cacheWatch: watch,
+                  migrationCandidate: sanitizedStoredPhoto
+                    ? {
+                        id: watch.id,
+                        imageUrl: sanitizedStoredPhoto,
+                        expectedUpdatedAt: row.updated_at,
+                      }
+                    : null,
+                }
               }
 
-              return { ...watch, imageUrl: sanitizeWatchImageUrl(rawImage) }
+              const sanitizedRawImage = sanitizeWatchImageUrl(rawImage)
+              const sanitizedWatch = { ...watch, imageUrl: sanitizedRawImage }
+              return {
+                displayWatch: sanitizedWatch,
+                cacheWatch: sanitizedWatch,
+                migrationCandidate: null,
+              }
             }),
           )
 
-          await syncCachedWatches(currentUser.id, storageWatches)
-          setWatchRevisionById(
-            Object.fromEntries(rows.map((row) => [row.id, row.updated_at])),
+          const legacyPhotoMigrations = hydratedResults
+            .map((result) => result.migrationCandidate)
+            .filter((candidate): candidate is LegacyPhotoMigrationCandidate => candidate !== null)
+
+          const successfulLegacyMigrations = new Map<string, Watch>()
+          const nextRevisions = Object.fromEntries(rows.map((row) => [row.id, row.updated_at]))
+
+          if (legacyPhotoMigrations.length > 0) {
+            const migrationResults = await Promise.allSettled(
+              legacyPhotoMigrations.map((candidate) =>
+                updateWatch(
+                  candidate.id,
+                  { cover_photo_url: candidate.imageUrl },
+                  { expectedUpdatedAt: candidate.expectedUpdatedAt },
+                ),
+              ),
+            )
+
+            for (const result of migrationResults) {
+              if (result.status === 'fulfilled') {
+                successfulLegacyMigrations.set(result.value.id, rowToWatch(result.value))
+                nextRevisions[result.value.id] = result.value.updated_at
+              }
+            }
+          }
+
+          const hydratedWatches = hydratedResults.map((result) =>
+            successfulLegacyMigrations.get(result.displayWatch.id) ?? result.displayWatch,
           )
+          const cachedWatches = hydratedResults.map((result) =>
+            successfulLegacyMigrations.get(result.cacheWatch.id) ?? result.cacheWatch,
+          )
+
+          await syncCachedWatches(currentUser.id, cachedWatches)
+          setWatchRevisionById(nextRevisions)
           setWatchSyncStateById({})
           setWatches(hydratedWatches)
           setWatchesLoaded(true)

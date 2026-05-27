@@ -41,16 +41,17 @@ export function sanitizeWatchImageUrl(imageUrl?: string): string | undefined {
 /**
  * Prepares a single watch for both KV storage and in-memory display.
  *
- * - Preserves existing `kv-photo:` references in storage — the photo blob is
- *   already persisted separately and must not be overwritten with `undefined`.
- * - Saves new `data:image/` photos to KV under `watch_photo_<userId>_<watchId>`
- *   and replaces `imageUrl` with a `kv-photo:<watchId>` reference for storage.
- * - Passes valid HTTPS image URLs through unchanged.
- * - Strips any unsafe, invalid, or oversized image URLs.
+ * - Persists new `data:image/` uploads directly on the watch record so they are
+ *   stored in Supabase alongside the rest of the watch metadata.
+ * - Migrates legacy `kv-photo:` references to the hydrated display URL whenever
+ *   that URL is available in memory.
+ * - Preserves unresolved legacy `kv-photo:` references until they can be
+ *   migrated, rather than wiping them.
+ * - Passes valid HTTPS image URLs through unchanged and strips unsafe values.
  *
  * @param watch            - The watch object to prepare.
- * @param userId           - The owning user's ID.
- * @param kvSet            - Async function that persists a value to KV storage.
+ * @param userId           - Retained for backward-compatible call sites.
+ * @param kvSet            - Retained for backward-compatible call sites.
  * @param existingDisplayUrl - The currently hydrated image URL for this watch
  *   (from in-memory React state). Used as the display URL when the watch already
  *   has a `kv-photo:` reference so the UI continues showing the photo without
@@ -64,10 +65,20 @@ export async function prepareWatchForStorage(
   kvSet: (key: string, value: string) => Promise<void>,
   existingDisplayUrl?: string,
 ): Promise<{ watchForStorage: Watch; watchForDisplay: Watch }> {
-  // Preserve existing kv-photo references — the photo is already stored in KV.
-  // Without this check, sanitizeWatchImageUrl would return undefined for kv-photo:
-  // URLs (they are neither data: nor HTTPS), silently wiping the photo reference.
+  void userId
+  void kvSet
+
+  // Legacy kv-photo references can be migrated to a first-class persisted image
+  // whenever the hydrated display URL is available.
   if (isWatchPhotoRef(watch.imageUrl)) {
+    const migratedImageUrl = sanitizeWatchImageUrl(existingDisplayUrl)
+    if (migratedImageUrl) {
+      return {
+        watchForStorage: { ...watch, imageUrl: migratedImageUrl },
+        watchForDisplay: { ...watch, imageUrl: migratedImageUrl },
+      }
+    }
+
     return {
       watchForStorage: { ...watch },
       watchForDisplay: { ...watch, imageUrl: existingDisplayUrl },
@@ -80,20 +91,6 @@ export async function prepareWatchForStorage(
     return {
       watchForStorage: { ...watch, imageUrl: undefined },
       watchForDisplay: { ...watch, imageUrl: undefined },
-    }
-  }
-
-  if (sanitizedImageUrl.startsWith("data:image/")) {
-    let imageForStorage = sanitizedImageUrl
-    try {
-      await kvSet(getWatchPhotoKey(userId, watch.id), sanitizedImageUrl)
-      imageForStorage = toWatchPhotoRef(watch.id)
-    } catch (error) {
-      console.error(`Error saving watch photo for ${watch.id}:`, error)
-    }
-    return {
-      watchForStorage: { ...watch, imageUrl: imageForStorage },
-      watchForDisplay: { ...watch, imageUrl: sanitizedImageUrl },
     }
   }
 
