@@ -20,6 +20,7 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '
 
 /** Canonical Supabase Auth email for the administrator account. */
 const ADMIN_AUTH_EMAIL = 'administrator@watchvault.local'
+const ADMIN_USER_METADATA = { name: 'Administrator', vault_name: 'WatchVault' } as const
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -63,7 +64,7 @@ Deno.serve(async (req: Request) => {
       auth: { autoRefreshToken: false, persistSession: false },
     })
 
-    await reconcileAdminAuthAccount(adminClient, ADMIN_AUTH_EMAIL, password)
+    await reconcileAdminAuthAccount(adminClient, ADMIN_AUTH_EMAIL, password, ADMIN_USER_METADATA)
 
     return json(200, { success: true })
   } catch (err) {

@@ -28,6 +28,10 @@ export async function reconcileAdminAuthAccount(
   client: EnsureAdminAuthClient,
   adminAuthEmail: string,
   password: string,
+  userMetadata: { name: string; vault_name: string } = {
+    name: 'Administrator',
+    vault_name: 'WatchVault',
+  },
 ): Promise<void> {
   const { data: listData, error: listError } = await client.auth.admin.listUsers()
   if (listError) {
@@ -41,7 +45,7 @@ export async function reconcileAdminAuthAccount(
       email: adminAuthEmail,
       password,
       email_confirm: true,
-      user_metadata: { name: 'Administrator', vault_name: 'WatchVault' },
+      user_metadata: userMetadata,
     })
     if (createError) {
       throw new Error(`Failed to create admin user: ${createError.message}`)

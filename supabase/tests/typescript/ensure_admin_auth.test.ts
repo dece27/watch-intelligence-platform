@@ -61,4 +61,31 @@ describe('reconcileAdminAuthAccount', () => {
       password: 'WatchVault',
     })
   })
+
+  it('throws when listing users fails', async () => {
+    const { client } = createClient({ listError: 'list failed' })
+
+    await expect(
+      reconcileAdminAuthAccount(client, 'administrator@watchvault.local', 'WatchVault'),
+    ).rejects.toThrow('Failed to list users: list failed')
+  })
+
+  it('throws when creating a missing administrator auth account fails', async () => {
+    const { client } = createClient({ createError: 'create failed' })
+
+    await expect(
+      reconcileAdminAuthAccount(client, 'administrator@watchvault.local', 'WatchVault'),
+    ).rejects.toThrow('Failed to create admin user: create failed')
+  })
+
+  it('throws when reconciling an existing administrator auth account fails', async () => {
+    const { client } = createClient({
+      users: [{ id: 'admin-user-id', email: 'administrator@watchvault.local' }],
+      updateError: 'update failed',
+    })
+
+    await expect(
+      reconcileAdminAuthAccount(client, 'administrator@watchvault.local', 'WatchVault'),
+    ).rejects.toThrow('Failed to reconcile admin user: update failed')
+  })
 })
