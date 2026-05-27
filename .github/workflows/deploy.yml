@@ -35,7 +35,6 @@ jobs:
             printf 'VITE_SUPABASE_URL=%s\n' "$SUPABASE_URL"
             printf 'VITE_SUPABASE_ANON_KEY=%s\n' "$SUPABASE_ANON_KEY"
           } > "$GITHUB_WORKSPACE/.env.production"
-          test -f "$GITHUB_WORKSPACE/.env.production" || { echo "Error: .env.production file was not created"; exit 1; }
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
