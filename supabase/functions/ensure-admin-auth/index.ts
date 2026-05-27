@@ -2,7 +2,7 @@
  * ensure-admin-auth
  *
  * Supabase Edge Function called during administrator login.
- * Uses the service-role key to create or confirm the administrator's
+ * Uses the service-role key to create or reconcile the administrator's
  * Supabase Auth account so that subsequent signInWithPassword calls
  * succeed and RLS-guarded writes (watches, preferences, …) go to the
  * database rather than falling back to KV storage.
@@ -13,12 +13,14 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { reconcileAdminAuthAccount } from './reconcileAdminAuth.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 
 /** Canonical Supabase Auth email for the administrator account. */
 const ADMIN_AUTH_EMAIL = 'administrator@watchvault.local'
+const ADMIN_USER_METADATA = { name: 'Administrator', vault_name: 'WatchVault' } as const
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -62,39 +64,7 @@ Deno.serve(async (req: Request) => {
       auth: { autoRefreshToken: false, persistSession: false },
     })
 
-    // Look up the admin user by email.
-    const { data: listData, error: listError } = await adminClient.auth.admin.listUsers()
-    if (listError) {
-      return json(500, { error: `Failed to list users: ${listError.message}` })
-    }
-
-    const adminUser = listData.users.find((u) => u.email === ADMIN_AUTH_EMAIL)
-
-    if (!adminUser) {
-      // First-time setup: create the admin account with email pre-confirmed.
-      const { error: createError } = await adminClient.auth.admin.createUser({
-        email: ADMIN_AUTH_EMAIL,
-        password,
-        email_confirm: true,
-        user_metadata: { name: 'Administrator', vault_name: 'WatchVault' },
-      })
-      if (createError) {
-        return json(500, { error: `Failed to create admin user: ${createError.message}` })
-      }
-    } else if (!adminUser.email_confirmed_at) {
-      // Account exists but email was never confirmed — confirm it.
-      // The password is intentionally not overwritten here: the account
-      // was created with the correct password already, and accepting an
-      // arbitrary password from the caller could allow unintended
-      // credential changes via direct API calls.
-      const { error: updateError } = await adminClient.auth.admin.updateUserById(adminUser.id, {
-        email_confirm: true,
-      })
-      if (updateError) {
-        return json(500, { error: `Failed to confirm admin user: ${updateError.message}` })
-      }
-    }
-    // If the account already exists and is confirmed, nothing to do.
+    await reconcileAdminAuthAccount(adminClient, ADMIN_AUTH_EMAIL, password, ADMIN_USER_METADATA)
 
     return json(200, { success: true })
   } catch (err) {

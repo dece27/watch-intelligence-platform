@@ -43,9 +43,12 @@ async function ensureAdminSupabaseAccount(password: string): Promise<void> {
   if (!hasSupabaseBrowserEnv()) return
   try {
     const supabase = getSupabaseClient()
-    await supabase.functions.invoke('ensure-admin-auth', {
+    const { error } = await supabase.functions.invoke('ensure-admin-auth', {
       body: { password },
     })
+    if (error) {
+      throw error
+    }
   } catch {
     // Non-fatal — signInWithPassword may still work if the account is
     // already confirmed; otherwise the app falls back to KV.
