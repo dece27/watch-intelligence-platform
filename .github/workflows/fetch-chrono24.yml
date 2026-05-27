@@ -88,10 +88,29 @@ jobs:
                   "upstream_failure_threshold",
                   os.environ.get("CHRONO24_UPSTREAM_FAILURE_THRESHOLD", "n/a"),
               )
+              sustained = bool(metrics.get("sustained_upstream_failure", False))
+              no_cached = bool(metrics.get("no_cached_listings", False))
+              hard_failure = bool(metrics.get("hard_upstream_failure", False))
+
+              if hard_failure or sustained or no_cached:
+                  if no_cached:
+                      print(
+                          "::error::Chrono24 upstream is unavailable and no cached listings "
+                          "are available. Failing the workflow because user-facing deals data "
+                          "is unavailable."
+                      )
+                  else:
+                      print(
+                          "::error::Chrono24 upstream is unavailable and sustained failures "
+                          f"reached {consecutive} consecutive runs (threshold {threshold})."
+                      )
+                  sys.exit(1)
+
               print(
-                  "::warning::Chrono24 upstream is unavailable; "
+                  "::warning::Chrono24 upstream is unavailable, but cached listings are still "
+                  "protecting the user-facing experience; "
                   f"observability captured {consecutive} consecutive failures "
-                  f"(threshold {threshold}) without failing the workflow."
+                  f"(threshold {threshold})."
               )
               sys.exit(0)
 
@@ -137,8 +156,41 @@ jobs:
               f"- Consecutive upstream failures: `{value('consecutive_upstream_failures', 0)}` (threshold `{value('upstream_failure_threshold', os.environ.get('CHRONO24_UPSTREAM_FAILURE_THRESHOLD', 'n/a'))}`)",
               f"- Cached listings stale: `{value('cached_listing_is_stale', True)}` (age hours: `{value('cached_listing_age_hours')}`; stale after `{value('stale_after_hours', os.environ.get('CHRONO24_STALE_AFTER_HOURS', 'n/a'))}`)",
               f"- Cached listing last updated: `{value('cached_listing_last_updated_at')}`",
+              f"- No cached listings: `{value('no_cached_listings', False)}`",
               f"- Sustained upstream failure: `{value('sustained_upstream_failure', False)}`",
+              f"- Hard upstream failure: `{value('hard_upstream_failure', False)}`",
           ]
+
+          degraded = (
+              str(value("status")) == "upstream_unavailable"
+              and not bool(metrics.get("hard_upstream_failure", False))
+          )
+          failed = bool(metrics.get("failed", False))
+
+          if failed:
+              lines.extend(
+                  [
+                      "",
+                      "### Outcome",
+                      "This run failed because Chrono24 data was not safely available.",
+                  ]
+              )
+          elif degraded:
+              lines.extend(
+                  [
+                      "",
+                      "### Outcome",
+                      "This run is green but degraded because Chrono24 was unavailable and cached listings were used as fallback.",
+                  ]
+              )
+          else:
+              lines.extend(
+                  [
+                      "",
+                      "### Outcome",
+                      "This run completed without detected Chrono24 availability degradation.",
+                  ]
+              )
 
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary_file:
               summary_file.write("\n".join(str(line) for line in lines) + "\n")
