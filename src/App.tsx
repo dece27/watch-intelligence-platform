@@ -41,6 +41,10 @@ function decodeLegacySharedSlug(value: string): string | null {
   }
 }
 
+function getUserPreferencesKey(userId: string): string {
+  return `user_preferences_${userId}`
+}
+
 function App() {
   const [persistedUser, setPersistedUser] = useKV<User | null>("currentUser", null)
   const [currentUser, setCurrentUser] = useState<User | null>(persistedUser ?? null)
@@ -185,13 +189,12 @@ function App() {
           isPublic: false,
         })
 
-        const key = `user_preferences_${currentUser.id}`
+        const key = getUserPreferencesKey(currentUser.id)
         const stored = await window.spark.kv.get<UserPreferences>(key)
-        if (!stored) return
 
         await upsertUserPreferences(client, {
           userId: supabaseUserId,
-          currency: normalizeCurrency(stored.currency),
+          currency: normalizeCurrency(stored?.currency),
           locale: 'en',
           theme: 'dark',
           showPurchasePrices: true,
@@ -231,7 +234,7 @@ function App() {
             return
           }
 
-          const key = `user_preferences_${currentUser.id}`
+          const key = getUserPreferencesKey(currentUser.id)
           const stored = await window.spark.kv.get<UserPreferences>(key)
           if (!active) return
           setPreferredCurrency(normalizeCurrency(stored?.currency))
@@ -239,7 +242,7 @@ function App() {
         }
 
         // KV fallback.
-        const key = `user_preferences_${currentUser.id}`
+        const key = getUserPreferencesKey(currentUser.id)
         const stored = await window.spark.kv.get<UserPreferences>(key)
         if (!active) return
         setPreferredCurrency(normalizeCurrency(stored?.currency))
@@ -436,7 +439,7 @@ function App() {
     }
 
     // KV fallback.
-    const key = `user_preferences_${currentUser.id}`
+    const key = getUserPreferencesKey(currentUser.id)
     try {
       const existing = await window.spark.kv.get<UserPreferences>(key)
       await window.spark.kv.set(key, {
