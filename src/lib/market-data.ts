@@ -29,6 +29,7 @@ export interface BrandMarketIndex {
   source: MarketDataSource
   updatedAt: string
   confidence: number
+  sentimentScore?: number
 }
 
 export interface MarketMover {
@@ -69,12 +70,17 @@ const CACHE_KEY_PREFIX = "market_data_snapshot_v1_"
 const CACHE_TTL_MS = 1000 * 60 * 30
 const DAILY_BUDGET_STORAGE_KEY = "market_data_daily_budget_v1"
 const FX_CACHE_TTL_MS = 1000 * 60 * 60 * 6
+const SENTIMENT_CACHE_TTL_MS = 1000 * 60 * 60 * 2
 
-const PROVIDER_DAILY_LIMITS: Record<MarketDataSource, number> = {
+type BudgetProvider = MarketDataSource | "gdelt" | "frankfurter"
+
+const PROVIDER_DAILY_LIMITS: Record<BudgetProvider, number> = {
   watchcharts: 1200,
   thewatchapi: 900,
   ebay: 1200,
   heuristic: Number.POSITIVE_INFINITY,
+  gdelt: 500,
+  frankfurter: 600,
 }
 
 const DEFAULT_REFERENCE_TARGETS: MarketLookupInput[] = [
@@ -90,6 +96,7 @@ const DEFAULT_REFERENCE_TARGETS: MarketLookupInput[] = [
 
 const inMemoryCache = new Map<string, { expiresAt: number; data: NormalizedMarketData }>()
 const fxRateCache = new Map<string, { expiresAt: number; rates: Record<string, number> }>()
+const sentimentCache = new Map<string, { expiresAt: number; score: number }>()
 
 const nowIso = () => new Date().toISOString()
 
@@ -198,11 +205,11 @@ function normalizeMarketSnapshot(snapshot: Omit<NormalizedMarketData, "moversDel
   }
 }
 
-function readDailyBudgetState(): { date: string; counts: Record<MarketDataSource, number> } {
+function readDailyBudgetState(): { date: string; counts: Record<BudgetProvider, number> } {
   if (!isBrowser()) {
     return {
       date: new Date().toISOString().slice(0, 10),
-      counts: { watchcharts: 0, thewatchapi: 0, ebay: 0, heuristic: 0 },
+      counts: { watchcharts: 0, thewatchapi: 0, ebay: 0, heuristic: 0, gdelt: 0, frankfurter: 0 },
     }
   }
 
@@ -211,10 +218,10 @@ function readDailyBudgetState(): { date: string; counts: Record<MarketDataSource
     if (!raw) {
       return {
         date: new Date().toISOString().slice(0, 10),
-        counts: { watchcharts: 0, thewatchapi: 0, ebay: 0, heuristic: 0 },
+        counts: { watchcharts: 0, thewatchapi: 0, ebay: 0, heuristic: 0, gdelt: 0, frankfurter: 0 },
       }
     }
-    const parsed = JSON.parse(raw) as { date?: string; counts?: Partial<Record<MarketDataSource, number>> }
+    const parsed = JSON.parse(raw) as { date?: string; counts?: Partial<Record<BudgetProvider, number>> }
     const date = parsed.date || new Date().toISOString().slice(0, 10)
     const counts = parsed.counts || {}
     return {
@@ -224,17 +231,19 @@ function readDailyBudgetState(): { date: string; counts: Record<MarketDataSource
         thewatchapi: Number(counts.thewatchapi || 0),
         ebay: Number(counts.ebay || 0),
         heuristic: Number(counts.heuristic || 0),
+        gdelt: Number(counts.gdelt || 0),
+        frankfurter: Number(counts.frankfurter || 0),
       },
     }
   } catch {
     return {
       date: new Date().toISOString().slice(0, 10),
-      counts: { watchcharts: 0, thewatchapi: 0, ebay: 0, heuristic: 0 },
+      counts: { watchcharts: 0, thewatchapi: 0, ebay: 0, heuristic: 0, gdelt: 0, frankfurter: 0 },
     }
   }
 }
 
-function writeDailyBudgetState(state: { date: string; counts: Record<MarketDataSource, number> }) {
+function writeDailyBudgetState(state: { date: string; counts: Record<BudgetProvider, number> }) {
   if (!isBrowser()) return
   try {
     window.localStorage.setItem(DAILY_BUDGET_STORAGE_KEY, JSON.stringify(state))
@@ -243,7 +252,7 @@ function writeDailyBudgetState(state: { date: string; counts: Record<MarketDataS
   }
 }
 
-function canConsumeBudget(source: MarketDataSource): boolean {
+function canConsumeBudget(source: BudgetProvider): boolean {
   const limit = PROVIDER_DAILY_LIMITS[source]
   if (!Number.isFinite(limit)) return true
   const today = new Date().toISOString().slice(0, 10)
@@ -251,7 +260,7 @@ function canConsumeBudget(source: MarketDataSource): boolean {
   if (state.date !== today) {
     const resetState = {
       date: today,
-      counts: { watchcharts: 0, thewatchapi: 0, ebay: 0, heuristic: 0 },
+      counts: { watchcharts: 0, thewatchapi: 0, ebay: 0, heuristic: 0, gdelt: 0, frankfurter: 0 },
     }
     writeDailyBudgetState(resetState)
     return true
@@ -259,14 +268,14 @@ function canConsumeBudget(source: MarketDataSource): boolean {
   return (state.counts[source] || 0) < limit
 }
 
-function consumeBudget(source: MarketDataSource) {
+function consumeBudget(source: BudgetProvider) {
   const limit = PROVIDER_DAILY_LIMITS[source]
   if (!Number.isFinite(limit)) return
   const today = new Date().toISOString().slice(0, 10)
   const state = readDailyBudgetState()
   if (state.date !== today) {
     state.date = today
-    state.counts = { watchcharts: 0, thewatchapi: 0, ebay: 0, heuristic: 0 }
+    state.counts = { watchcharts: 0, thewatchapi: 0, ebay: 0, heuristic: 0, gdelt: 0, frankfurter: 0 }
   }
   state.counts[source] = (state.counts[source] || 0) + 1
   writeDailyBudgetState(state)
@@ -305,7 +314,10 @@ async function getFrankfurterRates(baseCurrency: string): Promise<Record<string,
   const endpoint = new URL("https://api.frankfurter.app/latest")
   endpoint.searchParams.set("from", normalizedBase)
 
+  if (!canConsumeBudget("frankfurter")) return null
+
   try {
+    consumeBudget("frankfurter")
     const payload = await requestJsonWithBackoff(endpoint.toString())
     const rates = getNestedValue(payload, ["rates"])
     if (!rates || typeof rates !== "object") return null
@@ -572,6 +584,44 @@ function fromHeuristic(input: MarketLookupInput): NormalizedMarketData {
   })
 }
 
+async function getBrandSentimentScore(brand: string): Promise<number | null> {
+  const cacheKey = brand.trim().toLowerCase()
+  if (!cacheKey) return null
+  const cached = sentimentCache.get(cacheKey)
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.score
+  }
+  if (!canConsumeBudget("gdelt")) return null
+
+  const endpoint = new URL("https://api.gdeltproject.org/api/v2/doc/doc")
+  endpoint.searchParams.set("query", `"${brand}" AND watch`)
+  endpoint.searchParams.set("mode", "TimelineTone")
+  endpoint.searchParams.set("format", "json")
+  endpoint.searchParams.set("maxrecords", "40")
+
+  try {
+    consumeBudget("gdelt")
+    const payload = await requestJsonWithBackoff(endpoint.toString())
+    const timelines = getNestedValue(payload, ["timelines"])
+    if (!Array.isArray(timelines) || timelines.length === 0) return null
+    const firstTimeline = timelines[0]
+    const points = getNestedValue(firstTimeline, ["data"])
+    if (!Array.isArray(points) || points.length === 0) return null
+    const values = points
+      .map((point) => extractNumber(getNestedValue(point, ["value"]) ?? getNestedValue(point, ["tone"])))
+      .filter((value): value is number => typeof value === "number" && Number.isFinite(value))
+    if (values.length === 0) return null
+    const averageTone = average(values)
+    sentimentCache.set(cacheKey, {
+      expiresAt: Date.now() + SENTIMENT_CACHE_TTL_MS,
+      score: averageTone,
+    })
+    return averageTone
+  } catch {
+    return null
+  }
+}
+
 export function marketConfidenceLabel(confidence: number): "high" | "medium" | "low" {
   if (confidence >= 0.85) return "high"
   if (confidence >= 0.65) return "medium"
@@ -642,6 +692,11 @@ export async function getMarketDashboardData(watches: Watch[]): Promise<MarketDa
     return acc
   }, {})
 
+  const sentimentByBrandEntries = await Promise.all(
+    Object.keys(groupedByBrand).map(async (brand) => [brand, await getBrandSentimentScore(brand)] as const)
+  )
+  const sentimentByBrand = Object.fromEntries(sentimentByBrandEntries) as Record<string, number | null>
+
   const brandIndices = Object.entries(groupedByBrand).map(([brand, brandSnapshots]) => {
     const firstSeries = brandSnapshots[0]?.series12m || []
     const trend = firstSeries.map((_, monthIndex) => {
@@ -665,6 +720,7 @@ export async function getMarketDashboardData(watches: Watch[]): Promise<MarketDa
         return Date.parse(snapshot.updatedAt) > Date.parse(latest) ? snapshot.updatedAt : latest
       }, brandSnapshots[0]?.updatedAt || nowIso()),
       confidence,
+      sentimentScore: sentimentByBrand[brand] ?? undefined,
     } satisfies BrandMarketIndex
   })
     .sort((left, right) => right.currentIndex - left.currentIndex)

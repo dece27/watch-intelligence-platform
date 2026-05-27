@@ -248,8 +248,14 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
 
   const marketSentiment = useMemo(() => {
     const positiveCount = brandIndices.filter(b => getTrendChange(b.trend, 1) > 0).length
-    if (positiveCount >= Math.max(4, Math.floor(brandIndices.length * 0.7))) return { type: 'bull', color: '#5E8C6A', label: 'BULL 🐂' }
-    if (positiveCount >= Math.max(2, Math.floor(brandIndices.length * 0.45))) return { type: 'neutral', color: '#C9A84C', label: 'NEUTRAL —' }
+    const sentimentScores = brandIndices
+      .map((brand) => brand.sentimentScore)
+      .filter((score): score is number => typeof score === "number" && Number.isFinite(score))
+    const averageSentimentScore = sentimentScores.length > 0
+      ? sentimentScores.reduce((sum, score) => sum + score, 0) / sentimentScores.length
+      : 0
+    if (positiveCount >= Math.max(4, Math.floor(brandIndices.length * 0.7)) || averageSentimentScore > 1.5) return { type: 'bull', color: '#5E8C6A', label: 'BULL 🐂' }
+    if (positiveCount >= Math.max(2, Math.floor(brandIndices.length * 0.45)) || averageSentimentScore >= -0.5) return { type: 'neutral', color: '#C9A84C', label: 'NEUTRAL —' }
     return { type: 'bear', color: '#A0785A', label: 'BEAR 🐻' }
   }, [brandIndices])
 
@@ -631,6 +637,11 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
                   <div className="text-xs text-muted-foreground">
                     {brandIndex.source} · Updated {new Date(brandIndex.updatedAt).toLocaleDateString()} · {marketConfidenceLabel(brandIndex.confidence)}
                   </div>
+                  {typeof brandIndex.sentimentScore === "number" && (
+                    <div className="text-xs text-muted-foreground">
+                      GDELT tone: {brandIndex.sentimentScore.toFixed(2)}
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
