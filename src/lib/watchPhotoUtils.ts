@@ -61,13 +61,10 @@ export function sanitizeWatchImageUrl(imageUrl?: string): string | undefined {
  */
 export async function prepareWatchForStorage(
   watch: Watch,
-  userId: string,
-  kvSet: (key: string, value: string) => Promise<void>,
+  _userId: string,
+  _kvSet: (key: string, value: string) => Promise<void>,
   existingDisplayUrl?: string,
 ): Promise<{ watchForStorage: Watch; watchForDisplay: Watch }> {
-  void userId
-  void kvSet
-
   // Legacy kv-photo references can be migrated to a first-class persisted image
   // whenever the hydrated display URL is available.
   if (isWatchPhotoRef(watch.imageUrl)) {

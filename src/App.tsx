@@ -94,6 +94,18 @@ type WatchOutboxOperation = {
   failureReason?: string
 }
 
+type LegacyPhotoMigrationCandidate = {
+  id: string
+  imageUrl: string
+  expectedUpdatedAt: string
+}
+
+type HydratedWatchResult = {
+  displayWatch: Watch
+  cacheWatch: Watch
+  migrationCandidate: LegacyPhotoMigrationCandidate | null
+}
+
 function getWatchOutboxKey(userId: string): string {
   return `watch_outbox_${userId}`
 }
@@ -402,12 +414,6 @@ function App() {
       try {
         // Supabase path: fetch rows from DB and hydrate photo refs from KV.
         if (supabaseUserId && persistenceState === 'supabase-ready') {
-          type LegacyPhotoMigrationCandidate = {
-            id: string
-            imageUrl: string
-            expectedUpdatedAt: string
-          }
-
           let rows = await getWatches(supabaseUserId, { limit: 1000, offset: 0 })
           const kvWatches = (await window.spark.kv.get<Watch[]>(getUserWatchesKey(currentUser.id))) || []
           const pendingOutboxOps =
@@ -448,11 +454,7 @@ function App() {
           }
 
           const hydratedResults = await Promise.all(
-            rows.map(async (row): Promise<{
-              displayWatch: Watch
-              cacheWatch: Watch
-              migrationCandidate: LegacyPhotoMigrationCandidate | null
-            }> => {
+            rows.map(async (row): Promise<HydratedWatchResult> => {
               const watch = rowToWatch(row)
               const rawImage = watch.imageUrl
               if (!rawImage) {
