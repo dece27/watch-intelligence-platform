@@ -143,6 +143,7 @@ export function CollectionModule({
       }
     }
 
+    const hasManualCurrentValue = typeof formData.currentValue === "number" && Number.isFinite(formData.currentValue) && formData.currentValue > 0
     const watch: Watch = {
       id: editingWatch?.id || crypto.randomUUID(),
       brand: formData.brand,
@@ -152,7 +153,10 @@ export function CollectionModule({
       year: formData.year,
       purchasePrice: Number(formData.purchasePrice),
       purchaseDate: formData.purchaseDate,
-      currentValue: formData.currentValue ? Number(formData.currentValue) : undefined,
+      currentValue: hasManualCurrentValue ? Number(formData.currentValue) : undefined,
+      marketSource: hasManualCurrentValue ? "manual" : undefined,
+      marketConfidence: hasManualCurrentValue ? 0.6 : undefined,
+      marketUpdatedAt: hasManualCurrentValue ? new Date().toISOString() : undefined,
       condition: formData.condition || 'excellent',
       category: formData.category || 'dress',
       imageUrl: normalizedImageUrl || undefined,

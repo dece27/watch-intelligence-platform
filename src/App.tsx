@@ -393,7 +393,10 @@ function App() {
   }, [currentUser?.id, supabaseUserId, persistenceState])
 
   const watchList = watches || []
-  const totalValue = watchList.reduce((sum, w) => sum + (w.currentValue || w.purchasePrice), 0)
+  const totalValue = watchList.reduce(
+    (sum, w) => sum + (typeof w.currentValue === 'number' && Number.isFinite(w.currentValue) ? w.currentValue : 0),
+    0,
+  )
   const activeUserId = supabaseUserId ?? undefined
 
   useEffect(() => {
@@ -868,7 +871,14 @@ function App() {
           />
         )
       case 'portfolio':
-        return <PortfolioModule watches={watchList} preferredCurrency={preferredCurrency} onNavigateToNews={() => setActiveModule('news')} />
+        return (
+          <PortfolioModule
+            watches={watchList}
+            onUpdate={handleUpdateWatches}
+            preferredCurrency={preferredCurrency}
+            onNavigateToNews={() => setActiveModule('news')}
+          />
+        )
       case 'market':
         return <MarketModule watches={watchList} preferredCurrency={preferredCurrency} />
       case 'ai-advisor':

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { Watch } from "@/lib/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { TrendUp, TrendDown } from "@phosphor-icons/react"
@@ -10,9 +11,11 @@ import { TopStoriesWidget } from "@/components/TopStoriesWidget"
 import { watchChartsClient } from "@/lib/watchcharts-client"
 import { convertCurrency, formatCurrency } from "@/lib/currency"
 import { getPortfolioMarketSnapshots, marketConfidenceLabel, type NormalizedMarketData } from "@/lib/market-data"
+import { toast } from "sonner"
 
 interface PortfolioModuleProps {
   watches: Watch[]
+  onUpdate: (updater: (currentWatches: Watch[]) => Watch[]) => Promise<void>
   preferredCurrency?: string
   onNavigateToNews?: () => void
 }
@@ -111,53 +114,13 @@ function calculateHealthScore(watches: Array<Watch & { marketConfidence?: number
   return Math.round(healthScore)
 }
 
-export function PortfolioModule({ watches, preferredCurrency = "USD", onNavigateToNews }: PortfolioModuleProps) {
+export function PortfolioModule({ watches, onUpdate, preferredCurrency = "USD", onNavigateToNews }: PortfolioModuleProps) {
   const [sortField, setSortField] = useState<'brand' | 'roi' | 'value' | 'holdPeriod'>('roi')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
-  const [liveMarketValues, setLiveMarketValues] = useState<Record<string, number>>({})
   const [marketSnapshots, setMarketSnapshots] = useState<Record<string, NormalizedMarketData>>({})
-
-  useEffect(() => {
-    let canceled = false
-
-    const loadLiveMarketValues = async () => {
-      if (watches.length === 0) {
-        if (!canceled) setLiveMarketValues({})
-        return
-      }
-
-      const results = await Promise.allSettled(
-        watches.map(async (watch) => ({
-          watchId: watch.id,
-          value: await watchChartsClient.getMarketValue({
-            brand: watch.brand,
-            model: watch.model,
-            referenceNumber: watch.referenceNumber,
-          }),
-        }))
-      )
-
-      if (canceled) return
-
-      const nextValues: Record<string, number> = {}
-      for (const result of results) {
-        if (result.status !== 'fulfilled') continue
-        const marketValue = result.value.value
-        if (typeof marketValue !== 'number' || !Number.isFinite(marketValue) || marketValue <= 0) {
-          continue
-        }
-        nextValues[result.value.watchId] = marketValue
-      }
-
-      setLiveMarketValues(nextValues)
-    }
-
-    void loadLiveMarketValues()
-
-    return () => {
-      canceled = true
-    }
-  }, [watches])
+  const [isRefreshingMarket, setIsRefreshingMarket] = useState(false)
+  const watchChartsConfigured = Boolean(import.meta.env.VITE_WATCHCHARTS_API_KEY?.trim())
+  const staleThresholdMs = 1000 * 60 * 60 * 24
 
   useEffect(() => {
     let canceled = false
@@ -180,19 +143,94 @@ export function PortfolioModule({ watches, preferredCurrency = "USD", onNavigate
     }
   }, [watches])
 
+  const staleMarketCount = useMemo(() => {
+    const now = Date.now()
+    return watches.filter((watch) => {
+      if (!watch.marketUpdatedAt) return true
+      const parsed = Date.parse(watch.marketUpdatedAt)
+      if (!Number.isFinite(parsed)) return true
+      return (now - parsed) > staleThresholdMs
+    }).length
+  }, [watches, staleThresholdMs])
+
+  const handleRefreshMarketValues = useCallback(async () => {
+    if (watches.length === 0) return
+    if (!watchChartsConfigured) {
+      toast.error("WatchCharts API key is not configured.")
+      return
+    }
+
+    setIsRefreshingMarket(true)
+    try {
+      const refreshedAt = new Date().toISOString()
+      const results = await Promise.allSettled(
+        watches.map(async (watch) => ({
+          watchId: watch.id,
+          value: await watchChartsClient.getMarketValue({
+            brand: watch.brand,
+            model: watch.model,
+            referenceNumber: watch.referenceNumber,
+          }),
+        })),
+      )
+
+      const refreshed = new Map<string, number>()
+      for (const result of results) {
+        if (result.status !== "fulfilled") continue
+        const marketValue = result.value.value
+        if (typeof marketValue !== "number" || !Number.isFinite(marketValue) || marketValue <= 0) continue
+        refreshed.set(result.value.watchId, Number(marketValue.toFixed(2)))
+      }
+
+      if (refreshed.size === 0) {
+        toast.warning("No WatchCharts market values were returned.")
+        return
+      }
+
+      await onUpdate((currentWatches) =>
+        currentWatches.map((watch) => {
+          const value = refreshed.get(watch.id)
+          if (typeof value !== "number") return watch
+          return {
+            ...watch,
+            currentValue: value,
+            marketSource: "watchcharts",
+            marketConfidence: 0.95,
+            marketUpdatedAt: refreshedAt,
+          }
+        }),
+      )
+
+      const failedCount = watches.length - refreshed.size
+      if (failedCount > 0) {
+        toast.warning(`Updated ${refreshed.size} watch values. ${failedCount} failed or unavailable.`)
+      } else {
+        toast.success(`Updated market values for ${refreshed.size} watches.`)
+      }
+    } catch (error) {
+      console.error("Failed to refresh market values:", error)
+      toast.error("Failed to refresh market values.")
+    } finally {
+      setIsRefreshingMarket(false)
+    }
+  }, [onUpdate, watchChartsConfigured, watches])
+
   const getMarketValue = useCallback((watch: Watch): number => {
+    if (typeof watch.currentValue === "number" && Number.isFinite(watch.currentValue) && watch.currentValue > 0) {
+      return watch.currentValue
+    }
     const snapshot = marketSnapshots[watch.id]
-    const normalizedSnapshotValue = snapshot
+    const normalizedSnapshotValue = snapshot && snapshot.source !== "heuristic"
       ? convertCurrency(snapshot.latestPrice, snapshot.currency, "USD")
       : null
-    return liveMarketValues[watch.id] ?? normalizedSnapshotValue ?? watch.currentValue ?? getEstimatedMarketValue(watch)
-  }, [liveMarketValues, marketSnapshots])
+    return normalizedSnapshotValue ?? getEstimatedMarketValue(watch)
+  }, [marketSnapshots])
 
   const watchesWithMetrics = useMemo(() => {
     return watches.map(watch => {
       const snapshot = marketSnapshots[watch.id]
       const marketValue = getMarketValue(watch)
-      const roi = ((marketValue - watch.purchasePrice) / watch.purchasePrice) * 100
+      const roi = watch.purchasePrice > 0 ? ((marketValue - watch.purchasePrice) / watch.purchasePrice) * 100 : 0
       const roiDollar = marketValue - watch.purchasePrice
       const holdPeriod = calculateHoldPeriod(watch.purchaseDate)
       
@@ -203,9 +241,9 @@ export function PortfolioModule({ watches, preferredCurrency = "USD", onNavigate
         roiDollar,
         holdPeriod,
         holdPeriodDays: Math.ceil((new Date().getTime() - new Date(watch.purchaseDate).getTime()) / (1000 * 60 * 60 * 24)),
-        marketSource: snapshot?.source,
-        marketUpdatedAt: snapshot?.updatedAt,
-        marketConfidence: snapshot?.confidence,
+        marketSource: watch.marketSource ?? snapshot?.source ?? "heuristic",
+        marketUpdatedAt: watch.marketUpdatedAt ?? snapshot?.updatedAt,
+        marketConfidence: watch.marketConfidence ?? snapshot?.confidence ?? 0.45,
       }
     })
   }, [watches, getMarketValue, marketSnapshots])
@@ -247,24 +285,26 @@ export function PortfolioModule({ watches, preferredCurrency = "USD", onNavigate
   const totalReturn = totalValue - totalCost
   const totalReturnPercent = totalCost > 0 ? ((totalReturn / totalCost) * 100) : 0
   const portfolioMarketMetadata = useMemo(() => {
-    const snapshots = Object.values(marketSnapshots)
-    if (snapshots.length === 0) {
+    const watchesWithMarket = watchesWithMetrics.filter((watch) => watch.marketSource)
+    if (watchesWithMarket.length === 0) {
       return { source: "heuristic", updatedAt: null as string | null, confidence: "low" as const }
     }
-    const sourceCounts = snapshots.reduce<Record<string, number>>((acc, snapshot) => {
-      acc[snapshot.source] = (acc[snapshot.source] || 0) + 1
+    const sourceCounts = watchesWithMarket.reduce<Record<string, number>>((acc, watch) => {
+      const source = watch.marketSource || "heuristic"
+      acc[source] = (acc[source] || 0) + 1
       return acc
     }, {})
     const source = Object.entries(sourceCounts).sort((left, right) => right[1] - left[1])[0]?.[0] || "heuristic"
-    const updatedAt = snapshots.reduce<string | null>((latest, snapshot) => {
-      if (!latest) return snapshot.updatedAt
-      return Date.parse(snapshot.updatedAt) > Date.parse(latest) ? snapshot.updatedAt : latest
+    const updatedAt = watchesWithMarket.reduce<string | null>((latest, watch) => {
+      if (!watch.marketUpdatedAt) return latest
+      if (!latest) return watch.marketUpdatedAt
+      return Date.parse(watch.marketUpdatedAt) > Date.parse(latest) ? watch.marketUpdatedAt : latest
     }, null)
     const confidence = marketConfidenceLabel(
-      snapshots.reduce((sum, snapshot) => sum + snapshot.confidence, 0) / snapshots.length
+      watchesWithMarket.reduce((sum, watch) => sum + (watch.marketConfidence || 0.45), 0) / watchesWithMarket.length
     )
     return { source, updatedAt, confidence }
-  }, [marketSnapshots])
+  }, [watchesWithMetrics])
   const healthScore = useMemo(() => calculateHealthScore(
     watchesWithMetrics.map(({ marketValue, ...watch }) => ({ ...watch, currentValue: marketValue }))
   ), [watchesWithMetrics])
@@ -339,6 +379,26 @@ export function PortfolioModule({ watches, preferredCurrency = "USD", onNavigate
       <div>
         <h1 className="text-2xl md:text-3xl font-semibold">Portfolio Analytics</h1>
         <p className="text-muted-foreground text-sm md:text-base mt-1">Comprehensive insights into your collection</p>
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <Button
+            size="sm"
+            onClick={() => void handleRefreshMarketValues()}
+            disabled={isRefreshingMarket || !watchChartsConfigured}
+          >
+            {isRefreshingMarket ? "Refreshing..." : "Refresh WatchCharts Values"}
+          </Button>
+          {!watchChartsConfigured ? (
+            <span className="text-xs text-muted-foreground">
+              Configure <code>VITE_WATCHCHARTS_API_KEY</code> to refresh canonical market values.
+            </span>
+          ) : (
+            <span className="text-xs text-muted-foreground">
+              {staleMarketCount === 0
+                ? "All persisted market values refreshed in the last 24 hours."
+                : `${staleMarketCount} watch${staleMarketCount === 1 ? "" : "es"} have stale or missing market values.`}
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

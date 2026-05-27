@@ -653,7 +653,7 @@ export async function getPortfolioMarketSnapshots(
         brand: watch.brand,
         model: watch.model,
         referenceNumber: watch.referenceNumber,
-        heuristicPrice: watch.currentValue || watch.purchasePrice,
+        heuristicPrice: watch.currentValue,
       })
       return [watch.id, snapshot] as const
     })
@@ -673,7 +673,7 @@ export async function getMarketDashboardData(watches: Watch[]): Promise<MarketDa
       brand: watch.brand,
       model: watch.model,
       referenceNumber: watch.referenceNumber,
-      heuristicPrice: watch.currentValue || watch.purchasePrice,
+      heuristicPrice: watch.currentValue,
     }))
 
   const uniqueTargets = new Map<string, MarketLookupInput>()

@@ -45,7 +45,7 @@ export function AppraisalModule({ watches, preferredCurrency = "USD" }: Appraisa
           brand: selectedWatch.brand,
           model: selectedWatch.model,
           referenceNumber: selectedWatch.referenceNumber,
-          heuristicPrice: selectedWatch.currentValue || selectedWatch.purchasePrice,
+          heuristicPrice: selectedWatch.currentValue,
         })
 
         if (!canceled) {
@@ -87,7 +87,7 @@ export function AppraisalModule({ watches, preferredCurrency = "USD" }: Appraisa
     )
   }
 
-  const appraisalValue = marketValue ?? marketSnapshot?.latestPrice ?? selectedWatch.currentValue ?? selectedWatch.purchasePrice
+  const appraisalValue = marketValue ?? marketSnapshot?.latestPrice ?? selectedWatch.currentValue ?? null
   const appraisalDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
 
   return (
@@ -221,7 +221,9 @@ export function AppraisalModule({ watches, preferredCurrency = "USD" }: Appraisa
             <div className="bg-primary/10 print:bg-gray-100 p-6 rounded-lg">
               <div className="text-sm text-muted-foreground print:text-gray-600 mb-2">Current Market Value</div>
                 <div className="text-4xl font-bold text-primary print:text-black tabular-nums">
-                  {formatCurrency(appraisalValue, preferredCurrency, { sourceCurrency: marketValue ? "USD" : (marketSnapshot?.currency || "USD") })}
+                  {appraisalValue !== null
+                    ? formatCurrency(appraisalValue, preferredCurrency, { sourceCurrency: marketValue ? "USD" : (marketSnapshot?.currency || "USD") })
+                    : "Unavailable"}
                 </div>
               <div className="text-sm text-muted-foreground print:text-gray-600 mt-3">
                 Based on current market conditions, condition assessment, and comparable sales data
