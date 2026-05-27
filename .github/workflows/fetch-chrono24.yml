@@ -15,20 +15,12 @@ jobs:
   fetch:
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.github_environment || vars.CHRONO24_GITHUB_ENVIRONMENT || 'production' }}
-    services:
-      flaresolverr:
-        image: ghcr.io/flaresolverr/flaresolverr:latest
-        ports:
-          - 8191:8191
     env:
       SUPABASE_URL: ${{ vars.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       CHRONO24_ACCESS_APPROVED: ${{ vars.CHRONO24_ACCESS_APPROVED || 'false' }}
       CHRONO24_UPSTREAM_FAILURE_THRESHOLD: ${{ vars.CHRONO24_UPSTREAM_FAILURE_THRESHOLD || '4' }}
       CHRONO24_STALE_AFTER_HOURS: ${{ vars.CHRONO24_STALE_AFTER_HOURS || '48' }}
-      FLARESOLVERR_ENABLED: ${{ vars.FLARESOLVERR_ENABLED || 'false' }}
-      FLARESOLVERR_URL: ${{ vars.FLARESOLVERR_URL || 'http://localhost:8191' }}
-      FLARESOLVERR_MAX_TIMEOUT_MS: ${{ vars.FLARESOLVERR_MAX_TIMEOUT_MS || '60000' }}
 
     steps:
       - uses: actions/checkout@v6
@@ -44,6 +36,15 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r scripts/requirements-chrono24.txt
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ hashFiles('scripts/requirements-chrono24.txt') }}
+
+      - name: Install Playwright browsers
+        run: python -m playwright install --with-deps chromium
 
       - name: Fetch listings from Chrono24
         run: |
@@ -135,8 +136,6 @@ jobs:
               f"- Cached listings stale: `{value('cached_listing_is_stale', True)}` (age hours: `{value('cached_listing_age_hours')}`; stale after `{value('stale_after_hours', os.environ.get('CHRONO24_STALE_AFTER_HOURS', 'n/a'))}`)",
               f"- Cached listing last updated: `{value('cached_listing_last_updated_at')}`",
               f"- Sustained upstream failure: `{value('sustained_upstream_failure', False)}`",
-              f"- FlareSolverr enabled: `{value('flaresolverr_enabled', False)}`",
-              f"- FlareSolverr resolved: `{value('flaresolverr_resolved')}`",
           ]
 
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary_file:
@@ -149,6 +148,14 @@ jobs:
         with:
           name: chrono24-sync-metrics
           path: ${{ env.CHRONO24_SYNC_METRICS_PATH }}
+          if-no-files-found: ignore
+
+      - name: Upload Playwright debug screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-debug-screenshots
+          path: ${{ runner.temp }}/chrono24_debug_*.png
           if-no-files-found: ignore
 
       - name: Report result
