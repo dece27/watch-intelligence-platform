@@ -29,10 +29,10 @@ jobs:
 
       - name: Create production env file
         run: |
-          cat > .env.production <<EOF
-          VITE_SUPABASE_URL=${SUPABASE_URL}
-          VITE_SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
-          EOF
+          {
+            printf 'VITE_SUPABASE_URL=%s\n' "$SUPABASE_URL"
+            printf 'VITE_SUPABASE_ANON_KEY=%s\n' "$SUPABASE_ANON_KEY"
+          } > "$GITHUB_WORKSPACE/.env.production"
           test -f "$GITHUB_WORKSPACE/.env.production"
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
