@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Watch, MarketSignal, ChatMessage, Deal } from "@/lib/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
 import { Sparkle, PaperPlaneTilt, Image as ImageIcon, Plus, Fire, Star, ShoppingCart, TrendUp, TrendDown, FileArrowUp } from "@phosphor-icons/react"
 import { toast } from "sonner"
-import { DailyLimitError, callAI, createAICacheKey, getTodayCacheBucket, hashAIInput, parseAIJson } from "@/lib/ai/caller"
+import { DailyLimitError, callAI, createAICacheKey, getTodayCacheBucket, hashAIInput, parseAIJson, readAICache } from "@/lib/ai/caller"
 import { useAIQuota } from "@/lib/ai/useAIQuota"
 import { areDealListingsConfigured, fetchDealListings } from "@/lib/deal-listings-client"
 import { formatCurrency } from "@/lib/currency"
@@ -320,10 +320,12 @@ const STARTER_QUESTIONS = [
   "Should I sell any watches in my collection?"
 ]
 
+const EMPTY_MESSAGES: ChatMessage[] = []
+
 export function AIAdvisorModule({ watches, userId, preferredCurrency = "USD" }: AIAdvisorModuleProps) {
   const quota = useAIQuota()
   const [chatInput, setChatInput] = useState('')
-  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [messages, setMessages] = useKV<ChatMessage[]>(`ai_chat_history_${userId || 'anonymous'}`, EMPTY_MESSAGES)
   const [isLoading, setIsLoading] = useState(false)
   const [signals, setSignals] = useState<MarketSignal[]>([])
   const [isLoadingSignals, setIsLoadingSignals] = useState(false)
@@ -338,6 +340,8 @@ export function AIAdvisorModule({ watches, userId, preferredCurrency = "USD" }: 
   const [isLoadingDeal, setIsLoadingDeal] = useState(false)
   const [mockListings, setMockListings] = useKV<Deal[]>("mockListings", EMPTY_DEAL_LISTINGS)
   const [isLiveDealData, setIsLiveDealData] = useState(false)
+  const rebalanceRestoreAttemptedRef = useRef(false)
+  const safeMessages = messages ?? EMPTY_MESSAGES
   const safeIdentifierImage = getSafeIdentifierImageSource(identifierImage)
   const identifierInputValue = IDENTIFIER_ALLOWED_DATA_URL_PATTERN.test(identifierImage) ? '' : identifierImage
   const identifierPreviewImage = IDENTIFIER_ALLOWED_DATA_URL_PATTERN.test(safeIdentifierImage) ? safeIdentifierImage : ''
@@ -361,6 +365,30 @@ export function AIAdvisorModule({ watches, userId, preferredCurrency = "USD" }: 
     loadDealOfDay()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [watches, preferredCurrency])
+
+  // Restore a previously-run rebalancing analysis from the client-side cache
+  // (sessionStorage L2) so the result survives tab switches without calling
+  // the AI API again.  We only attempt this once per component mount and only
+  // once watches have loaded.
+  useEffect(() => {
+    if (rebalanceRestoreAttemptedRef.current || watches.length === 0 || rebalanceAnalysis) return
+    rebalanceRestoreAttemptedRef.current = true
+
+    const key = createAICacheKey(
+      'rebalancing',
+      userId || 'anonymous',
+      hashAIInput(getDependencyHash(watches, preferredCurrency)),
+    )
+    const cached = readAICache(key)
+    if (cached) {
+      try {
+        setRebalanceAnalysis(parseRebalanceAnalysis(cached))
+      } catch {
+        // Cached response is malformed; user can regenerate via the button.
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watches, userId, preferredCurrency])
 
   const generateSignals = async (forceRefresh = false) => {
     if (watches.length === 0) return
@@ -426,7 +454,7 @@ ${watchSummary}`
 
     const userMessage = chatInput
     setChatInput('')
-    setMessages(prev => [...prev, { role: 'user', content: userMessage }])
+    setMessages(prev => [...(prev ?? []), { role: 'user', content: userMessage }])
     setIsLoading(true)
 
     try {
@@ -447,13 +475,13 @@ Provide expert, concise advice (2-3 paragraphs max) about their collection, watc
         cacheTtlSeconds: CHAT_CACHE_TTL_SECONDS,
       })
       
-      setMessages(prev => [...prev, { role: 'assistant', content: response }])
+      setMessages(prev => [...(prev ?? []), { role: 'assistant', content: response }])
     } catch (error) {
       if (error instanceof DailyLimitError) {
-        setMessages(prev => [...prev, { role: 'assistant', content: buildChatQuotaFallback(watches.length) }])
+        setMessages(prev => [...(prev ?? []), { role: 'assistant', content: buildChatQuotaFallback(watches.length) }])
       } else {
         toast.error('Failed to get AI response')
-        setMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, I encountered an error. Please try again.' }])
+        setMessages(prev => [...(prev ?? []), { role: 'assistant', content: 'Sorry, I encountered an error. Please try again.' }])
       }
     } finally {
       setIsLoading(false)
@@ -1072,7 +1100,7 @@ Respond in valid JSON format:
           <CardContent>
             <div className="space-y-4">
               <div className="min-h-[300px] max-h-[400px] overflow-y-auto space-y-3 p-4 rounded-lg bg-black/20 border border-border">
-                {messages.length === 0 ? (
+                {safeMessages.length === 0 ? (
                   <div className="text-center text-muted-foreground py-12">
                     <Sparkle size={48} className="mx-auto mb-3 text-primary/50" />
                     <p className="mb-6">Ask me anything about luxury watches, your collection, or market insights.</p>
@@ -1090,7 +1118,7 @@ Respond in valid JSON format:
                     </div>
                   </div>
                 ) : (
-                  messages.map((msg, idx) => (
+                  safeMessages.map((msg, idx) => (
                     <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                       <div className={`max-w-[85%] p-3 rounded-lg ${
                         msg.role === 'user' 

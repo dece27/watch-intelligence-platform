@@ -3,6 +3,54 @@ import { recordAiUsage, resolveCurrentUserId } from '@/lib/ai/usage'
 import { installSparkKVFallback } from '@/lib/sparkKV'
 
 const DEFAULT_CACHE_TTL_SECONDS = 60 * 60 * 6
+const SESSION_CACHE_KEY_PREFIX = 'ai_cache:'
+
+// L1: fast in-memory map, reset on page reload
+const l1Cache = new Map<string, { result: string; expiresAt: number }>()
+
+// In-flight deduplication: keyed by cacheKey, holds the pending Promise
+const inflightMap = new Map<string, Promise<string>>()
+
+function readL2Cache(cacheKey: string): string | null {
+  try {
+    const raw = sessionStorage.getItem(SESSION_CACHE_KEY_PREFIX + cacheKey)
+    if (!raw) return null
+    const entry = JSON.parse(raw) as { result: string; expiresAt: number }
+    if (Date.now() < entry.expiresAt) {
+      l1Cache.set(cacheKey, entry)
+      return entry.result
+    }
+    sessionStorage.removeItem(SESSION_CACHE_KEY_PREFIX + cacheKey)
+    return null
+  } catch {
+    return null
+  }
+}
+
+function writeCache(cacheKey: string, result: string, ttlSeconds: number) {
+  const expiresAt = Date.now() + ttlSeconds * 1000
+  const entry = { result, expiresAt }
+  l1Cache.set(cacheKey, entry)
+  try {
+    sessionStorage.setItem(SESSION_CACHE_KEY_PREFIX + cacheKey, JSON.stringify(entry))
+  } catch {
+    // sessionStorage quota exceeded; L1 is still populated
+  }
+}
+
+/**
+ * Read a previously cached AI result from L1 (in-memory) or L2 (sessionStorage)
+ * without making any network request.  Returns `null` on a cache miss or if
+ * the entry has expired.
+ */
+export function readAICache(cacheKey: string): string | null {
+  const l1 = l1Cache.get(cacheKey)
+  if (l1) {
+    if (Date.now() < l1.expiresAt) return l1.result
+    l1Cache.delete(cacheKey)
+  }
+  return readL2Cache(cacheKey)
+}
 
 export class DailyLimitError extends Error {
   constructor(message = 'Daily AI quota exhausted.', cause?: unknown) {
@@ -129,34 +177,56 @@ export async function callAI({
   cacheKey,
   cacheTtlSeconds = DEFAULT_CACHE_TTL_SECONDS,
 }: CallAIOptions): Promise<string> {
-  try {
-    const response = await callGitHubModelsProxy({
-      prompt,
-      model,
-      jsonMode,
-      taskType,
-      ...(imageInput ? { imageInput } : {}),
-      cacheKey,
-      cacheTtlSeconds,
-    })
-    return response
-  } catch (error) {
-    if (isDailyLimitFailure(error)) {
-      throw new DailyLimitError('The daily AI quota has been exhausted. Showing a fallback result instead.', error)
-    }
+  // ── L1 / L2 client-side cache check ────────────────────────────────────────
+  if (cacheKey) {
+    const cached = readAICache(cacheKey)
+    if (cached !== null) return cached
 
-    if (shouldFallbackToSpark(error)) {
-      try {
-        const response = await callSparkAI(prompt, model, jsonMode)
-        await recordUsageForActiveUser(prompt, response)
-        return response
-      } catch (sparkError) {
-        if (!isSparkUnavailableError(sparkError)) {
-          throw sparkError
+    // In-flight deduplication: reuse an already-pending request for the same key
+    const inflight = inflightMap.get(cacheKey)
+    if (inflight) return inflight
+  }
+
+  // ── Execute the request (possibly fallback to Spark) ───────────────────────
+  const request = (async () => {
+    try {
+      const response = await callGitHubModelsProxy({
+        prompt,
+        model,
+        jsonMode,
+        taskType,
+        ...(imageInput ? { imageInput } : {}),
+        cacheKey,
+        cacheTtlSeconds,
+      })
+      if (cacheKey) writeCache(cacheKey, response, cacheTtlSeconds)
+      return response
+    } catch (error) {
+      if (isDailyLimitFailure(error)) {
+        throw new DailyLimitError('The daily AI quota has been exhausted. Showing a fallback result instead.', error)
+      }
+
+      if (shouldFallbackToSpark(error)) {
+        try {
+          const response = await callSparkAI(prompt, model, jsonMode)
+          await recordUsageForActiveUser(prompt, response)
+          if (cacheKey) writeCache(cacheKey, response, cacheTtlSeconds)
+          return response
+        } catch (sparkError) {
+          if (!isSparkUnavailableError(sparkError)) {
+            throw sparkError
+          }
         }
       }
-    }
 
-    throw error
+      throw error
+    }
+  })()
+
+  if (cacheKey) {
+    inflightMap.set(cacheKey, request)
+    void request.finally(() => { inflightMap.delete(cacheKey) })
   }
+
+  return request
 }

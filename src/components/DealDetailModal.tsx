@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { toast } from "sonner"
 import { Heart, Plus, Copy, Check } from "@phosphor-icons/react"
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer } from "recharts"
-import { DailyLimitError, callAI, createAICacheKey, hashAIInput } from "@/lib/ai/caller"
+import { DailyLimitError, callAI, createAICacheKey, hashAIInput, readAICache } from "@/lib/ai/caller"
 import { formatCurrency } from "@/lib/currency"
 import { useKV } from "@/lib/useKV"
 
@@ -50,6 +50,29 @@ export function DealDetailModal({ deal, open, onOpenChange, onFilterBrand, prefe
     const fairValue = deal.fairValue || deal.price
     const savings = deal.price < fairValue ? fairValue - deal.price : 0
 
+    const cacheKey = createAICacheKey(
+      'deal-detail',
+      deal.id,
+      hashAIInput(`${preferredCurrency}|${deal.price}|${fairValue}|${deal.condition}|${deal.daysListed || 0}`),
+    )
+
+    // Serve directly from client-side cache when available to avoid any loading
+    // state flicker on repeated opens of the same deal.
+    const cached = readAICache(cacheKey)
+    if (cached) {
+      const verdictMatch = cached.match(/VERDICT:\s*(EXCELLENT DEAL|GOOD DEAL|FAIR DEAL|OVERPRICED)/i)
+      const reasoningMatch = cached.match(/REASONING:\s*([^\n]+(?:\n[^\n-]+)*)/i)
+      const riskMatch = cached.match(/RISK:\s*([^\n]+)/i)
+      const VALID_VERDICTS: readonly string[] = ['EXCELLENT DEAL', 'GOOD DEAL', 'FAIR DEAL', 'OVERPRICED']
+      const rawVerdict = verdictMatch?.[1]?.toUpperCase() ?? ''
+      setAiAnalysis({
+        verdict: VALID_VERDICTS.includes(rawVerdict) ? (rawVerdict as AIAnalysis['verdict']) : 'FAIR DEAL',
+        reasoning: reasoningMatch?.[1]?.trim() ?? 'Good opportunity to consider.',
+        risk: riskMatch?.[1]?.trim() ?? 'No significant risk identified.',
+      })
+      return
+    }
+
     setIsLoadingAI(true)
     try {
       const promptText = `You are a luxury watch market analyst. Analyze this deal:
@@ -69,11 +92,7 @@ Provide:
       const response = await callAI({
         prompt: promptText,
         taskType: 'deal_assessment',
-        cacheKey: createAICacheKey(
-          'deal-detail',
-          deal.id,
-          hashAIInput(`${preferredCurrency}|${deal.price}|${fairValue}|${deal.condition}|${deal.daysListed || 0}`),
-        ),
+        cacheKey,
         cacheTtlSeconds: 60 * 60 * 12,
       })
       

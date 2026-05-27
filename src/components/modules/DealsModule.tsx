@@ -147,6 +147,10 @@ export function DealsModule({ watches, userId, preferredCurrency = "USD" }: Deal
   const [preferencesLoaded, setPreferencesLoaded] = useState(false)
   const [preferences, setPreferences] = useState<DealsPreferences>(() => getDefaultPreferences(watches))
   const previousCurrencyRef = useRef(normalizeCurrency(preferredCurrency))
+  const lastRankingStateRef = useRef<{
+    hash: string
+    rankingMap: Map<string, { matchScore: number; reasoning: string }>
+  } | null>(null)
 
   const availableBrands = useMemo(() => {
     const dealBrands = deals.map((deal) => deal.brand)
@@ -347,65 +351,77 @@ Respond ONLY as JSON array with this shape:
 Return every deal id exactly once.`
 
       let scoredDeals = heuristicScored
-      try {
-        const aiResponse = await callAI({
-          prompt: rankingPrompt,
-          jsonMode: true,
-          taskType: 'deal_ranking',
-          cacheKey: createAICacheKey(
-            'deal-ranking',
-            userId || 'anonymous',
-            hashAIInput(JSON.stringify({
-              preferredCurrency,
-              preferences,
-              watches: watches.map((watch) => ({
-                id: watch.id,
-                brand: watch.brand,
-                model: watch.model,
-                category: watch.category,
-                purchasePrice: watch.purchasePrice,
-              })),
-              deals: heuristicScored.map((deal) => ({
-                id: deal.id,
-                brand: deal.brand,
-                model: deal.model,
-                price: deal.price,
-                discount: deal.discount,
-                condition: deal.condition,
-                sellerRating: deal.sellerRating || null,
-              })),
-            })),
-          ),
-          cacheTtlSeconds: 60 * 30,
-        })
-        const rankingMap = parseAiRanking(aiResponse, heuristicScored)
 
-        if (rankingMap.size > 0) {
-          scoredDeals = heuristicScored.map((deal) => {
-            const ranked = rankingMap.get(deal.id)
-            if (!ranked) return deal
+      const rankingInputHash = hashAIInput(JSON.stringify({
+        preferredCurrency,
+        preferences,
+        watches: watches.map((watch) => ({
+          id: watch.id,
+          brand: watch.brand,
+          model: watch.model,
+          category: watch.category,
+          purchasePrice: watch.purchasePrice,
+        })),
+        deals: heuristicScored.map((deal) => ({
+          id: deal.id,
+          brand: deal.brand,
+          model: deal.model,
+          price: deal.price,
+          discount: deal.discount,
+          condition: deal.condition,
+          sellerRating: deal.sellerRating || null,
+        })),
+      }))
 
-            const blendedScore = Math.round(
-              ((deal.matchScore * HEURISTIC_MATCH_BLEND_WEIGHT) + (ranked.matchScore * AI_MATCH_BLEND_WEIGHT))
-            )
-            return {
-              ...deal,
-              matchScore: Math.max(0, Math.min(100, blendedScore)),
-              aiReasoning: ranked.reasoning,
-              dealScore: Math.max(
-                0,
-                Math.min(100, Math.round(((deal.dealScore || DEFAULT_FALLBACK_DEAL_SCORE) + blendedScore) / 2))
-              ),
-            }
+      // Reuse the stored ranking map when inputs haven't changed.  The L2
+      // sessionStorage cache inside callAI would also serve a cache hit, but
+      // skipping the callAI invocation entirely avoids prompt construction and
+      // any async overhead on repeated renders with identical data.
+      let rankingMap = lastRankingStateRef.current?.hash === rankingInputHash
+        ? lastRankingStateRef.current.rankingMap
+        : null
+
+      if (!rankingMap) {
+        try {
+          const aiResponse = await callAI({
+            prompt: rankingPrompt,
+            jsonMode: true,
+            taskType: 'deal_ranking',
+            cacheKey: createAICacheKey('deal-ranking', userId || 'anonymous', rankingInputHash),
+            cacheTtlSeconds: 60 * 30,
           })
+          rankingMap = parseAiRanking(aiResponse, heuristicScored)
+          if (rankingMap.size > 0) {
+            lastRankingStateRef.current = { hash: rankingInputHash, rankingMap }
+          }
+        } catch (error) {
+          if (error instanceof DailyLimitError) {
+            toast.info('Daily AI match quota reached. Showing heuristic ranking instead.')
+          } else {
+            console.error("[DealsModule] AI ranking request failed; using heuristic ranking.", error)
+          }
+          // AI ranking is optional; heuristic ranking remains.
         }
-      } catch (error) {
-        if (error instanceof DailyLimitError) {
-          toast.info('Daily AI match quota reached. Showing heuristic ranking instead.')
-        } else {
-          console.error("[DealsModule] AI ranking request failed; using heuristic ranking.", error)
-        }
-        // AI ranking is optional; heuristic ranking remains.
+      }
+
+      if (rankingMap && rankingMap.size > 0) {
+        scoredDeals = heuristicScored.map((deal) => {
+          const ranked = rankingMap!.get(deal.id)
+          if (!ranked) return deal
+
+          const blendedScore = Math.round(
+            ((deal.matchScore * HEURISTIC_MATCH_BLEND_WEIGHT) + (ranked.matchScore * AI_MATCH_BLEND_WEIGHT))
+          )
+          return {
+            ...deal,
+            matchScore: Math.max(0, Math.min(100, blendedScore)),
+            aiReasoning: ranked.reasoning,
+            dealScore: Math.max(
+              0,
+              Math.min(100, Math.round(((deal.dealScore || DEFAULT_FALLBACK_DEAL_SCORE) + blendedScore) / 2))
+            ),
+          }
+        })
       }
 
       setDeals(scoredDeals)
