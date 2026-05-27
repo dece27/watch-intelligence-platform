@@ -16,8 +16,8 @@ const cacheUser: User = {
 }
 
 const supabaseUserId = "supabase-user-1"
-const existingWatchId = "watch-existing"
-const addedWatchId = "watch-added"
+const existingWatchId = "d4e3b2a1-0000-4000-8000-000000000001"
+const addedWatchId = "f47ac10b-58cc-4372-a567-0e02b2c3d479"
 
 const mockState = vi.hoisted(() => ({
   kvStore: new Map(),
@@ -348,7 +348,7 @@ vi.mock("@/components/modules/CollectionModule", () => ({
           void onUpdate((currentWatches) => [
             ...currentWatches,
             {
-              id: "watch-added",
+              id: addedWatchId,
               brand: "Tudor",
               model: "Black Bay 58",
               referenceNumber: "79030N",
@@ -569,5 +569,49 @@ describe("App Supabase persistence flow", () => {
     expect(softDeleteWatchMock).toHaveBeenCalledTimes(1)
     expect(upsertUserProfileMock).toHaveBeenCalled()
     expect(getUserPreferencesMock).toHaveBeenCalledWith(expect.anything(), supabaseUserId)
+  })
+
+  it("migrates legacy KV watches with non-UUID IDs to Supabase with fresh UUIDs", async () => {
+    // Seed a legacy KV watch that has a non-UUID id (old format: "watch-<timestamp>").
+    const legacyKvId = "watch-1717000000000"
+    const legacyKvWatch: Watch = {
+      id: legacyKvId,
+      brand: "Seiko",
+      model: "Presage",
+      purchasePrice: 400,
+      purchaseDate: "2022-06-01",
+      condition: "good",
+      category: "dress",
+      hasBox: true,
+      hasPapers: false,
+    }
+    mockState.kvStore.set(`watches_${cacheUser.id}`, [legacyKvWatch])
+    // Supabase starts empty so the migration path fires.
+    mockState.supabaseWatches.clear()
+
+    await act(async () => {
+      root.render(<App />)
+    })
+
+    await click("login")
+
+    // After migration the watch should appear in the collection.
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="watch-count"]')?.textContent).toBe("1")
+    })
+
+    // createWatch should have been called once for the legacy watch.
+    expect(createWatchMock).toHaveBeenCalledTimes(1)
+
+    // The ID passed to createWatch must be a valid UUID (not the legacy non-UUID id).
+    const insertedId: string = createWatchMock.mock.calls[0][0].id
+    expect(insertedId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+    expect(insertedId).not.toBe(legacyKvId)
+
+    // The migrated watch should be visible in Supabase under the new UUID.
+    const migratedRow = mockState.supabaseWatches.get(insertedId) as SupabaseWatchRow | undefined
+    expect(migratedRow).toBeDefined()
+    expect(migratedRow?.brand).toBe("Seiko")
+    expect(migratedRow?.deleted_at).toBeNull()
   })
 })
