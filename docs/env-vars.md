@@ -38,6 +38,7 @@
 - `SUPABASE_SERVICE_ROLE_KEY` — Supabase service role key for server-side Actions scripts only; never expose it to the browser
 - `SUPABASE_DB_URL` — database connection string used by backup workflows or other direct database connections
 - `SUPABASE_ACCESS_TOKEN` — Supabase personal access token used by CLI workflows such as hosted migration runs
+- `WATCHCHARTS_API_KEY` — WatchCharts API key injected into GitHub Pages builds as `VITE_WATCHCHARTS_API_KEY`
 - `MODELS_GITHUB_TOKEN` — GitHub PAT with `models:read` used by the Supabase Edge Function deploy workflow (for `github-models-proxy`)
 - `RESEND_API_KEY` — Resend API key for alert notification emails
 

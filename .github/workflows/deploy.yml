@@ -36,10 +36,14 @@ jobs:
           {
             printf 'VITE_SUPABASE_URL=%s\n' "$SUPABASE_URL"
             printf 'VITE_SUPABASE_ANON_KEY=%s\n' "$SUPABASE_ANON_KEY"
+            if [ -n "${WATCHCHARTS_API_KEY:-}" ]; then
+              printf 'VITE_WATCHCHARTS_API_KEY=%s\n' "$WATCHCHARTS_API_KEY"
+            fi
           } > "$GITHUB_WORKSPACE/.env.production"
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          WATCHCHARTS_API_KEY: ${{ secrets.WATCHCHARTS_API_KEY }}
 
       - name: Build static export
         run: |
@@ -52,6 +56,7 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          VITE_WATCHCHARTS_API_KEY: ${{ secrets.WATCHCHARTS_API_KEY }}
 
       - run: touch out/.nojekyll
 
