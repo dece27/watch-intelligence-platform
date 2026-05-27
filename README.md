@@ -196,7 +196,7 @@ This repository includes `.github/workflows/deploy-supabase-functions.yml`, whic
 
 - links to your hosted Supabase project using `SUPABASE_PROJECT_REF`
 - syncs required Edge Function secrets (`GITHUB_TOKEN`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`)
-- deploys `github-models-proxy`
+- deploys `github-models-proxy` and `ensure-admin-auth`
 
 The workflow runs on pushes to `main` that modify `supabase/functions/**`, and can also be run manually from Actions.
 
@@ -208,6 +208,7 @@ After deployment, verify:
 2. `market_data_cache` entries are created/read for cache-backed AI calls.
 3. `record_ai_usage` writes rows in `ai_usage_logs` for authenticated users.
 4. AI flows work end-to-end for `signal`, `chat`, `deal_ranking`, `deal_assessment`, `rebalancing`, `what_if`, and `identify`.
+5. Administrator login can invoke `ensure-admin-auth` and establish a Supabase session without Edge Function transport errors.
 
 ### Local development
 
