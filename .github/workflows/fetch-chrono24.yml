@@ -13,7 +13,7 @@ on:
 
 jobs:
   fetch:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     environment: ${{ github.event.inputs.github_environment || vars.CHRONO24_GITHUB_ENVIRONMENT || 'production' }}
     env:
       SUPABASE_URL: ${{ vars.SUPABASE_URL }}
