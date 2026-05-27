@@ -432,7 +432,10 @@ function App() {
                   : { ...watch, id: crypto.randomUUID() }
 
                 const legacyPhoto = isWatchPhotoRef(watch.imageUrl)
-                  ? await window.spark.kv.get<string>(getWatchPhotoKey(currentUser.id, watch.id))
+                  ? (
+                      (await window.spark.kv.get<string>(getWatchPhotoKey(currentUser.id, watch.id)))
+                      ?? (await window.spark.kv.get<string>(getWatchPhotoKey(supabaseUserId, watch.id)))
+                    )
                   : undefined
 
                 return prepareWatchForStorage(
@@ -530,7 +533,7 @@ function App() {
             successfulLegacyMigrations.get(result.displayWatch.id) ?? result.displayWatch,
           )
           const cachedWatches = hydratedResults.map((result) =>
-            successfulLegacyMigrations.get(result.cacheWatch.id) ?? result.cacheWatch,
+            successfulLegacyMigrations.get(result.displayWatch.id) ?? result.displayWatch,
           )
 
           await syncCachedWatches(currentUser.id, cachedWatches)
