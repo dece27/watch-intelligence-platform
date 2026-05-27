@@ -12,7 +12,7 @@ import { formatCurrency } from "@/lib/currency"
 interface ImportCSVModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onImport: (watches: Watch[]) => void
+  onImport: (watches: Watch[]) => void | Promise<void>
   preferredCurrency?: string
 }
 
@@ -130,7 +130,7 @@ export function ImportCSVModal({ open, onOpenChange, onImport, preferredCurrency
         }
 
         const watch: Watch = {
-          id: `watch-${Date.now()}-${i}`,
+          id: crypto.randomUUID(),
           brand,
           model,
           referenceNumber: reference,
@@ -157,16 +157,20 @@ export function ImportCSVModal({ open, onOpenChange, onImport, preferredCurrency
     }
   }
 
-  const handleImport = () => {
+  const handleImport = async () => {
     if (parsedWatches.length === 0) return
     
-    onImport(parsedWatches)
-    toast.success(`✓ ${parsedWatches.length} watches imported successfully`)
-    
-    setParsedWatches([])
-    setSkippedRows(0)
-    setError("")
-    onOpenChange(false)
+    try {
+      await onImport(parsedWatches)
+      toast.success(`✓ ${parsedWatches.length} watches imported successfully`)
+      setParsedWatches([])
+      setSkippedRows(0)
+      setError("")
+      onOpenChange(false)
+    } catch (err) {
+      console.error("CSV import failed:", err)
+      toast.error("Failed to import watches. Please try again.")
+    }
   }
 
   const handleClose = () => {
