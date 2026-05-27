@@ -282,32 +282,33 @@ function App() {
         // Supabase path: fetch rows from DB and hydrate photo refs from KV.
         if (supabaseUserId && hasSupabaseBrowserEnv()) {
           let rows = await getWatches(supabaseUserId, { limit: 1000, offset: 0 })
-          if (rows.length === 0) {
-            const kvWatches = (await window.spark.kv.get<Watch[]>(getUserWatchesKey(currentUser.id))) || []
-            if (kvWatches.length > 0) {
-              const prepared = await Promise.all(
-                kvWatches.map(async (watch) => {
-                  if (isWatchPhotoRef(watch.imageUrl)) {
-                    const legacyPhoto = await window.spark.kv.get<string>(getWatchPhotoKey(currentUser.id, watch.id))
-                    if (legacyPhoto) {
-                      await window.spark.kv.set(getWatchPhotoKey(supabaseUserId, watch.id), legacyPhoto)
-                    }
-                  }
-                  return prepareWatchForStorage(
-                    watch,
-                    supabaseUserId,
-                    (key, value) => window.spark.kv.set(key, value),
-                  )
-                }),
-              )
+          const kvWatches = (await window.spark.kv.get<Watch[]>(getUserWatchesKey(currentUser.id))) || []
+          const supabaseWatchIds = new Set(rows.map((row) => row.id))
+          const missingKvWatches = kvWatches.filter((watch) => !supabaseWatchIds.has(watch.id))
 
-              await Promise.all(
-                prepared.map(({ watchForStorage }) =>
-                  createWatch(watchToInsert(watchForStorage, supabaseUserId)),
-                ),
-              )
-              rows = await getWatches(supabaseUserId, { limit: 1000, offset: 0 })
-            }
+          if (missingKvWatches.length > 0) {
+            const prepared = await Promise.all(
+              missingKvWatches.map(async (watch) => {
+                if (isWatchPhotoRef(watch.imageUrl)) {
+                  const legacyPhoto = await window.spark.kv.get<string>(getWatchPhotoKey(currentUser.id, watch.id))
+                  if (legacyPhoto) {
+                    await window.spark.kv.set(getWatchPhotoKey(supabaseUserId, watch.id), legacyPhoto)
+                  }
+                }
+                return prepareWatchForStorage(
+                  watch,
+                  supabaseUserId,
+                  (key, value) => window.spark.kv.set(key, value),
+                )
+              }),
+            )
+
+            await Promise.all(
+              prepared.map(({ watchForStorage }) =>
+                createWatch(watchToInsert(watchForStorage, supabaseUserId)),
+              ),
+            )
+            rows = await getWatches(supabaseUserId, { limit: 1000, offset: 0 })
           }
 
           const hydratedWatches = await Promise.all(
