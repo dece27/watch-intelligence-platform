@@ -5,6 +5,16 @@ import type { Database } from '@/lib/supabase/types'
 export type WatchRow = Database['public']['Tables']['watches']['Row']
 export type WatchInsert = Database['public']['Tables']['watches']['Insert']
 export type WatchUpdate = Database['public']['Tables']['watches']['Update']
+export interface UpdateWatchOptions {
+  expectedUpdatedAt?: string
+}
+
+export class WatchConflictError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'WatchConflictError'
+  }
+}
 
 export interface GetWatchesOptions {
   limit: number
@@ -117,17 +127,25 @@ export async function createWatch(data: WatchInsert): Promise<WatchRow> {
 /**
  * Updates an accessible non-deleted watch row and returns the saved record.
  */
-export async function updateWatch(id: string, data: WatchUpdate): Promise<WatchRow> {
+export async function updateWatch(id: string, data: WatchUpdate, options?: UpdateWatchOptions): Promise<WatchRow> {
   const client = getClient()
-  const { data: updatedWatch, error } = await client
+  let query = client
     .from('watches')
     .update(data)
     .eq('id', id)
     .is('deleted_at', null)
+  if (options?.expectedUpdatedAt) {
+    query = query.eq('updated_at', options.expectedUpdatedAt)
+  }
+
+  const { data: updatedWatch, error } = await query
     .select('*')
     .maybeSingle()
 
   throwDatabaseError(`update watch ${id}`, error)
+  if (!updatedWatch && options?.expectedUpdatedAt) {
+    throw new WatchConflictError(`Failed to update watch ${id}: the watch was updated elsewhere. Refresh and retry.`)
+  }
   return requireWatch(updatedWatch, id, 'update watch')
 }
 

@@ -4,6 +4,9 @@ import type { Database } from '@/lib/supabase/types'
 
 let browserClient: SupabaseClient<Database> | null = null
 
+const SUPABASE_URL_ENV_NAMES = ['VITE_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_URL'] as const
+const SUPABASE_ANON_KEY_ENV_NAMES = ['VITE_SUPABASE_ANON_KEY', 'NEXT_PUBLIC_SUPABASE_ANON_KEY', 'SUPABASE_ANON_KEY'] as const
+
 function readEnv(name: string): string | undefined {
   const viteEnv = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env
   const processEnv = (globalThis as typeof globalThis & {
@@ -14,10 +17,23 @@ function readEnv(name: string): string | undefined {
 }
 
 export function hasSupabaseBrowserEnv(): boolean {
-  return (
-    Boolean(readEnv('VITE_SUPABASE_URL') ?? readEnv('SUPABASE_URL')) &&
-    Boolean(readEnv('VITE_SUPABASE_ANON_KEY') ?? readEnv('SUPABASE_ANON_KEY'))
-  )
+  return Boolean(getSupabaseBrowserEnvStatus().isValid)
+}
+
+export function getSupabaseBrowserEnvStatus(): {
+  isValid: boolean
+  missing: Array<(typeof SUPABASE_URL_ENV_NAMES)[number] | (typeof SUPABASE_ANON_KEY_ENV_NAMES)[number]>
+} {
+  const hasUrl = SUPABASE_URL_ENV_NAMES.some((name) => Boolean(readEnv(name)))
+  const hasAnonKey = SUPABASE_ANON_KEY_ENV_NAMES.some((name) => Boolean(readEnv(name)))
+
+  return {
+    isValid: hasUrl && hasAnonKey,
+    missing: [
+      ...(hasUrl ? [] : SUPABASE_URL_ENV_NAMES),
+      ...(hasAnonKey ? [] : SUPABASE_ANON_KEY_ENV_NAMES),
+    ],
+  }
 }
 
 function requireEnv(...names: string[]): string {
@@ -37,8 +53,8 @@ export function getSupabaseClient(): SupabaseClient<Database> {
   }
 
   browserClient = createBrowserClient<Database>(
-    requireEnv('VITE_SUPABASE_URL', 'SUPABASE_URL'),
-    requireEnv('VITE_SUPABASE_ANON_KEY', 'SUPABASE_ANON_KEY'),
+    requireEnv(...SUPABASE_URL_ENV_NAMES),
+    requireEnv(...SUPABASE_ANON_KEY_ENV_NAMES),
   )
 
   return browserClient

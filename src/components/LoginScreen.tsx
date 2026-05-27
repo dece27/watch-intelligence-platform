@@ -36,29 +36,22 @@ function toSupabaseAuthEmail(loginIdentifier: string): string {
  * email address (administrator@watchvault.local) that can never receive a
  * real confirmation link.
  *
- * Errors are swallowed: if the Edge Function is unavailable the caller
- * falls back to KV-only persistence.
+ * Throws when the Edge Function cannot ensure the administrator account.
  */
 async function ensureAdminSupabaseAccount(password: string): Promise<void> {
   if (!hasSupabaseBrowserEnv()) return
-  try {
-    const supabase = getSupabaseClient()
-    const { error } = await supabase.functions.invoke('ensure-admin-auth', {
-      body: { password },
-    })
-    if (error) {
-      throw error
-    }
-  } catch {
-    // Non-fatal — signInWithPassword may still work if the account is
-    // already confirmed; otherwise the app falls back to KV.
+  const supabase = getSupabaseClient()
+  const { error } = await supabase.functions.invoke('ensure-admin-auth', {
+    body: { password },
+  })
+  if (error) {
+    throw error
   }
 }
 
 /**
- * Attempts to establish a Supabase Auth session after successful KV
- * credential verification. This is strictly non-blocking: any error is
- * swallowed so the caller can always fall through to KV-only persistence.
+ * Establishes a Supabase Auth session after successful KV credential
+ * verification.
  *
  * After a successful signUp the function retries signInWithPassword so
  * that the session is established in the same login flow even when the
@@ -71,37 +64,33 @@ async function trySupabaseAuth(
   vaultName: string,
 ): Promise<void> {
   if (!hasSupabaseBrowserEnv()) return
-  try {
-    const supabase = getSupabaseClient()
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-    if (!signInError) return
+  const supabase = getSupabaseClient()
+  const { error: signInError } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  })
+  if (!signInError) return
 
-    // Account not yet in Supabase Auth — create it.
-    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { name: displayName, vault_name: vaultName } },
-    })
+  // Account not yet in Supabase Auth — create it.
+  const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+    email,
+    password,
+    options: { data: { name: displayName, vault_name: vaultName } },
+  })
 
-    // If signUp already established a session (project has email
-    // auto-confirmation enabled) the onAuthStateChange listener in App.tsx
-    // will pick it up — nothing more to do here.
-    if (signUpData?.session) return
+  // If signUp already established a session (project has email
+  // auto-confirmation enabled) the onAuthStateChange listener in App.tsx
+  // will pick it up — nothing more to do here.
+  if (signUpData?.session) return
 
-    // No session yet.  Try signing in one more time: this succeeds when
-    // the project confirmed the account server-side during signUp even
-    // though no session was returned in the response.  The result is
-    // intentionally not awaited for its value: success is observed
-    // asynchronously via the onAuthStateChange listener in App.tsx, and
-    // failure here is non-fatal — the app falls back to KV-only persistence.
-    if (!signUpError) {
-      void supabase.auth.signInWithPassword({ email, password })
-    }
-  } catch {
-    // Supabase unreachable — silently fall back to KV-only persistence.
+  if (signUpError) {
+    throw signUpError
+  }
+
+  // No session yet. Try signing in one more time.
+  const { error: finalSignInError } = await supabase.auth.signInWithPassword({ email, password })
+  if (finalSignInError) {
+    throw finalSignInError
   }
 }
 
@@ -386,7 +375,14 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
       await onLogin(newUser, rememberMe)
     } catch (err) {
       console.error("Login error:", err)
-      setError("Unable to complete login. Please try again.")
+      if (hasSupabaseBrowserEnv()) {
+        const message = err instanceof Error && err.message
+          ? err.message
+          : "Supabase sign-in failed."
+        setError(`Unable to establish secure persistence session: ${message}`)
+      } else {
+        setError("Unable to complete login. Please try again.")
+      }
     } finally {
       setIsLoading(false)
     }

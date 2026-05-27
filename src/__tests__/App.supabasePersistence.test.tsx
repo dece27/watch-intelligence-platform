@@ -25,6 +25,7 @@ const mockState = vi.hoisted(() => ({
   supabasePreferences: new Map(),
   authCallbacks: new Set(),
   currentSessionUserId: null as string | null,
+  emitSessionOnLogin: true,
   getUserPreferencesMock: vi.fn(),
   upsertUserPreferencesMock: vi.fn(),
   upsertUserProfileMock: vi.fn(),
@@ -125,6 +126,13 @@ async function click(testId: string) {
   }
   await act(async () => {
     element.click()
+  })
+}
+
+function setNavigatorOnline(value: boolean) {
+  Object.defineProperty(window.navigator, "onLine", {
+    configurable: true,
+    value,
   })
 }
 
@@ -250,6 +258,7 @@ vi.mock("@/lib/watchPhotoUtils", () => ({
 
 vi.mock("@/lib/supabase/client", () => ({
   hasSupabaseBrowserEnv: () => true,
+  getSupabaseBrowserEnvStatus: () => ({ isValid: true, missing: [] }),
   getSupabaseClient: () => ({
     auth: {
       getSession: vi.fn(async () => ({
@@ -291,7 +300,9 @@ vi.mock("@/components/LoginScreen", () => ({
     <button
       data-testid="login"
       onClick={() => {
-        emitAuthStateChange("supabase-user-1")
+        if (mockState.emitSessionOnLogin) {
+          emitAuthStateChange("supabase-user-1")
+        }
         void onLogin(
           {
             id: "cache-user-1",
@@ -344,35 +355,43 @@ vi.mock("@/components/modules/CollectionModule", () => ({
       <div data-testid="watch-ids">{watches.map((watch) => watch.id).join(",")}</div>
       <button
         data-testid="add-watch"
-        onClick={() =>
-          void onUpdate((currentWatches) => [
-            ...currentWatches,
-            {
-              id: addedWatchId,
-              brand: "Tudor",
-              model: "Black Bay 58",
-              referenceNumber: "79030N",
-              year: 2023,
-              purchasePrice: 3500,
-              purchaseDate: "2023-05-10",
-              condition: "excellent",
-              category: "dive",
-              movement: "Automatic",
-              caseMaterial: "Steel",
-              caseDiameter: "39mm",
-              hasBox: true,
-              hasPapers: true,
-            } satisfies Watch,
-          ])
-        }
+        onClick={async () => {
+          try {
+            await onUpdate((currentWatches) => [
+              ...currentWatches,
+              {
+                id: addedWatchId,
+                brand: "Tudor",
+                model: "Black Bay 58",
+                referenceNumber: "79030N",
+                year: 2023,
+                purchasePrice: 3500,
+                purchaseDate: "2023-05-10",
+                condition: "excellent",
+                category: "dive",
+                movement: "Automatic",
+                caseMaterial: "Steel",
+                caseDiameter: "39mm",
+                hasBox: true,
+                hasPapers: true,
+              } satisfies Watch,
+            ])
+          } catch {
+            // intentionally ignored by the test harness
+          }
+        }}
       >
         Add Watch
       </button>
       <button
         data-testid="remove-added-watch"
-        onClick={() =>
-          void onUpdate((currentWatches) => currentWatches.filter((watch) => watch.id !== addedWatchId))
-        }
+        onClick={async () => {
+          try {
+            await onUpdate((currentWatches) => currentWatches.filter((watch) => watch.id !== addedWatchId))
+          } catch {
+            // intentionally ignored by the test harness
+          }
+        }}
       >
         Remove Watch
       </button>
@@ -394,6 +413,14 @@ vi.mock("@/components/WelcomeModal", () => ({
 
 vi.mock("@/components/ui/sonner", () => ({
   Toaster: () => null,
+}))
+
+vi.mock("sonner", () => ({
+  toast: {
+    success: vi.fn(),
+    warning: vi.fn(),
+    error: vi.fn(),
+  },
 }))
 
 vi.mock("@/components/modules/PortfolioModule", () => ({
@@ -439,6 +466,8 @@ describe("App Supabase persistence flow", () => {
     mockState.supabasePreferences.clear()
     mockState.authCallbacks.clear()
     mockState.currentSessionUserId = null
+    mockState.emitSessionOnLogin = true
+    setNavigatorOnline(true)
 
     getUserPreferencesMock.mockClear()
     upsertUserPreferencesMock.mockClear()
@@ -614,4 +643,51 @@ describe("App Supabase persistence flow", () => {
     expect(migratedRow?.brand).toBe("Seiko")
     expect(migratedRow?.deleted_at).toBeNull()
   })
+
+  it("blocks watch CRUD when no Supabase session is available", async () => {
+    mockState.emitSessionOnLogin = false
+
+    await act(async () => {
+      root.render(<App />)
+    })
+
+    await click("login")
+
+    await waitFor(() => {
+      expect(container.textContent).toContain("Persistence degraded")
+    })
+
+    await click("add-watch")
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="watch-count"]')?.textContent).toBe("0")
+      expect(createWatchMock).not.toHaveBeenCalled()
+    })
+  })
+
+  it("queues watch writes while offline and replays them when back online", async () => {
+    setNavigatorOnline(false)
+
+    await act(async () => {
+      root.render(<App />)
+    })
+
+    await click("login")
+
+    await click("add-watch")
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="watch-count"]')?.textContent).toBe("1")
+      expect(createWatchMock).not.toHaveBeenCalled()
+    })
+
+    setNavigatorOnline(true)
+    await act(async () => {
+      window.dispatchEvent(new Event("online"))
+    })
+
+    await waitFor(() => {
+      expect(createWatchMock).toHaveBeenCalledTimes(1)
+    })
+  }, 15000)
 })
