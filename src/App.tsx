@@ -28,7 +28,7 @@ import {
 import { useKV } from "@/lib/useKV"
 import { hasSupabaseBrowserEnv, getSupabaseClient } from "@/lib/supabase/client"
 import { getWatches, createWatch, updateWatch, softDeleteWatch } from "@/lib/db/watches"
-import { getUserPreferences, upsertUserPreferences, getSharedCollectionBySlug } from "@/lib/db/user"
+import { getUserPreferences, upsertUserPreferences, getSharedCollectionBySlug, upsertUserProfile } from "@/lib/db/user"
 import { watchToInsert, watchToUpdate, rowToWatch } from "@/lib/db/watchMapper"
 
 function decodeLegacySharedSlug(value: string): string | null {
@@ -173,6 +173,47 @@ function App() {
   useEffect(() => {
     let active = true
 
+    const ensureSupabaseBootstrapData = async () => {
+      if (!currentUser?.id || !supabaseUserId || !hasSupabaseBrowserEnv()) return
+
+      try {
+        const client = getSupabaseClient()
+
+        await upsertUserProfile(client, {
+          id: supabaseUserId,
+          displayName: currentUser.name,
+          isPublic: false,
+        })
+
+        const key = `user_preferences_${currentUser.id}`
+        const stored = await window.spark.kv.get<UserPreferences>(key)
+        if (!stored) return
+
+        await upsertUserPreferences(client, {
+          userId: supabaseUserId,
+          currency: normalizeCurrency(stored.currency),
+          locale: 'en',
+          theme: 'dark',
+          showPurchasePrices: true,
+          emailPriceAlerts: true,
+          emailWeeklyDigest: false,
+          defaultPortfolioView: 'value',
+        })
+      } catch (error) {
+        if (!active) return
+        console.error('Error ensuring Supabase bootstrap data:', error)
+      }
+    }
+
+    void ensureSupabaseBootstrapData()
+    return () => {
+      active = false
+    }
+  }, [currentUser?.id, currentUser?.name, supabaseUserId])
+
+  useEffect(() => {
+    let active = true
+
     const loadPreferences = async () => {
       if (!currentUser?.id) {
         if (active) setPreferredCurrency(DEFAULT_CURRENCY)
@@ -185,7 +226,15 @@ function App() {
           const client = getSupabaseClient()
           const prefs = await getUserPreferences(client, supabaseUserId)
           if (!active) return
-          setPreferredCurrency(normalizeCurrency(prefs?.currency))
+          if (prefs) {
+            setPreferredCurrency(normalizeCurrency(prefs.currency))
+            return
+          }
+
+          const key = `user_preferences_${currentUser.id}`
+          const stored = await window.spark.kv.get<UserPreferences>(key)
+          if (!active) return
+          setPreferredCurrency(normalizeCurrency(stored?.currency))
           return
         }
 
@@ -221,7 +270,35 @@ function App() {
       try {
         // Supabase path: fetch rows from DB and hydrate photo refs from KV.
         if (supabaseUserId && hasSupabaseBrowserEnv()) {
-          const rows = await getWatches(supabaseUserId, { limit: 1000, offset: 0 })
+          let rows = await getWatches(supabaseUserId, { limit: 1000, offset: 0 })
+          if (rows.length === 0) {
+            const kvWatches = (await window.spark.kv.get<Watch[]>(`watches_${currentUser.id}`)) || []
+            if (kvWatches.length > 0) {
+              const prepared = await Promise.all(
+                kvWatches.map(async (watch) => {
+                  if (isWatchPhotoRef(watch.imageUrl)) {
+                    const legacyPhoto = await window.spark.kv.get<string>(getWatchPhotoKey(currentUser.id, watch.id))
+                    if (legacyPhoto) {
+                      await window.spark.kv.set(getWatchPhotoKey(supabaseUserId, watch.id), legacyPhoto)
+                    }
+                  }
+                  return prepareWatchForStorage(
+                    watch,
+                    supabaseUserId,
+                    (key, value) => window.spark.kv.set(key, value),
+                  )
+                }),
+              )
+
+              await Promise.all(
+                prepared.map(({ watchForStorage }) =>
+                  createWatch(watchToInsert(watchForStorage, supabaseUserId)),
+                ),
+              )
+              rows = await getWatches(supabaseUserId, { limit: 1000, offset: 0 })
+            }
+          }
+
           const hydratedWatches = await Promise.all(
             rows.map(async (row) => {
               const watch = rowToWatch(row)
