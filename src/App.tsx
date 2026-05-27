@@ -49,6 +49,21 @@ function getUserWatchesKey(userId: string): string {
   return `watches_${userId}`
 }
 
+async function syncCachedUserPreferences(userId: string, currency: string): Promise<void> {
+  const key = getUserPreferencesKey(userId)
+  const existing = await window.spark.kv.get<UserPreferences>(key)
+  await window.spark.kv.set(key, {
+    ...(existing || {}),
+    userId,
+    currency: normalizeCurrency(currency),
+    updatedAt: new Date().toISOString(),
+  } satisfies UserPreferences)
+}
+
+async function syncCachedWatches(userId: string, nextWatches: Watch[]): Promise<void> {
+  await window.spark.kv.set(getUserWatchesKey(userId), nextWatches)
+}
+
 const SUPABASE_DEFAULT_PREFERENCES = {
   locale: 'en',
   theme: 'dark' as const,
@@ -204,12 +219,14 @@ function App() {
 
         const key = getUserPreferencesKey(currentUser.id)
         const stored = await window.spark.kv.get<UserPreferences>(key)
-
-        await upsertUserPreferences(client, {
-          userId: supabaseUserId,
-          currency: normalizeCurrency(stored?.currency),
-          ...SUPABASE_DEFAULT_PREFERENCES,
-        })
+        const existingPreferences = await getUserPreferences(client, supabaseUserId)
+        if (!existingPreferences) {
+          await upsertUserPreferences(client, {
+            userId: supabaseUserId,
+            currency: normalizeCurrency(stored?.currency),
+            ...SUPABASE_DEFAULT_PREFERENCES,
+          })
+        }
       } catch (error) {
         if (!active) return
         console.error('Error ensuring Supabase bootstrap data:', error)
@@ -232,26 +249,35 @@ function App() {
       }
 
       try {
+        const key = getUserPreferencesKey(currentUser.id)
+        const stored = await window.spark.kv.get<UserPreferences>(key)
+
         // Supabase path: load preferences from DB when a session is available.
         if (supabaseUserId && hasSupabaseBrowserEnv()) {
           const client = getSupabaseClient()
           const prefs = await getUserPreferences(client, supabaseUserId)
           if (!active) return
           if (prefs) {
-            setPreferredCurrency(normalizeCurrency(prefs.currency))
+            const normalizedCurrency = normalizeCurrency(prefs.currency)
+            await syncCachedUserPreferences(currentUser.id, normalizedCurrency)
+            if (!active) return
+            setPreferredCurrency(normalizedCurrency)
             return
           }
 
-          const key = getUserPreferencesKey(currentUser.id)
-          const stored = await window.spark.kv.get<UserPreferences>(key)
+          const normalizedCurrency = normalizeCurrency(stored?.currency)
+          await upsertUserPreferences(client, {
+            userId: supabaseUserId,
+            currency: normalizedCurrency,
+            ...SUPABASE_DEFAULT_PREFERENCES,
+          })
+          await syncCachedUserPreferences(currentUser.id, normalizedCurrency)
           if (!active) return
-          setPreferredCurrency(normalizeCurrency(stored?.currency))
+          setPreferredCurrency(normalizedCurrency)
           return
         }
 
         // KV fallback.
-        const key = getUserPreferencesKey(currentUser.id)
-        const stored = await window.spark.kv.get<UserPreferences>(key)
         if (!active) return
         setPreferredCurrency(normalizeCurrency(stored?.currency))
       } catch {
@@ -311,9 +337,9 @@ function App() {
             rows = await getWatches(supabaseUserId, { limit: 1000, offset: 0 })
           }
 
+          const storageWatches = rows.map((row) => rowToWatch(row))
           const hydratedWatches = await Promise.all(
-            rows.map(async (row) => {
-              const watch = rowToWatch(row)
+            storageWatches.map(async (watch) => {
               const rawImage = watch.imageUrl
               if (!rawImage) return watch
 
@@ -333,6 +359,7 @@ function App() {
               return { ...watch, imageUrl: sanitizeWatchImageUrl(rawImage) }
             }),
           )
+          await syncCachedWatches(currentUser.id, storageWatches)
           setWatches(hydratedWatches)
           setWatchesLoaded(true)
           return
@@ -441,6 +468,7 @@ function App() {
           emailWeeklyDigest: false,
           defaultPortfolioView: 'value',
         })
+        await syncCachedUserPreferences(currentUser.id, normalizedCurrency)
       } catch {
         // Silent persistence failure; UI remains functional.
       }
@@ -510,6 +538,10 @@ function App() {
           }),
         )
 
+        await syncCachedWatches(
+          currentUser.id,
+          prepared.map((item) => item.watchForStorage),
+        )
         setWatches(prepared.map((p) => p.watchForDisplay))
         console.log(`Synced ${nextWatches.length} watches to Supabase`)
       } catch (error) {

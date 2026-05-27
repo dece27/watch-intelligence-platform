@@ -276,7 +276,18 @@ async function main() {
   expectNoError(preferencesError, 'Failed to fetch user_preferences row')
   assert(preferencesRow.user_id === user.id, 'user_preferences row does not belong to logged-in user')
 
-  console.log('3) Creating an example watch with full metadata and photo URL...')
+  console.log('3) Loading the current watch collection and preferences...')
+  const { data: initialWatches, error: initialWatchesError } = await anonClient
+    .from('watches')
+    .select('*')
+    .eq('user_id', user.id)
+    .is('deleted_at', null)
+    .order('updated_at', { ascending: false })
+  expectNoError(initialWatchesError, 'Failed to load initial watch collection')
+  assert(Array.isArray(initialWatches), 'Initial watch collection did not return an array')
+  assert(typeof preferencesRow.currency === 'string' && preferencesRow.currency.length > 0, 'Expected a stored preference currency')
+
+  console.log('4) Creating an example watch with full metadata and photo URL...')
   const suffix = Date.now()
   const watchReference = `E2E-REF-${suffix}`
   const watchSerial = `E2E-SN-${suffix}`
@@ -311,7 +322,7 @@ async function main() {
   expectNoError(createWatchError, 'Failed to create watch')
   assert(createdWatch.user_id === user.id, 'Created watch user_id mismatch')
 
-  console.log('4) Checking watch and user data persisted correctly in Supabase DB...')
+  console.log('5) Checking watch and user data persisted correctly in Supabase DB...')
   const { data: dbWatch, error: dbWatchError } = await serviceClient
     .from('watches')
     .select('*')
@@ -330,7 +341,25 @@ async function main() {
   assert(dbWatch.case_material === watchInsert.case_material, 'Stored watch case material mismatch')
   assert(dbWatch.case_diameter === watchInsert.case_diameter, 'Stored watch case diameter mismatch')
 
-  console.log('5) Logging out and logging in again...')
+  console.log('6) Updating the preferred currency and validating persistence...')
+  const { data: updatedPreferences, error: updatedPreferencesError } = await anonClient
+    .from('user_preferences')
+    .update({ currency: 'CHF' })
+    .eq('user_id', user.id)
+    .select('*')
+    .single()
+  expectNoError(updatedPreferencesError, 'Failed to update preferred currency')
+  assert(updatedPreferences.currency === 'CHF', 'Updated currency was not stored on user_preferences')
+
+  const { data: persistedUpdatedPreferences, error: persistedUpdatedPreferencesError } = await serviceClient
+    .from('user_preferences')
+    .select('*')
+    .eq('user_id', user.id)
+    .single()
+  expectNoError(persistedUpdatedPreferencesError, 'Failed to re-fetch updated user_preferences row')
+  assert(persistedUpdatedPreferences.currency === 'CHF', 'Service client did not observe the updated preferred currency')
+
+  console.log('7) Logging out and logging in again...')
   const { error: signOutError } = await anonClient.auth.signOut()
   expectNoError(signOutError, 'Failed to sign out after first login')
 
@@ -342,7 +371,7 @@ async function main() {
     throw new Error(`Failed to log in again: ${secondLogin.error?.message || 'Unknown sign-in error'}`)
   }
 
-  console.log('6) Verifying data loads again from Supabase after re-login...')
+  console.log('8) Verifying collection and preferences load again from Supabase after re-login...')
   const { data: reloadedProfile, error: reloadedProfileError } = await anonClient
     .from('profiles')
     .select('*')
@@ -361,7 +390,26 @@ async function main() {
   assert(reloadedWatch.reference === watchInsert.reference, 'Reloaded watch reference mismatch')
   assert(reloadedWatch.cover_photo_url === watchInsert.cover_photo_url, 'Reloaded watch photo mismatch')
 
-  console.log('7) Deleting the created watch and validating deletion...')
+  const { data: reloadedPreferences, error: reloadedPreferencesError } = await anonClient
+    .from('user_preferences')
+    .select('*')
+    .eq('user_id', user.id)
+    .single()
+  expectNoError(reloadedPreferencesError, 'Failed to reload user_preferences after re-login')
+  assert(reloadedPreferences.currency === 'CHF', 'Reloaded preferred currency mismatch after re-login')
+
+  const { data: reloadedCollection, error: reloadedCollectionError } = await anonClient
+    .from('watches')
+    .select('id')
+    .eq('user_id', user.id)
+    .is('deleted_at', null)
+  expectNoError(reloadedCollectionError, 'Failed to reload watch collection after re-login')
+  assert(
+    reloadedCollection.some((watch) => watch.id === createdWatch.id),
+    'Reloaded watch collection does not include the created watch',
+  )
+
+  console.log('9) Deleting the created watch and validating deletion...')
   const { error: softDeleteError } = await anonClient.rpc('soft_delete_own_watch', {
     p_watch_id: createdWatch.id,
   })
@@ -384,11 +432,13 @@ async function main() {
   expectNoError(deletedWatchFromDbError, 'Failed to fetch deleted watch from service client')
   assert(Boolean(deletedWatchFromDb.deleted_at), 'Service DB check shows deleted_at is still null')
 
-  console.log('8) Final logout...')
+  console.log('10) Final logout...')
   const { error: finalSignOutError } = await anonClient.auth.signOut()
   expectNoError(finalSignOutError, 'Failed to sign out at end of flow')
 
-  console.log('✅ Supabase dummy-user login/create, watch create/verify, re-login/reload, delete, and logout flow passed.')
+  console.log(
+    `✅ Supabase login/create, collection load, watch add/remove, preference change, re-login, and logout flow passed. Initial active watches: ${initialWatches.length}.`,
+  )
 }
 
 await main()
