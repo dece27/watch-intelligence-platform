@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { Watch, BrandIndex, PriceAlert } from "@/lib/types"
+import { Watch, PriceAlert } from "@/lib/types"
 import { AuctionResult, fetchRecentAuctionResults } from "@/lib/auction-feeds"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -13,6 +13,16 @@ import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend, Ca
 import { toast } from "sonner"
 import { formatCurrency } from "@/lib/currency"
 import { useKV } from "@/lib/useKV"
+import {
+  evaluatePriceAlerts,
+  getMarketDashboardData,
+  getReferenceMarketData,
+  marketConfidenceLabel,
+  type BrandMarketIndex,
+  type MarketMover,
+  type NormalizedMarketData,
+  type PriceAlertEvaluation,
+} from "@/lib/market-data"
 
 interface MarketModuleProps {
   watches: Watch[]
@@ -31,50 +41,6 @@ const isTrustedHost = (hostname: string, trustedDomain: string): boolean => {
   const normalizedHost = hostname.toLowerCase()
   return normalizedHost === trustedDomain || normalizedHost.endsWith(`.${trustedDomain}`)
 }
-
-const BRAND_INDICES: BrandIndex[] = [
-  {
-    brand: 'Rolex',
-    currentIndex: 127.5,
-    trend: [120, 122, 121, 123, 125, 124, 126, 127, 128, 127, 128, 127.5]
-  },
-  {
-    brand: 'Patek Philippe',
-    currentIndex: 142.8,
-    trend: [128, 130, 132, 135, 137, 138, 140, 141, 142, 143, 142, 142.8]
-  },
-  {
-    brand: 'Audemars Piguet',
-    currentIndex: 135.2,
-    trend: [123, 125, 127, 128, 130, 131, 132, 133, 134, 135, 136, 135.2]
-  },
-  {
-    brand: 'IWC',
-    currentIndex: 112.7,
-    trend: [107, 108, 109, 109, 110, 111, 111, 112, 112, 113, 113, 112.7]
-  },
-  {
-    brand: 'Omega',
-    currentIndex: 108.4,
-    trend: [105, 105, 106, 106, 107, 107, 108, 108, 108, 109, 108, 108.4]
-  },
-  {
-    brand: 'Grand Seiko',
-    currentIndex: 115.9,
-    trend: [108, 109, 110, 111, 112, 113, 114, 114, 115, 116, 116, 115.9]
-  }
-]
-
-const TOP_MOVERS = [
-  { reference: 'Daytona 126500LN', brand: 'Rolex', currentPrice: 33000, change: 0.3, direction: 'up' as const },
-  { reference: 'Daytona 116500LN', brand: 'Rolex', currentPrice: 31000, change: -1.2, direction: 'down' as const },
-  { reference: 'Nautilus 5712/1A', brand: 'Patek Philippe', currentPrice: 125000, change: 1.1, direction: 'up' as const },
-  { reference: 'Aquanaut 5167/1A', brand: 'Patek Philippe', currentPrice: 54000, change: 0.9, direction: 'up' as const },
-  { reference: 'SLGH005 White Birch', brand: 'Grand Seiko', currentPrice: 7200, change: 1.3, direction: 'up' as const },
-  { reference: 'Submariner 124060', brand: 'Rolex', currentPrice: 11400, change: -0.8, direction: 'down' as const },
-  { reference: 'Royal Oak 15202ST', brand: 'Audemars Piguet', currentPrice: 65000, change: 2.1, direction: 'up' as const },
-  { reference: 'GMT-Master II Pepsi', brand: 'Rolex', currentPrice: 21000, change: 0.8, direction: 'up' as const }
-]
 
 const FALLBACK_AUCTION_RESULTS: AuctionResult[] = [
   {
@@ -243,6 +209,12 @@ const TREND_METRIC_CONFIGS = [
 export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModuleProps) {
   const [priceAlerts, setPriceAlerts] = useKV<PriceAlert[]>("priceAlerts", [])
   const [isAlertDialogOpen, setIsAlertDialogOpen] = useState(false)
+  const [brandIndices, setBrandIndices] = useState<BrandMarketIndex[]>([])
+  const [topMovers, setTopMovers] = useState<MarketMover[]>([])
+  const [marketDataUpdatedAt, setMarketDataUpdatedAt] = useState<string | null>(null)
+  const [referenceSnapshot, setReferenceSnapshot] = useState<NormalizedMarketData | null>(null)
+  const [isReferenceLoading, setIsReferenceLoading] = useState(false)
+  const [alertEvaluations, setAlertEvaluations] = useState<Record<string, PriceAlertEvaluation>>({})
   const [auctionResults, setAuctionResults] = useState<AuctionResult[]>(FALLBACK_AUCTION_RESULTS)
   const [isAuctionResultsLoading, setIsAuctionResultsLoading] = useState(false)
   const [auctionResultsDataSource, setAuctionResultsDataSource] = useState<'live' | 'fallback'>('fallback')
@@ -256,32 +228,34 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
     targetPrice: ''
   })
 
-  const alerts = priceAlerts || []
+  const alerts = useMemo(() => priceAlerts || [], [priceAlerts])
 
   const userBrands = useMemo(() => {
     return new Set(watches.map(w => w.brand))
   }, [watches])
 
   const overallIndex = useMemo(() => {
-    const total = BRAND_INDICES.reduce((sum, b) => sum + b.currentIndex, 0)
-    return (total / BRAND_INDICES.length).toFixed(1)
-  }, [])
+    if (brandIndices.length === 0) return "100.0"
+    const total = brandIndices.reduce((sum, b) => sum + b.currentIndex, 0)
+    return (total / brandIndices.length).toFixed(1)
+  }, [brandIndices])
 
   const overallChange1m = useMemo(() => {
-    const total = BRAND_INDICES.reduce((sum, b) => sum + getTrendChange(b.trend, 1), 0)
-    return Number((total / BRAND_INDICES.length).toFixed(1))
-  }, [])
+    if (brandIndices.length === 0) return 0
+    const total = brandIndices.reduce((sum, b) => sum + getTrendChange(b.trend, 1), 0)
+    return Number((total / brandIndices.length).toFixed(1))
+  }, [brandIndices])
 
   const marketSentiment = useMemo(() => {
-    const positiveCount = BRAND_INDICES.filter(b => getTrendChange(b.trend, 1) > 0).length
-    if (positiveCount >= 5) return { type: 'bull', color: '#5E8C6A', label: 'BULL 🐂' }
-    if (positiveCount >= 3) return { type: 'neutral', color: '#C9A84C', label: 'NEUTRAL —' }
+    const positiveCount = brandIndices.filter(b => getTrendChange(b.trend, 1) > 0).length
+    if (positiveCount >= Math.max(4, Math.floor(brandIndices.length * 0.7))) return { type: 'bull', color: '#5E8C6A', label: 'BULL 🐂' }
+    if (positiveCount >= Math.max(2, Math.floor(brandIndices.length * 0.45))) return { type: 'neutral', color: '#C9A84C', label: 'NEUTRAL —' }
     return { type: 'bear', color: '#A0785A', label: 'BEAR 🐻' }
-  }, [])
+  }, [brandIndices])
 
   const positiveBrandsCount = useMemo(() => {
-    return BRAND_INDICES.filter(b => getTrendChange(b.trend, 1) > 0).length
-  }, [])
+    return brandIndices.filter(b => getTrendChange(b.trend, 1) > 0).length
+  }, [brandIndices])
 
   const sentimentMonthLabels = useMemo(() => {
     const formatter = new Intl.DateTimeFormat('en-US', { month: 'short' })
@@ -304,16 +278,16 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
       return `hsl(${hue}, 52%, 46%)`
     }
 
-    return BRAND_INDICES.map((brandIndex, index) => ({
+    return brandIndices.map((brandIndex, index) => ({
       key: `brand-${index}`,
       brand: brandIndex.brand,
       trend: brandIndex.trend,
       color: getLineColor(index),
     }))
-  }, [])
+  }, [brandIndices])
 
   const [visibleSentimentBrands, setVisibleSentimentBrands] = useState<string[]>(() =>
-    BRAND_INDICES.map((_, index) => `brand-${index}`)
+    brandIndices.map((_, index) => `brand-${index}`)
   )
 
   const overallSentimentChartData = useMemo(() => {
@@ -335,6 +309,41 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
       return [...current, seriesKey]
     })
   }
+
+  useEffect(() => {
+    const keys = brandSentimentSeries.map((series) => series.key)
+    if (keys.length === 0) {
+      setVisibleSentimentBrands([])
+      return
+    }
+    setVisibleSentimentBrands((current) => {
+      const retained = current.filter((key) => keys.includes(key))
+      return retained.length > 0 ? retained : keys
+    })
+  }, [brandSentimentSeries])
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadMarketData = async () => {
+      try {
+        const dashboardData = await getMarketDashboardData(watches)
+        if (!isMounted) return
+        setBrandIndices(dashboardData.brandIndices)
+        setTopMovers(dashboardData.topMovers)
+        setMarketDataUpdatedAt(dashboardData.updatedAt)
+      } catch {
+        if (!isMounted) return
+        setBrandIndices([])
+        setTopMovers([])
+      }
+    }
+
+    void loadMarketData()
+    return () => {
+      isMounted = false
+    }
+  }, [watches])
 
   useEffect(() => {
     let isMounted = true
@@ -372,6 +381,63 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
     }
   }, [])
 
+  useEffect(() => {
+    let isMounted = true
+    const trimmedReference = searchReference.trim()
+    if (!trimmedReference) {
+      setReferenceSnapshot(null)
+      return
+    }
+
+    const timeout = window.setTimeout(async () => {
+      setIsReferenceLoading(true)
+      try {
+        const snapshot = await getReferenceMarketData({ reference: trimmedReference })
+        if (isMounted) {
+          setReferenceSnapshot(snapshot)
+        }
+      } catch {
+        if (isMounted) {
+          setReferenceSnapshot(null)
+        }
+      } finally {
+        if (isMounted) {
+          setIsReferenceLoading(false)
+        }
+      }
+    }, 300)
+
+    return () => {
+      isMounted = false
+      window.clearTimeout(timeout)
+    }
+  }, [searchReference])
+
+  useEffect(() => {
+    let isMounted = true
+    const loadAlertEvaluations = async () => {
+      if (alerts.length === 0) {
+        if (isMounted) setAlertEvaluations({})
+        return
+      }
+      try {
+        const evaluations = await evaluatePriceAlerts(alerts, preferredCurrency)
+        if (isMounted) {
+          setAlertEvaluations(evaluations)
+        }
+      } catch {
+        if (isMounted) {
+          setAlertEvaluations({})
+        }
+      }
+    }
+    void loadAlertEvaluations()
+
+    return () => {
+      isMounted = false
+    }
+  }, [alerts, preferredCurrency])
+
   const handleAddAlert = () => {
     if (!newAlert.watchRef || !newAlert.brand || !newAlert.model || !newAlert.targetPrice) {
       toast.error("Please fill in all fields")
@@ -405,26 +471,18 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
     toast.success("Price alert removed")
   }
 
-  const priceHistoryData = searchReference ? [
-    { month: 'Jan', price: 8500 },
-    { month: 'Feb', price: 8700 },
-    { month: 'Mar', price: 8600 },
-    { month: 'Apr', price: 8900 },
-    { month: 'May', price: 9200 },
-    { month: 'Jun', price: 9400 },
-    { month: 'Jul', price: 9600 },
-    { month: 'Aug', price: 9500 },
-    { month: 'Sep', price: 9800 },
-    { month: 'Oct', price: 10100 },
-    { month: 'Nov', price: 10300 },
-    { month: 'Dec', price: 10500 }
-  ] : []
+  const priceHistoryData = searchReference
+    ? (referenceSnapshot?.series12m || []).map((point) => ({ month: point.month, price: point.price }))
+    : []
 
   return (
     <div className="space-y-4 md:space-y-6">
       <div>
         <h1 className="text-2xl md:text-3xl font-semibold">Market Intelligence</h1>
-        <p className="text-muted-foreground text-sm md:text-base mt-1">Real-time market indices and price trends</p>
+        <p className="text-muted-foreground text-sm md:text-base mt-1">
+          Real-time market indices and price trends
+          {marketDataUpdatedAt ? ` · Last refresh ${new Date(marketDataUpdatedAt).toLocaleString()}` : ""}
+        </p>
       </div>
 
       <Card className="bg-card border-border">
@@ -449,7 +507,7 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
             </div>
             <div className="text-right">
               <div className="text-xs text-muted-foreground">1m Trend</div>
-              <div className="text-sm font-medium">{positiveBrandsCount}/{BRAND_INDICES.length} brands positive</div>
+              <div className="text-sm font-medium">{positiveBrandsCount}/{brandIndices.length || 1} brands positive</div>
             </div>
           </div>
           <div className="space-y-3">
@@ -520,48 +578,30 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
           </CardContent>
         </Card>
 
-        <Card className="bg-card border-border">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Rolex Index</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-semibold tabular-nums">{BRAND_INDICES[0].currentIndex}</div>
-            <div className="flex items-center gap-1 mt-1">
-              {getTrendChange(BRAND_INDICES[0].trend, 1) >= 0 ? <TrendUp className="text-success" size={14} /> : <TrendDown className="text-destructive" size={14} />}
-              <span className={getTrendChange(BRAND_INDICES[0].trend, 1) >= 0 ? 'text-xs text-success' : 'text-xs text-destructive'}>{formatTrend(getTrendChange(BRAND_INDICES[0].trend, 1))} (1m)</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card border-border">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Patek Index</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-semibold tabular-nums">{BRAND_INDICES[1].currentIndex}</div>
-            <div className="flex items-center gap-1 mt-1">
-              {getTrendChange(BRAND_INDICES[1].trend, 1) >= 0 ? <TrendUp className="text-success" size={14} /> : <TrendDown className="text-destructive" size={14} />}
-              <span className={getTrendChange(BRAND_INDICES[1].trend, 1) >= 0 ? 'text-xs text-success' : 'text-xs text-destructive'}>{formatTrend(getTrendChange(BRAND_INDICES[1].trend, 1))} (1m)</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card border-border">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">AP Index</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-semibold tabular-nums">{BRAND_INDICES[2].currentIndex}</div>
-            <div className="flex items-center gap-1 mt-1">
-              {getTrendChange(BRAND_INDICES[2].trend, 1) >= 0 ? <TrendUp className="text-success" size={14} /> : <TrendDown className="text-destructive" size={14} />}
-              <span className={getTrendChange(BRAND_INDICES[2].trend, 1) >= 0 ? 'text-xs text-success' : 'text-xs text-destructive'}>{formatTrend(getTrendChange(BRAND_INDICES[2].trend, 1))} (1m)</span>
-            </div>
-          </CardContent>
-        </Card>
+        {brandIndices.slice(0, 3).map((brandIndex) => {
+          const oneMonthChange = getTrendChange(brandIndex.trend, 1)
+          return (
+            <Card key={brandIndex.brand} className="bg-card border-border">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium text-muted-foreground">{brandIndex.brand} Index</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-semibold tabular-nums">{brandIndex.currentIndex}</div>
+                <div className="flex items-center gap-1 mt-1">
+                  {oneMonthChange >= 0 ? <TrendUp className="text-success" size={14} /> : <TrendDown className="text-destructive" size={14} />}
+                  <span className={oneMonthChange >= 0 ? 'text-xs text-success' : 'text-xs text-destructive'}>{formatTrend(oneMonthChange)} (1m)</span>
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  {brandIndex.source} · {marketConfidenceLabel(brandIndex.confidence)} confidence
+                </div>
+              </CardContent>
+            </Card>
+          )
+        })}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {BRAND_INDICES.map((brandIndex) => {
+        {brandIndices.map((brandIndex) => {
           const isOwned = userBrands.has(brandIndex.brand)
           const oneMonthChange = getTrendChange(brandIndex.trend, 1)
           const sixMonthChange = getTrendChange(brandIndex.trend, 6)
@@ -588,6 +628,9 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
                 <div>
                   <div className="text-sm text-muted-foreground mb-1">Current Index</div>
                   <div className="text-2xl font-semibold tabular-nums">{brandIndex.currentIndex}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {brandIndex.source} · Updated {new Date(brandIndex.updatedAt).toLocaleDateString()} · {marketConfidenceLabel(brandIndex.confidence)}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -630,12 +673,12 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
 
       <Card className="bg-card border-border">
         <CardHeader>
-          <CardTitle>Top Movers (30d Change %)</CardTitle>
+          <CardTitle>Top Movers (12m Change %)</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {TOP_MOVERS.map((mover, idx) => (
-              <div key={idx} className="flex items-center justify-between py-3 border-b border-border last:border-0">
+            {topMovers.map((mover, idx) => (
+              <div key={`${mover.reference}-${idx}`} className="flex items-center justify-between py-3 border-b border-border last:border-0">
                 <div className="flex items-center gap-3 flex-1">
                   {mover.direction === 'up' ? (
                     <TrendUp style={{ color: '#5E8C6A' }} size={20} />
@@ -643,8 +686,8 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
                     <TrendDown style={{ color: '#A0785A' }} size={20} />
                   )}
                   <div className="flex-1">
-                    <div className="font-medium">{mover.reference}</div>
-                    <div className="text-sm text-muted-foreground">{mover.brand}</div>
+                    <div className="font-medium">{mover.reference || `${mover.brand} ${mover.model}`}</div>
+                    <div className="text-sm text-muted-foreground">{mover.brand} · {mover.source}</div>
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
@@ -667,6 +710,9 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
                 </div>
               </div>
             ))}
+            {topMovers.length === 0 && (
+              <div className="text-sm text-muted-foreground">No live movers available right now.</div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -690,9 +736,21 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
             {searchReference && (
               <div className="space-y-3">
                 <div className="p-4 border border-border rounded-lg bg-muted/10">
-                  <div className="font-medium mb-1">Rolex Submariner {searchReference}</div>
-                  <div className="text-2xl font-semibold text-primary mb-2 tabular-nums">{formatCurrency(10500, preferredCurrency)}</div>
-                  <div className="text-sm text-muted-foreground">Last updated: 2 hours ago</div>
+                  <div className="font-medium mb-1">
+                    {referenceSnapshot ? `${referenceSnapshot.brand} ${referenceSnapshot.model}` : searchReference}
+                  </div>
+                  <div className="text-2xl font-semibold text-primary mb-2 tabular-nums">
+                    {referenceSnapshot
+                      ? formatCurrency(referenceSnapshot.latestPrice, preferredCurrency, { sourceCurrency: referenceSnapshot.currency })
+                      : "—"}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    {isReferenceLoading
+                      ? "Loading latest market snapshot..."
+                      : referenceSnapshot
+                        ? `Source: ${referenceSnapshot.source} · Updated: ${new Date(referenceSnapshot.updatedAt).toLocaleString()} · Confidence: ${marketConfidenceLabel(referenceSnapshot.confidence)}`
+                        : "No reference data available yet."}
+                  </div>
                 </div>
 
                 <div className="h-48">
@@ -734,13 +792,21 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
               </div>
             ) : (
               <div className="space-y-3">
-                {alerts.map((alert) => (
-                  <div key={alert.id} className="flex items-start justify-between p-3 border border-border rounded-lg bg-muted/10">
+                {alerts.map((alert) => {
+                  const evaluation = alertEvaluations[alert.id]
+                  return (
+                    <div key={alert.id} className="flex items-start justify-between p-3 border border-border rounded-lg bg-muted/10">
                     <div className="flex-1">
                       <div className="font-medium">{alert.brand} {alert.model}</div>
                       <div className="text-sm text-muted-foreground mt-1">
                         Alert when price goes {alert.condition} <span className="font-semibold tabular-nums">{formatCurrency(alert.targetPrice, preferredCurrency)}</span>
                       </div>
+                      {evaluation && (
+                        <div className="text-xs text-muted-foreground mt-1">
+                          Live: {formatCurrency(evaluation.latestPrice || 0, preferredCurrency)} · {evaluation.source} · {marketConfidenceLabel(evaluation.confidence)}
+                          {evaluation.isTriggered ? " · Triggered" : ""}
+                        </div>
+                      )}
                       <div className="text-xs text-muted-foreground mt-1">
                         Created {new Date(alert.createdAt).toLocaleDateString()}
                       </div>
@@ -754,7 +820,8 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
                       <X size={16} />
                     </Button>
                   </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </CardContent>

@@ -7,6 +7,11 @@ interface ImportMetaEnv {
 	readonly SUPABASE_ANON_KEY?: string
 	readonly VITE_WATCHCHARTS_API_KEY?: string
 	readonly VITE_WATCHCHARTS_BASE_URL?: string
+	readonly VITE_THEWATCHAPI_BASE_URL?: string
+	readonly VITE_THEWATCHAPI_LOOKUP_PATH?: string
+	readonly VITE_THEWATCHAPI_API_KEY?: string
+	readonly VITE_EBAY_APP_ID?: string
+	readonly VITE_CHRONO24_STALE_AFTER_HOURS?: string
 	readonly VITE_DEFAULT_ACCOUNT_PASSWORD_HASH?: string
 	readonly VITE_DEFAULT_ACCOUNT_SALT?: string
 	readonly VITE_DEFAULT_ACCOUNT_ITERATIONS?: string

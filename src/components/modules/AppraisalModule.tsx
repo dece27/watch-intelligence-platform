@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Printer } from "@phosphor-icons/react"
 import { watchChartsClient } from "@/lib/watchcharts-client"
 import { formatCurrency } from "@/lib/currency"
+import { getNormalizedMarketData, marketConfidenceLabel, type NormalizedMarketData } from "@/lib/market-data"
 
 interface AppraisalModuleProps {
   watches: Watch[]
@@ -15,6 +16,7 @@ interface AppraisalModuleProps {
 export function AppraisalModule({ watches, preferredCurrency = "USD" }: AppraisalModuleProps) {
   const [selectedWatchId, setSelectedWatchId] = useState<string>(watches[0]?.id || '')
   const [marketValue, setMarketValue] = useState<number | null>(null)
+  const [marketSnapshot, setMarketSnapshot] = useState<NormalizedMarketData | null>(null)
 
   const selectedWatch = watches.find(w => w.id === selectedWatchId)
 
@@ -28,18 +30,32 @@ export function AppraisalModule({ watches, preferredCurrency = "USD" }: Appraisa
       }
 
       try {
-        const apiMarketValue = await watchChartsClient.getMarketValue({
+        let apiMarketValue: number | null = null
+        try {
+          apiMarketValue = await watchChartsClient.getMarketValue({
+            brand: selectedWatch.brand,
+            model: selectedWatch.model,
+            referenceNumber: selectedWatch.referenceNumber,
+          })
+        } catch {
+          apiMarketValue = null
+        }
+
+        const normalizedSnapshot = await getNormalizedMarketData({
           brand: selectedWatch.brand,
           model: selectedWatch.model,
           referenceNumber: selectedWatch.referenceNumber,
+          heuristicPrice: selectedWatch.currentValue || selectedWatch.purchasePrice,
         })
 
         if (!canceled) {
           setMarketValue(apiMarketValue)
+          setMarketSnapshot(normalizedSnapshot)
         }
       } catch {
         if (!canceled) {
           setMarketValue(null)
+          setMarketSnapshot(null)
         }
       }
     }
@@ -71,7 +87,7 @@ export function AppraisalModule({ watches, preferredCurrency = "USD" }: Appraisa
     )
   }
 
-  const appraisalValue = marketValue ?? selectedWatch.currentValue ?? selectedWatch.purchasePrice
+  const appraisalValue = marketValue ?? marketSnapshot?.latestPrice ?? selectedWatch.currentValue ?? selectedWatch.purchasePrice
   const appraisalDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
 
   return (
@@ -204,12 +220,17 @@ export function AppraisalModule({ watches, preferredCurrency = "USD" }: Appraisa
             <h3 className="text-2xl font-semibold mb-4 print:text-black">Appraised Value</h3>
             <div className="bg-primary/10 print:bg-gray-100 p-6 rounded-lg">
               <div className="text-sm text-muted-foreground print:text-gray-600 mb-2">Current Market Value</div>
-              <div className="text-4xl font-bold text-primary print:text-black tabular-nums">
-                {formatCurrency(appraisalValue, preferredCurrency)}
-              </div>
+                <div className="text-4xl font-bold text-primary print:text-black tabular-nums">
+                  {formatCurrency(appraisalValue, preferredCurrency, { sourceCurrency: marketValue ? "USD" : (marketSnapshot?.currency || "USD") })}
+                </div>
               <div className="text-sm text-muted-foreground print:text-gray-600 mt-3">
                 Based on current market conditions, condition assessment, and comparable sales data
               </div>
+              {marketSnapshot && (
+                <div className="text-xs text-muted-foreground print:text-gray-600 mt-3">
+                  Source: {marketValue ? 'watchcharts' : marketSnapshot.source} · Updated {new Date(marketSnapshot.updatedAt).toLocaleString()} · Confidence {marketConfidenceLabel(marketSnapshot.confidence)}
+                </div>
+              )}
             </div>
           </div>
 

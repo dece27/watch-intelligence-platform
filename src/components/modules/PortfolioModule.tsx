@@ -8,7 +8,8 @@ import { TrendUp, TrendDown } from "@phosphor-icons/react"
 import { WhatIfSellCalculator } from "@/components/WhatIfSellCalculator"
 import { TopStoriesWidget } from "@/components/TopStoriesWidget"
 import { watchChartsClient } from "@/lib/watchcharts-client"
-import { formatCurrency } from "@/lib/currency"
+import { convertCurrency, formatCurrency } from "@/lib/currency"
+import { getPortfolioMarketSnapshots, marketConfidenceLabel, type NormalizedMarketData } from "@/lib/market-data"
 
 interface PortfolioModuleProps {
   watches: Watch[]
@@ -70,7 +71,7 @@ function calculateHoldPeriod(purchaseDate: string): string {
   return `${years}y ${months}m`
 }
 
-function calculateHealthScore(watches: Watch[]): number {
+function calculateHealthScore(watches: Array<Watch & { marketConfidence?: number }>): number {
   if (watches.length === 0) return 0
   
   const watchesWithValues = watches.map(w => ({
@@ -96,9 +97,16 @@ function calculateHealthScore(watches: Watch[]): number {
   const brands = new Set(watchesWithValues.map(w => w.brand))
   const diversificationScore = Math.min(brands.size / watchesWithValues.length, 0.5) * 100 * 2
   
-  const roiScore = Math.max(0, Math.min(100, 50 + roi))
+  const averageConfidence = watchesWithValues.reduce((sum, watch) => {
+    const confidence = typeof watch.marketConfidence === "number" && Number.isFinite(watch.marketConfidence)
+      ? Math.max(0.4, Math.min(1, watch.marketConfidence))
+      : 0.75
+    return sum + confidence
+  }, 0) / watchesWithValues.length
+  const roiScore = Math.max(0, Math.min(100, 50 + roi)) * averageConfidence
+  const confidenceScore = averageConfidence * 100
   
-  const healthScore = (roiScore * 0.4) + (avgConditionScore * 0.3) + (accessoryScore * 0.15) + (diversificationScore * 0.15)
+  const healthScore = (roiScore * 0.35) + (avgConditionScore * 0.25) + (accessoryScore * 0.15) + (diversificationScore * 0.1) + (confidenceScore * 0.15)
   
   return Math.round(healthScore)
 }
@@ -107,6 +115,7 @@ export function PortfolioModule({ watches, preferredCurrency = "USD", onNavigate
   const [sortField, setSortField] = useState<'brand' | 'roi' | 'value' | 'holdPeriod'>('roi')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
   const [liveMarketValues, setLiveMarketValues] = useState<Record<string, number>>({})
+  const [marketSnapshots, setMarketSnapshots] = useState<Record<string, NormalizedMarketData>>({})
 
   useEffect(() => {
     let canceled = false
@@ -150,12 +159,38 @@ export function PortfolioModule({ watches, preferredCurrency = "USD", onNavigate
     }
   }, [watches])
 
+  useEffect(() => {
+    let canceled = false
+
+    const loadSnapshots = async () => {
+      if (watches.length === 0) {
+        if (!canceled) setMarketSnapshots({})
+        return
+      }
+      const snapshots = await getPortfolioMarketSnapshots(watches)
+      if (!canceled) {
+        setMarketSnapshots(snapshots)
+      }
+    }
+
+    void loadSnapshots()
+
+    return () => {
+      canceled = true
+    }
+  }, [watches])
+
   const getMarketValue = useCallback((watch: Watch): number => {
-    return liveMarketValues[watch.id] ?? watch.currentValue ?? getEstimatedMarketValue(watch)
-  }, [liveMarketValues])
+    const snapshot = marketSnapshots[watch.id]
+    const normalizedSnapshotValue = snapshot
+      ? convertCurrency(snapshot.latestPrice, snapshot.currency, "USD")
+      : null
+    return liveMarketValues[watch.id] ?? normalizedSnapshotValue ?? watch.currentValue ?? getEstimatedMarketValue(watch)
+  }, [liveMarketValues, marketSnapshots])
 
   const watchesWithMetrics = useMemo(() => {
     return watches.map(watch => {
+      const snapshot = marketSnapshots[watch.id]
       const marketValue = getMarketValue(watch)
       const roi = ((marketValue - watch.purchasePrice) / watch.purchasePrice) * 100
       const roiDollar = marketValue - watch.purchasePrice
@@ -167,10 +202,13 @@ export function PortfolioModule({ watches, preferredCurrency = "USD", onNavigate
         roi,
         roiDollar,
         holdPeriod,
-        holdPeriodDays: Math.ceil((new Date().getTime() - new Date(watch.purchaseDate).getTime()) / (1000 * 60 * 60 * 24))
+        holdPeriodDays: Math.ceil((new Date().getTime() - new Date(watch.purchaseDate).getTime()) / (1000 * 60 * 60 * 24)),
+        marketSource: snapshot?.source,
+        marketUpdatedAt: snapshot?.updatedAt,
+        marketConfidence: snapshot?.confidence,
       }
     })
-  }, [watches, getMarketValue])
+  }, [watches, getMarketValue, marketSnapshots])
 
   const sortedWatches = useMemo(() => {
     return [...watchesWithMetrics].sort((a, b) => {
@@ -208,6 +246,25 @@ export function PortfolioModule({ watches, preferredCurrency = "USD", onNavigate
   const totalCost = watchesWithMetrics.reduce((sum, w) => sum + w.purchasePrice, 0)
   const totalReturn = totalValue - totalCost
   const totalReturnPercent = totalCost > 0 ? ((totalReturn / totalCost) * 100) : 0
+  const portfolioMarketMetadata = useMemo(() => {
+    const snapshots = Object.values(marketSnapshots)
+    if (snapshots.length === 0) {
+      return { source: "heuristic", updatedAt: null as string | null, confidence: "low" as const }
+    }
+    const sourceCounts = snapshots.reduce<Record<string, number>>((acc, snapshot) => {
+      acc[snapshot.source] = (acc[snapshot.source] || 0) + 1
+      return acc
+    }, {})
+    const source = Object.entries(sourceCounts).sort((left, right) => right[1] - left[1])[0]?.[0] || "heuristic"
+    const updatedAt = snapshots.reduce<string | null>((latest, snapshot) => {
+      if (!latest) return snapshot.updatedAt
+      return Date.parse(snapshot.updatedAt) > Date.parse(latest) ? snapshot.updatedAt : latest
+    }, null)
+    const confidence = marketConfidenceLabel(
+      snapshots.reduce((sum, snapshot) => sum + snapshot.confidence, 0) / snapshots.length
+    )
+    return { source, updatedAt, confidence }
+  }, [marketSnapshots])
   const healthScore = useMemo(() => calculateHealthScore(
     watchesWithMetrics.map(({ marketValue, ...watch }) => ({ ...watch, currentValue: marketValue }))
   ), [watchesWithMetrics])
@@ -226,30 +283,28 @@ export function PortfolioModule({ watches, preferredCurrency = "USD", onNavigate
   }, [watchesWithMetrics])
 
   const trendData = useMemo(() => {
-    const months = 12
-    const data: Array<{ month: string; value: number }> = []
-    const now = new Date()
-    
-    for (let i = months - 1; i >= 0; i--) {
-      const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1)
-      const monthName = monthDate.toLocaleDateString('en-US', { month: 'short' })
-      
-      const watchesOwnedThen = watchesWithMetrics.filter(w => new Date(w.purchaseDate) <= monthDate)
-      const totalValueThen = watchesOwnedThen.reduce((sum, w) => {
-        const monthsOwned = (monthDate.getTime() - new Date(w.purchaseDate).getTime()) / (1000 * 60 * 60 * 24 * 30)
-        const appreciationRate = (w.marketValue - w.purchasePrice) / w.purchasePrice
-        const valueAtMonth = w.purchasePrice * (1 + (appreciationRate * Math.min(monthsOwned / 12, 1)))
-        return sum + valueAtMonth
+    const monthLabels = Array.from({ length: 12 }, (_, idx) => {
+      const monthDate = new Date()
+      monthDate.setMonth(monthDate.getMonth() - (11 - idx))
+      return monthDate.toLocaleDateString('en-US', { month: 'short' })
+    })
+
+    return monthLabels.map((monthLabel, monthIndex) => {
+      const totalValueThen = watchesWithMetrics.reduce((sum, watch) => {
+        const snapshotSeriesValue = marketSnapshots[watch.id]?.series12m[monthIndex]?.price
+        const snapshotCurrency = marketSnapshots[watch.id]?.currency || "USD"
+        const value = typeof snapshotSeriesValue === "number" && Number.isFinite(snapshotSeriesValue) && snapshotSeriesValue > 0
+          ? convertCurrency(snapshotSeriesValue, snapshotCurrency, "USD")
+          : watch.marketValue
+        return sum + value
       }, 0)
-      
-      data.push({
-        month: monthName,
-        value: Math.round(totalValueThen)
-      })
-    }
-    
-    return data
-  }, [watchesWithMetrics])
+
+      return {
+        month: monthLabel,
+        value: Math.round(totalValueThen),
+      }
+    })
+  }, [marketSnapshots, watchesWithMetrics])
 
   const COLORS = ['#C9A84C', '#8B9EB7', '#5E8C6A', '#A0785A', '#9D7C6D', '#6B8E9F', '#E8965A', '#7A9D7E']
 
@@ -293,7 +348,9 @@ export function PortfolioModule({ watches, preferredCurrency = "USD", onNavigate
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-semibold tabular-nums text-primary">{formatCurrency(totalValue, preferredCurrency)}</div>
-            <p className="text-xs text-muted-foreground mt-1">{watches.length} {watches.length === 1 ? 'watch' : 'watches'}</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {watches.length} {watches.length === 1 ? 'watch' : 'watches'} · {portfolioMarketMetadata.source} · {portfolioMarketMetadata.updatedAt ? new Date(portfolioMarketMetadata.updatedAt).toLocaleDateString() : 'n/a'} · {portfolioMarketMetadata.confidence}
+            </p>
           </CardContent>
         </Card>
 
@@ -453,7 +510,12 @@ export function PortfolioModule({ watches, preferredCurrency = "USD", onNavigate
                       <div className="text-sm text-muted-foreground">{watch.model}</div>
                     </TableCell>
                     <TableCell className="tabular-nums">{formatCurrency(watch.purchasePrice, preferredCurrency)}</TableCell>
-                    <TableCell className="tabular-nums">{formatCurrency(watch.marketValue, preferredCurrency)}</TableCell>
+                    <TableCell className="tabular-nums">
+                      <div>{formatCurrency(watch.marketValue, preferredCurrency)}</div>
+                      <div className="text-xs text-muted-foreground">
+                        Source: {watch.marketSource || 'heuristic'} · {watch.marketUpdatedAt ? new Date(watch.marketUpdatedAt).toLocaleDateString() : 'n/a'} · {marketConfidenceLabel(watch.marketConfidence || 0.45)}
+                      </div>
+                    </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
                         <Badge 
