@@ -30,9 +30,36 @@ function toSupabaseAuthEmail(loginIdentifier: string): string {
 }
 
 /**
+ * Calls the ensure-admin-auth Edge Function so that the administrator's
+ * Supabase Auth account is created and email-confirmed before the normal
+ * sign-in flow runs.  This is necessary because the admin uses a synthetic
+ * email address (administrator@watchvault.local) that can never receive a
+ * real confirmation link.
+ *
+ * Errors are swallowed: if the Edge Function is unavailable the caller
+ * falls back to KV-only persistence.
+ */
+async function ensureAdminSupabaseAccount(password: string): Promise<void> {
+  if (!hasSupabaseBrowserEnv()) return
+  try {
+    const supabase = getSupabaseClient()
+    await supabase.functions.invoke('ensure-admin-auth', {
+      body: { password },
+    })
+  } catch {
+    // Non-fatal — signInWithPassword may still work if the account is
+    // already confirmed; otherwise the app falls back to KV.
+  }
+}
+
+/**
  * Attempts to establish a Supabase Auth session after successful KV
  * credential verification. This is strictly non-blocking: any error is
  * swallowed so the caller can always fall through to KV-only persistence.
+ *
+ * After a successful signUp the function retries signInWithPassword so
+ * that the session is established in the same login flow even when the
+ * Supabase project has auto-confirmation enabled.
  */
 async function trySupabaseAuth(
   email: string,
@@ -48,12 +75,28 @@ async function trySupabaseAuth(
       password,
     })
     if (!signInError) return
-    // Not yet in Supabase Auth — create the account.
-    await supabase.auth.signUp({
+
+    // Account not yet in Supabase Auth — create it.
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
       options: { data: { name: displayName, vault_name: vaultName } },
     })
+
+    // If signUp already established a session (project has email
+    // auto-confirmation enabled) the onAuthStateChange listener in App.tsx
+    // will pick it up — nothing more to do here.
+    if (signUpData?.session) return
+
+    // No session yet.  Try signing in one more time: this succeeds when
+    // the project confirmed the account server-side during signUp even
+    // though no session was returned in the response.  The result is
+    // intentionally not awaited for its value: success is observed
+    // asynchronously via the onAuthStateChange listener in App.tsx, and
+    // failure here is non-fatal — the app falls back to KV-only persistence.
+    if (!signUpError) {
+      void supabase.auth.signInWithPassword({ email, password })
+    }
   } catch {
     // Supabase unreachable — silently fall back to KV-only persistence.
   }
@@ -265,6 +308,14 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
           lastLoginAt: new Date().toISOString(),
           loginCount: (auth.loginCount || 0) + 1,
         })
+
+        // For the administrator account, use the Edge Function to ensure the
+        // Supabase Auth account exists and has email confirmation bypassed
+        // before attempting to sign in.  Regular users confirm their email
+        // through the normal Supabase flow.
+        if (normalizedLoginIdentifier === ADMIN_LOGIN_IDENTIFIER) {
+          await ensureAdminSupabaseAccount(password.trim())
+        }
 
         // Establish a Supabase Auth session so the DB layer can use RLS.
         await trySupabaseAuth(
