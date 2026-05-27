@@ -8,6 +8,9 @@ export interface Watch {
   purchasePrice: number
   purchaseDate: string
   currentValue?: number
+  marketSource?: 'watchcharts' | 'thewatchapi' | 'ebay' | 'heuristic' | 'manual' | 'unavailable'
+  marketConfidence?: number
+  marketUpdatedAt?: string
   condition: 'mint' | 'excellent' | 'good' | 'fair'
   category: 'dress' | 'sport' | 'dive' | 'pilot' | 'chronograph' | 'complications'
   imageUrl?: string

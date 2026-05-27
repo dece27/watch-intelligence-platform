@@ -180,6 +180,10 @@ export interface Database {
           purchase_price: number | null
           purchase_date: string | null
           purchase_currency: string | null
+          market_value: number | null
+          market_source: string | null
+          market_confidence: number | null
+          market_updated_at: string | null
           serial_number: string | null
           notes: string | null
           cover_photo_url: string | null
@@ -207,6 +211,10 @@ export interface Database {
           purchase_price?: number | null
           purchase_date?: string | null
           purchase_currency?: string | null
+          market_value?: number | null
+          market_source?: string | null
+          market_confidence?: number | null
+          market_updated_at?: string | null
           serial_number?: string | null
           notes?: string | null
           cover_photo_url?: string | null
@@ -234,6 +242,10 @@ export interface Database {
           purchase_price?: number | null
           purchase_date?: string | null
           purchase_currency?: string | null
+          market_value?: number | null
+          market_source?: string | null
+          market_confidence?: number | null
+          market_updated_at?: string | null
           serial_number?: string | null
           notes?: string | null
           cover_photo_url?: string | null

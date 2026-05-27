@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { watchChartsClient } from "@/lib/watchcharts-client"
-import { enrichDealsWithMarketData, getNormalizedMarketData } from "@/lib/market-data"
+import { enrichDealsWithMarketData, getNormalizedMarketData, getPortfolioMarketSnapshots } from "@/lib/market-data"
 import type { Deal } from "@/lib/types"
 
 describe("market-data", () => {
@@ -47,5 +47,29 @@ describe("market-data", () => {
     expect(deal.discount).toBe(20)
     expect(deal.marketSource).toBe("watchcharts")
     expect(typeof deal.marketUpdatedAt).toBe("string")
+  })
+
+  it("does not mask missing market data with purchase price in portfolio snapshots", async () => {
+    vi.spyOn(watchChartsClient, "getMarketValue").mockResolvedValue(null)
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    } as Response)
+
+    const [snapshot] = Object.values(await getPortfolioMarketSnapshots([{
+      id: "watch-1",
+      brand: "Rolex",
+      model: "Submariner",
+      referenceNumber: "126610LN-missing-market",
+      purchasePrice: 15000,
+      purchaseDate: "2024-01-01",
+      condition: "excellent",
+      category: "sport",
+      hasBox: true,
+      hasPapers: true,
+    }]))
+
+    expect(snapshot.source).toBe("heuristic")
+    expect(snapshot.latestPrice).toBe(100)
   })
 })

@@ -68,7 +68,7 @@ const getNormalizedWatchesForDependency = (watches: Watch[]) =>
       referenceNumber: watch.referenceNumber || "",
       year: watch.year || null,
       purchasePrice: watch.purchasePrice,
-      currentValue: watch.currentValue || watch.purchasePrice,
+      currentValue: watch.currentValue ?? null,
       condition: watch.condition,
       category: watch.category,
       hasBox: watch.hasBox ?? null,
@@ -404,7 +404,7 @@ export function AIAdvisorModule({ watches, userId, preferredCurrency = "USD" }: 
           referenceNumber: watch.referenceNumber || null,
           year: watch.year || null,
           purchasePrice: watch.purchasePrice,
-          currentValue: watch.currentValue || watch.purchasePrice,
+          currentValue: watch.currentValue ?? null,
           condition: watch.condition,
           preferredCurrency,
         })
