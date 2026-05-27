@@ -33,7 +33,7 @@ jobs:
           VITE_SUPABASE_URL=${SUPABASE_URL}
           VITE_SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
           EOF
-          test -f /home/runner/work/watch-intelligence-platform/watch-intelligence-platform/.env.production
+          test -f "$GITHUB_WORKSPACE/.env.production"
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
