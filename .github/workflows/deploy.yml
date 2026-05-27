@@ -48,8 +48,6 @@ jobs:
         env:
           NODE_ENV: production
           VITE_BASE_PATH: /${{ github.event.repository.name }}/
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           GITHUB_REPOSITORY: ${{ github.repository }}
 
       - run: touch out/.nojekyll
