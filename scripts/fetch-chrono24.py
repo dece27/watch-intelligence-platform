@@ -62,7 +62,7 @@ PLAYWRIGHT_USER_AGENT = (
 )
 PLAYWRIGHT_NAVIGATION_TIMEOUT_MS = 60_000
 PLAYWRIGHT_WAIT_FOR_LISTINGS_MS = 20_000
-PLAYWRIGHT_DEBUG_ARTIFACTS_DIR = os.environ.get("RUNNER_TEMP", "/tmp")
+PLAYWRIGHT_DEBUG_ARTIFACTS_DIR = os.environ.get("CHRONO24_PLAYWRIGHT_DEBUG_DIR", "/tmp")
 
 # CSS selector string used by wait_for_selector and the JS extractor
 _CARD_SELECTORS_CSS = (
@@ -287,6 +287,8 @@ def search_listings_playwright(query: str, limit: int) -> list[dict[str, Any]]:
     """
     from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
     from playwright.sync_api import sync_playwright
+
+    limit = max(1, int(limit))
 
     search_url = (
         "https://www.chrono24.com/search/index.htm?"

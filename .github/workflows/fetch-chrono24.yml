@@ -32,7 +32,9 @@ jobs:
           cache-dependency-path: scripts/requirements-chrono24.txt
 
       - name: Set metrics path
-        run: echo "CHRONO24_SYNC_METRICS_PATH=${RUNNER_TEMP}/chrono24-sync-metrics.json" >> "$GITHUB_ENV"
+        run: |
+          echo "CHRONO24_SYNC_METRICS_PATH=${RUNNER_TEMP}/chrono24-sync-metrics.json" >> "$GITHUB_ENV"
+          echo "CHRONO24_PLAYWRIGHT_DEBUG_DIR=${RUNNER_TEMP}" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: pip install -r scripts/requirements-chrono24.txt
@@ -155,7 +157,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-debug-screenshots
-          path: ${{ runner.temp }}/chrono24_debug_*.png
+          path: ${{ env.CHRONO24_PLAYWRIGHT_DEBUG_DIR }}/chrono24_debug_*.png
           if-no-files-found: ignore
 
       - name: Report result
