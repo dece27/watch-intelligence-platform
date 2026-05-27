@@ -16,6 +16,10 @@
 | `MODELS_GITHUB_TOKEN` | GitHub Actions secret containing a PAT with `models:read`, used to populate the Edge Function `GITHUB_TOKEN` secret during deploy |
 | `VITE_WATCHCHARTS_API_KEY` | API key for WatchCharts market value lookups |
 | `VITE_WATCHCHARTS_BASE_URL` | Override for WatchCharts API base URL |
+| `VITE_THEWATCHAPI_BASE_URL` | Optional base URL for thewatchapi market lookup integration (defaults to `https://api.thewatchapi.com`) |
+| `VITE_THEWATCHAPI_LOOKUP_PATH` | Optional lookup path for thewatchapi market endpoint (defaults to `/v1/watch`) |
+| `VITE_THEWATCHAPI_API_KEY` | Optional API key/bearer token for thewatchapi when required by the selected plan |
+| `VITE_EBAY_APP_ID` | Optional eBay app id used for fallback market-price comps through the Finding API |
 | `VITE_BASE_PATH` | Base path for GitHub Pages deployments (set automatically by the deploy workflow) |
 | `RESEND_API_KEY` | Server-only API key used by scheduled workflows that send transactional email notifications |
 | `RESEND_FROM_EMAIL` | Optional sender address override for Resend-powered workflow notifications |

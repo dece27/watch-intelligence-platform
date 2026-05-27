@@ -71,6 +71,9 @@ export interface Deal {
   hasBox?: boolean
   hasPapers?: boolean
   year?: number
+  marketSource?: string
+  marketUpdatedAt?: string
+  marketConfidence?: number
 }
 
 export interface MarketSignal {
@@ -95,6 +98,9 @@ export interface BrandIndex {
   brand: string
   currentIndex: number
   trend: number[]
+  source?: string
+  updatedAt?: string
+  confidence?: number
 }
 
 export interface ChatMessage {

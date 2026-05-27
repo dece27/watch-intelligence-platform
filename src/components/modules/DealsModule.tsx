@@ -18,6 +18,7 @@ import { FALLBACK_DEALS } from "@/lib/fallback-deals"
 import { convertCurrency, formatCurrency, normalizeCurrency } from "@/lib/currency"
 import { listSavedDeals, removeSavedDeal, saveDeal } from "@/lib/db/deals"
 import { getSupabaseClient, hasSupabaseBrowserEnv } from "@/lib/supabase/client"
+import { enrichDealsWithMarketData } from "@/lib/market-data"
 import { toast } from "sonner"
 
 interface DealsModuleProps {
@@ -310,7 +311,8 @@ export function DealsModule({ watches, userId, preferredCurrency = "USD" }: Deal
       const listingAgeMs = newestListingTimestampMs > 0 ? Date.now() - newestListingTimestampMs : Number.POSITIVE_INFINITY
       const listingsAreStale = listingAgeMs > staleAfterHours * 60 * 60 * 1000
 
-      const heuristicScored = uniqueDeals.map((deal) => scoreHeuristically(deal, watches, preferences))
+      const enrichedDeals = await enrichDealsWithMarketData(uniqueDeals)
+      const heuristicScored = enrichedDeals.map((deal) => scoreHeuristically(deal, watches, preferences))
 
       const rankingPrompt = `You are a luxury watch deal-ranking model.
 Rank these deals for the user portfolio and preferences.
@@ -764,6 +766,9 @@ Return every deal id exactly once.`
                     {formatDealPrice(deal.marketValue || deal.fairValue || deal.price, preferredCurrency, deal.currency)}
                   </div>
                 </div>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Market source: {deal.marketSource || "heuristic"} · Updated {deal.marketUpdatedAt ? new Date(deal.marketUpdatedAt).toLocaleDateString() : "n/a"} · Confidence {typeof deal.marketConfidence === "number" ? `${Math.round(deal.marketConfidence * 100)}%` : "n/a"}
               </div>
 
               <div className="flex justify-between text-sm pt-2 border-t border-white/[0.05]">
