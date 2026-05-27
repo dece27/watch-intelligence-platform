@@ -82,11 +82,13 @@ Deno.serve(async (req: Request) => {
         return json(500, { error: `Failed to create admin user: ${createError.message}` })
       }
     } else if (!adminUser.email_confirmed_at) {
-      // Account exists but email was never confirmed — confirm it and
-      // update the password in case it differs from what is stored.
+      // Account exists but email was never confirmed — confirm it.
+      // The password is intentionally not overwritten here: the account
+      // was created with the correct password already, and accepting an
+      // arbitrary password from the caller could allow unintended
+      // credential changes via direct API calls.
       const { error: updateError } = await adminClient.auth.admin.updateUserById(adminUser.id, {
         email_confirm: true,
-        password,
       })
       if (updateError) {
         return json(500, { error: `Failed to confirm admin user: ${updateError.message}` })

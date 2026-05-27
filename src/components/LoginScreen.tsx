@@ -90,9 +90,12 @@ async function trySupabaseAuth(
 
     // No session yet.  Try signing in one more time: this succeeds when
     // the project confirmed the account server-side during signUp even
-    // though no session was returned in the response.
+    // though no session was returned in the response.  The result is
+    // intentionally not awaited for its value: success is observed
+    // asynchronously via the onAuthStateChange listener in App.tsx, and
+    // failure here is non-fatal — the app falls back to KV-only persistence.
     if (!signUpError) {
-      await supabase.auth.signInWithPassword({ email, password })
+      void supabase.auth.signInWithPassword({ email, password })
     }
   } catch {
     // Supabase unreachable — silently fall back to KV-only persistence.
