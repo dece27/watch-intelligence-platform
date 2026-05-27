@@ -181,9 +181,9 @@ export function CollectionModule({
     }
   }
 
-  const handleImportWatches = (importedWatches: Watch[]) => {
+  const handleImportWatches = async (importedWatches: Watch[]) => {
     if (readOnly) return
-    onUpdate((currentWatches) => [...currentWatches, ...importedWatches])
+    await onUpdate((currentWatches) => [...currentWatches, ...importedWatches])
   }
 
   return (
