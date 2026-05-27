@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 WatchVault — Chrono24 live data fetcher.
-Uses the irahorecka/chrono24 library: https://github.com/irahorecka/chrono24
+Uses Playwright (headless Chromium) to render Chrono24 search pages and extract listings.
 Fetches real listings and writes them to Supabase (deal_listings table).
 
 Usage:
@@ -21,13 +21,8 @@ import sys
 import uuid
 from datetime import datetime, timezone
 from typing import Any
-from urllib.parse import urlencode, urlsplit, urlunsplit
+from urllib.parse import urlencode
 
-import chrono24
-import requests
-from chrono24 import session as chrono24_session
-from chrono24.exceptions import NoListingsFoundException, RequestException
-from requests.structures import CaseInsensitiveDict
 from supabase import Client, create_client
 
 
@@ -60,15 +55,72 @@ def env_int(name: str, default: int) -> int:
 
 CHRONO24_UPSTREAM_FAILURE_THRESHOLD = env_int("CHRONO24_UPSTREAM_FAILURE_THRESHOLD", 4)
 CHRONO24_STALE_AFTER_HOURS = env_int("CHRONO24_STALE_AFTER_HOURS", 48)
-FLARESOLVERR_ENABLED = os.environ.get("FLARESOLVERR_ENABLED", "false").strip().lower() in {
-    "1",
-    "true",
-    "yes",
-    "on",
+PLAYWRIGHT_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/124.0.0.0 Safari/537.36"
+)
+PLAYWRIGHT_NAVIGATION_TIMEOUT_MS = 60_000
+PLAYWRIGHT_WAIT_FOR_LISTINGS_MS = 20_000
+PLAYWRIGHT_DEBUG_ARTIFACTS_DIR = os.environ.get("CHRONO24_PLAYWRIGHT_DEBUG_DIR", "/tmp")
+
+# CSS selector string used by wait_for_selector and the JS extractor
+_CARD_SELECTORS_CSS = (
+    "article.article-item,"
+    "[data-article-id],"
+    ".js-article-item"
+)
+
+# JavaScript evaluated inside the browser page to extract raw listing dicts
+_JS_EXTRACT_LISTINGS = """
+(limit) => {
+    const CARD_SELECTORS = [
+        'article.article-item',
+        '[data-article-id]',
+        '.js-article-item',
+        '[class*="article-item"]',
+        '[class*="ArticleItem"]',
+    ];
+    let cards = [];
+    for (const sel of CARD_SELECTORS) {
+        cards = Array.from(document.querySelectorAll(sel));
+        if (cards.length > 0) break;
+    }
+    if (!cards.length) return [];
+
+    function first(root, sels) {
+        for (const s of sels) {
+            const el = root.querySelector(s);
+            if (el && el.textContent.trim()) return el.textContent.trim();
+        }
+        return '';
+    }
+
+    const results = [];
+    for (const card of cards.slice(0, limit)) {
+        const anchor = card.tagName === 'A' ? card
+            : card.querySelector('a[href*=".htm"]') || card.querySelector('a[href]');
+        const url = anchor ? anchor.href : '';
+        if (!url || !url.includes('chrono24.com')) continue;
+
+        const img = card.querySelector('img[src]:not([src=""])') || card.querySelector('img[data-src]');
+        const imageUrl = img ? (img.src || img.getAttribute('data-src') || null) : null;
+
+        results.push({
+            url,
+            price: first(card, ['[class*="js-format-price"]', '[class*="price"]', '[data-price]']),
+            title: first(card, ['h2', 'h3', '[class*="article-title"]', '[class*="title"]', '[class*="name"]']),
+            reference: first(card, ['[class*="reference"]', '[data-reference]']),
+            condition: first(card, ['[class*="condition"]', '[class*="used"]', '[data-condition]']),
+            location: first(card, ['[class*="location"]', '[class*="seller"]', '[data-location]']),
+            year: first(card, ['[class*="year"]', '[data-year]']),
+            manufacturer: first(card, ['[class*="brand"]', '[class*="manufacturer"]', '[data-brand]']),
+            imageUrl: imageUrl || null,
+        });
+    }
+    return results;
 }
-FLARESOLVERR_URL = os.environ.get("FLARESOLVERR_URL", "http://localhost:8191").rstrip("/")
-FLARESOLVERR_MAX_TIMEOUT_MS = env_int("FLARESOLVERR_MAX_TIMEOUT_MS", 60000)
-LAST_UPSTREAM_ERROR: dict[str, Any] | None = None
+"""
 
 
 QUERIES = [
@@ -186,225 +238,117 @@ def truncate_text(value: Any, *, limit: int = 280) -> str:
     return text if len(text) <= limit else f"{text[: limit - 3]}..."
 
 
-def remember_upstream_error(
-    *,
-    stage: str,
-    message: str,
-    url: str | None = None,
-    status_code: int | None = None,
-    error_type: str | None = None,
-    response_snippet: str | None = None,
-) -> None:
-    global LAST_UPSTREAM_ERROR
-    LAST_UPSTREAM_ERROR = {
-        "stage": stage,
-        "message": truncate_text(message),
-        "url": url,
-        "status_code": status_code,
-        "error_type": error_type,
-        "response_snippet": truncate_text(response_snippet) if response_snippet else None,
-        "occurred_at": utc_now_iso(),
-    }
+class ListingsNotFoundError(Exception):
+    """Raised when the search page renders but contains no listing cards."""
 
 
-def clear_upstream_error() -> None:
-    global LAST_UPSTREAM_ERROR
-    LAST_UPSTREAM_ERROR = None
+class UpstreamFetchError(Exception):
+    """Raised when the browser request fails (navigation timeout or bot-detection)."""
 
 
-def merge_query_params(url: str, params: Any) -> str:
-    if not params:
-        return url
-
-    parsed = urlsplit(url)
-    extra_query = urlencode(params, doseq=True)
-    merged_query = "&".join(part for part in [parsed.query, extra_query] if part)
-    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, merged_query, parsed.fragment))
-
-
-def request_via_flaresolverr(url: str, headers: dict[str, str], *, user_agent: str) -> requests.Response:
-    endpoint = f"{FLARESOLVERR_URL}/v1"
-    payload = {
-        "cmd": "request.get",
-        "url": url,
-        "maxTimeout": FLARESOLVERR_MAX_TIMEOUT_MS,
-        "returnOnlyCookies": False,
-    }
-    forwarded_headers = {**headers}
-    forwarded_headers["user-agent"] = user_agent
-    forwarded_headers["User-Agent"] = user_agent
-    if forwarded_headers:
-        payload["headers"] = forwarded_headers
-
-    try:
-        transport_response = requests.post(endpoint, json=payload, timeout=90)
-        transport_response.raise_for_status()
-    except requests.RequestException as exc:
-        remember_upstream_error(
-            stage="flaresolverr_transport",
-            message=f"{type(exc).__name__}: {exc}",
-            url=url,
-            error_type=type(exc).__name__,
-        )
-        raise
-
-    try:
-        body = transport_response.json()
-    except ValueError as exc:
-        remember_upstream_error(
-            stage="flaresolverr_parse",
-            message="FlareSolverr returned non-JSON response payload.",
-            url=url,
-            response_snippet=transport_response.text,
-            error_type=type(exc).__name__,
-        )
-        raise requests.RequestException("FlareSolverr returned non-JSON response payload.") from exc
-
-    if body.get("status") != "ok":
-        message = body.get("message") or "unknown FlareSolverr error"
-        remember_upstream_error(
-            stage="flaresolverr_status",
-            message=f"FlareSolverr status not ok: {message}",
-            url=url,
-            response_snippet=json.dumps(body)[:300],
-        )
-        raise requests.RequestException(f"FlareSolverr status not ok: {message}")
-
-    solution = body.get("solution")
-    if not isinstance(solution, dict):
-        remember_upstream_error(
-            stage="flaresolverr_solution",
-            message="FlareSolverr response missing solution payload.",
-            url=url,
-            response_snippet=json.dumps(body)[:300],
-        )
-        raise requests.RequestException("FlareSolverr response missing solution payload.")
-
-    response_html = solution.get("response")
-    if not isinstance(response_html, str):
-        remember_upstream_error(
-            stage="flaresolverr_solution",
-            message="FlareSolverr solution missing HTML response body.",
-            url=url,
-            response_snippet=json.dumps(solution)[:300],
-        )
-        raise requests.RequestException("FlareSolverr solution missing response body.")
-
-    response_url = solution.get("url") if isinstance(solution.get("url"), str) else url
-    raw_status_code = solution.get("status")
-    status_code = int(raw_status_code) if isinstance(raw_status_code, int) else 200
-
-    response = requests.Response()
-    response.status_code = status_code
-    response.url = response_url
-    response.headers = CaseInsensitiveDict({"content-type": "text/html; charset=utf-8"})
-    response._content = response_html.encode("utf-8")
-    response.encoding = "utf-8"
-    response.request = requests.Request("GET", url, headers=forwarded_headers).prepare()
-
-    if status_code >= 400:
-        remember_upstream_error(
-            stage="upstream_http_error",
-            message=f"Chrono24 upstream returned HTTP {status_code}",
-            url=response_url,
-            status_code=status_code,
-            response_snippet=response_html,
-        )
-        raise requests.HTTPError(f"Chrono24 upstream returned HTTP {status_code}", response=response)
-
-    if "just a moment" in response_html.lower():
-        remember_upstream_error(
-            stage="upstream_challenge_page",
-            message="Cloudflare challenge page still present after FlareSolverr request.",
-            url=response_url,
-            status_code=status_code,
-            response_snippet=response_html,
-        )
-        raise requests.RequestException("Cloudflare challenge page detected in Chrono24 response.")
-
-    return response
-
-
-def resolve_cloudflare_credentials() -> tuple[dict[str, str], str]:
-    endpoint = f"{FLARESOLVERR_URL}/v1"
-    payload = {
-        "cmd": "request.get",
-        "url": "https://www.chrono24.com/",
-        "maxTimeout": FLARESOLVERR_MAX_TIMEOUT_MS,
-    }
-
-    try:
-        response = requests.post(endpoint, json=payload, timeout=90)
-        response.raise_for_status()
-    except requests.RequestException as exc:
-        raise RuntimeError(
-            f"Failed to reach FlareSolverr at {endpoint}: {type(exc).__name__}: {exc}"
-        ) from exc
-
-    try:
-        body = response.json()
-    except ValueError as exc:
-        raise RuntimeError("FlareSolverr returned a non-JSON response.") from exc
-
-    if body.get("status") != "ok":
-        message = body.get("message") or "unknown FlareSolverr error"
-        raise RuntimeError(f"FlareSolverr request failed: {message}")
-
-    solution = body.get("solution")
-    if not isinstance(solution, dict):
-        raise RuntimeError("FlareSolverr response missing solution payload.")
-
-    raw_cookies = solution.get("cookies")
-    if not isinstance(raw_cookies, list):
-        raise RuntimeError("FlareSolverr response missing cookies list in solution payload.")
-
-    user_agent = solution.get("userAgent")
-    if not isinstance(user_agent, str) or not user_agent.strip():
-        raise RuntimeError("FlareSolverr response missing solution.userAgent.")
-
-    cookies: dict[str, str] = {}
-    for cookie in raw_cookies:
-        if not isinstance(cookie, dict):
+def _dismiss_cookie_banner(page: Any) -> None:
+    """Attempt to close a cookie-consent overlay if one is present."""
+    consent_selectors = [
+        "#onetrust-accept-btn-handler",
+        "button[id*='accept']",
+        "button[class*='accept']",
+        "[data-testid*='accept']",
+        ".js-consent-accept",
+    ]
+    for sel in consent_selectors:
+        try:
+            btn = page.query_selector(sel)
+            if btn and btn.is_visible():
+                btn.click()
+                page.wait_for_timeout(500)
+                return
+        except Exception:
             continue
-        name = cookie.get("name")
-        value = cookie.get("value")
-        if isinstance(name, str) and name and isinstance(value, str):
-            cookies[name] = value
-
-    if not cookies:
-        raise RuntimeError("FlareSolverr did not return usable cookies.")
-
-    return cookies, user_agent
 
 
-def patch_chrono24_session(cookies: dict[str, str], user_agent: str) -> None:
-    if getattr(chrono24_session._get_tenacity_wrapped_response, "_watchvault_flaresolverr_patch", False):
-        return
+def _save_debug_screenshot(page: Any, query: str) -> None:
+    """Save a PNG screenshot to RUNNER_TEMP for workflow artifact upload."""
+    try:
+        safe = "".join(c if c.isalnum() else "_" for c in query)[:40]
+        path = os.path.join(PLAYWRIGHT_DEBUG_ARTIFACTS_DIR, f"chrono24_debug_{safe}.png")
+        page.screenshot(path=path)
+        print(f"  Debug screenshot saved: {path}")
+    except Exception as exc:
+        print(f"  Warning: could not save debug screenshot: {exc}")
 
-    _ = cookies
 
-    def patched_get_response(*args: Any, max_attempts: int = 8, **kwargs: Any) -> Any:
-        input_headers = kwargs.get("headers", {}) or {}
-        resolved_url: str | None = None
-        if args and isinstance(args[0], str):
-            resolved_url = args[0]
-        elif isinstance(kwargs.get("url"), str):
-            resolved_url = kwargs.get("url")
+def search_listings_playwright(query: str, limit: int) -> list[dict[str, Any]]:
+    """
+    Fetch up to ``limit`` Chrono24 listings for ``query`` using a headless Chromium browser.
 
-        if not resolved_url:
-            raise requests.RequestException("Missing URL for Chrono24 request")
+    Returns a list of raw listing dicts compatible with :func:`to_deal_listing`.
+    Raises :class:`UpstreamFetchError` on navigation timeout or bot-detection pages.
+    Raises :class:`ListingsNotFoundError` when the page renders with no listing cards.
+    """
+    from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+    from playwright.sync_api import sync_playwright
 
-        resolved_url = merge_query_params(resolved_url, kwargs.get("params"))
-        base_headers = dict(input_headers) if isinstance(input_headers, dict) else {}
+    limit = max(1, int(limit))
 
-        retry_args = chrono24_session.RETRY_ARGS.copy()
-        retry_args["stop"] = chrono24_session.tenacity.stop.stop_after_attempt(max_attempts)
-        for attempt in chrono24_session.tenacity.Retrying(**retry_args):
-            with attempt:
-                return request_via_flaresolverr(resolved_url, base_headers, user_agent=user_agent)
+    search_url = (
+        "https://www.chrono24.com/search/index.htm?"
+        + urlencode({"query": query, "resultview": "list", "dosearch": "true"})
+    )
+    print(f"  Playwright: {search_url}")
 
-    patched_get_response._watchvault_flaresolverr_patch = True  # type: ignore[attr-defined]
-    chrono24_session._get_tenacity_wrapped_response = patched_get_response
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(
+            headless=True,
+            args=[
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-blink-features=AutomationControlled",
+            ],
+        )
+        context = browser.new_context(
+            user_agent=PLAYWRIGHT_USER_AGENT,
+            viewport={"width": 1280, "height": 900},
+            locale="en-US",
+            timezone_id="America/New_York",
+        )
+        context.add_init_script(
+            "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+        )
+        page = context.new_page()
+
+        try:
+            page.goto(
+                search_url,
+                wait_until="domcontentloaded",
+                timeout=PLAYWRIGHT_NAVIGATION_TIMEOUT_MS,
+            )
+        except PlaywrightTimeoutError as exc:
+            _save_debug_screenshot(page, query)
+            browser.close()
+            raise UpstreamFetchError(f"Navigation timeout for '{query}'") from exc
+
+        _dismiss_cookie_banner(page)
+
+        try:
+            page.wait_for_selector(_CARD_SELECTORS_CSS, timeout=PLAYWRIGHT_WAIT_FOR_LISTINGS_MS)
+        except PlaywrightTimeoutError:
+            html_lower = page.content().lower()
+            _save_debug_screenshot(page, query)
+            browser.close()
+            if "just a moment" in html_lower or "cf-browser-verification" in html_lower:
+                raise UpstreamFetchError(
+                    f"Bot-detection page detected for '{query}'; Cloudflare may be blocking the request."
+                )
+            raise ListingsNotFoundError(f"No listing cards found for '{query}'")
+
+        raw: list[dict[str, Any]] = page.evaluate(_JS_EXTRACT_LISTINGS, limit)
+        browser.close()
+
+    if not raw:
+        raise ListingsNotFoundError(f"No listings extracted for '{query}'")
+
+    print(f"  Playwright: extracted {len(raw)} raw listings")
+    return raw
 
 
 def fetch_previous_health(supabase: Client) -> dict[str, Any]:
@@ -506,7 +450,7 @@ def persist_observability(
 
 def to_deal_listing(listing: dict[str, Any]) -> dict[str, Any] | None:
     """
-    Convert a chrono24 library listing dict to the WatchVault deal_listings
+    Convert a Playwright-extracted listing dict to the WatchVault deal_listings
     table schema. Returns None if required fields are missing.
     """
     url = listing.get("url") or listing.get("detailPageUrl") or ""
@@ -552,8 +496,6 @@ def main() -> None:
     previous_health = fetch_previous_health(supabase)
     previous_consecutive_failures = int(previous_health.get("consecutive_upstream_failures") or 0)
     previous_last_success_at = previous_health.get("last_success_at")
-    flaresolverr_resolved: bool | None = None
-    clear_upstream_error()
 
     if not CHRONO24_ACCESS_APPROVED:
         latest_cached = fetch_latest_listing_timestamp(supabase)
@@ -579,8 +521,6 @@ def main() -> None:
             "consecutive_upstream_failures": 0,
             "sustained_upstream_failure": False,
             "failed": False,
-            "flaresolverr_enabled": FLARESOLVERR_ENABLED,
-            "flaresolverr_resolved": flaresolverr_resolved,
         }
         print(summary)
         print(
@@ -598,129 +538,24 @@ def main() -> None:
         )
         return
 
-    if FLARESOLVERR_ENABLED:
-        print(f"FlareSolverr enabled. Initializing via {FLARESOLVERR_URL}/v1")
-        try:
-            cookies, user_agent = resolve_cloudflare_credentials()
-            patch_chrono24_session(cookies, user_agent)
-            flaresolverr_resolved = True
-            print(
-                "FlareSolverr initialized successfully and Chrono24 session patch applied."
-            )
-        except Exception as exc:
-            flaresolverr_resolved = False
-            summary = (
-                "FlareSolverr initialization failed; treating run as upstream unavailable and "
-                "preserving cached listings."
-            )
-            remember_upstream_error(
-                stage="flaresolverr_initialization",
-                message=f"{type(exc).__name__}: {exc}",
-                error_type=type(exc).__name__,
-            )
-            print(f"  FlareSolverr initialization error: {type(exc).__name__}: {exc}")
-            print(
-                "::warning::FlareSolverr initialization failed; preserving cached listings for this run."
-            )
-
-            consecutive_upstream_failures = previous_consecutive_failures + 1
-            sustained_upstream_failure = (
-                consecutive_upstream_failures >= CHRONO24_UPSTREAM_FAILURE_THRESHOLD
-            )
-            latest_cached = fetch_latest_listing_timestamp(supabase)
-            is_stale, age_hours = compute_listing_staleness(latest_cached)
-            no_cached_listings = latest_cached is None
-            hard_upstream_failure = sustained_upstream_failure
-            metrics = {
-                "source": SOURCE_NAME,
-                "status": "upstream_unavailable",
-                "attempted_at": attempted_at,
-                "upserted": 0,
-                "skipped": 0,
-                "retrieved": 0,
-                "request_errors": 0,
-                "upsert_errors": 0,
-                "query_count": len(QUERIES),
-                "request_error_rate": 0,
-                "cached_listing_last_updated_at": latest_cached,
-                "cached_listing_age_hours": age_hours,
-                "cached_listing_is_stale": is_stale,
-                "stale_after_hours": CHRONO24_STALE_AFTER_HOURS,
-                "consecutive_upstream_failures": consecutive_upstream_failures,
-                "sustained_upstream_failure": sustained_upstream_failure,
-                "no_cached_listings": no_cached_listings,
-                "hard_upstream_failure": hard_upstream_failure,
-                "upstream_failure_threshold": CHRONO24_UPSTREAM_FAILURE_THRESHOLD,
-                "failed": hard_upstream_failure,
-                "flaresolverr_enabled": FLARESOLVERR_ENABLED,
-                "flaresolverr_resolved": flaresolverr_resolved,
-                "last_upstream_error": LAST_UPSTREAM_ERROR,
-            }
-            write_sync_metrics(metrics)
-            persist_observability(
-                supabase,
-                status="upstream_unavailable",
-                summary=summary,
-                metrics=metrics,
-                consecutive_upstream_failures=consecutive_upstream_failures,
-                previous_last_success_at=previous_last_success_at,
-            )
-
-            if hard_upstream_failure:
-                print(
-                    "ERROR: FlareSolverr failed and no cached Chrono24 listings are available."
-                    if no_cached_listings
-                    else "ERROR: FlareSolverr failed and Chrono24 upstream has been unavailable for too many "
-                    "consecutive runs.",
-                    file=sys.stderr,
-                )
-                sys.exit(1)
-
-            return
-    else:
-        print("FlareSolverr disabled; using direct Chrono24 requests.")
-
     total_upserted = 0
     total_skipped = 0
     total_request_errors = 0
     total_retrieved = 0
     total_upsert_errors = 0
-    last_upstream_error: dict[str, Any] | None = None
 
     for query_str in QUERIES:
         print(f"\nFetching: {query_str}")
-        clear_upstream_error()
         try:
-            results = chrono24.query(query_str)
-            listings = list(results.search(limit=LISTINGS_PER_QUERY))
+            listings = search_listings_playwright(query_str, LISTINGS_PER_QUERY)
             total_retrieved += len(listings)
             print(f"  Retrieved {len(listings)} listings")
-        except NoListingsFoundException:
+        except ListingsNotFoundError:
             print(f"  No listings found for '{query_str}' — skipping")
             continue
-        except StopIteration as exc:
+        except UpstreamFetchError as exc:
             total_request_errors += 1
-            remember_upstream_error(
-                stage="chrono24_query",
-                message=(
-                    "chrono24.query/search returned an empty iterator before listings could be parsed"
-                ),
-                error_type=type(exc).__name__,
-            )
-            print(
-                f"  Upstream response could not be parsed for '{query_str}': "
-                f"{type(exc).__name__}: {exc!r} — treating as upstream unavailable"
-            )
-            if LAST_UPSTREAM_ERROR:
-                last_upstream_error = {"query": query_str, **LAST_UPSTREAM_ERROR}
-                print(f"  Upstream diagnostics: {json.dumps(last_upstream_error, sort_keys=True)}")
-            continue
-        except RequestException as exc:
-            total_request_errors += 1
-            print(f"  Request error for '{query_str}': {type(exc).__name__}: {exc!r} — skipping")
-            if LAST_UPSTREAM_ERROR:
-                last_upstream_error = {"query": query_str, **LAST_UPSTREAM_ERROR}
-                print(f"  Upstream diagnostics: {json.dumps(last_upstream_error, sort_keys=True)}")
+            print(f"  Fetch error for '{query_str}': {type(exc).__name__}: {exc!r} — skipping")
             continue
 
         rows: list[dict[str, Any]] = []
@@ -802,9 +637,6 @@ def main() -> None:
         "hard_upstream_failure": hard_upstream_failure,
         "upstream_failure_threshold": CHRONO24_UPSTREAM_FAILURE_THRESHOLD,
         "failed": status in {"failed_upsert", "mapping_empty"} or hard_upstream_failure,
-        "flaresolverr_enabled": FLARESOLVERR_ENABLED,
-        "flaresolverr_resolved": flaresolverr_resolved,
-        "last_upstream_error": last_upstream_error,
     }
 
     print(
@@ -853,7 +685,7 @@ def main() -> None:
         if no_cached_listings:
             print(
                 "ERROR: Chrono24 upstream unavailable and no cached listings are available. "
-                "Investigate upstream access and FlareSolverr proxying.",
+                "Investigate upstream access and Playwright browser scraping.",
                 file=sys.stderr,
             )
         else:

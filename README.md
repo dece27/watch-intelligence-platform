@@ -44,7 +44,7 @@ The goal of this project is to provide a single operating system for watch colle
 - Per-user signal and deal assessment cache keyed on a dependency hash (watches + preferences + vault metadata)
 
 ### 5) Deals Discovery
-- Live deal sourcing synced by GitHub Actions with the `irahorecka/chrono24` Python library and stored in Supabase
+- Live deal sourcing synced by GitHub Actions using Playwright (headless Chromium) and stored in Supabase
 - Match and deal scoring based on user preferences and owned brands
 - Filtering by budget, condition, box/papers, preferred brands, and seller rating
 - Deal detail views with contextual scoring signals
@@ -82,7 +82,7 @@ The goal of this project is to provide a single operating system for watch colle
 - **IndexedDB fallback** (`src/lib/sparkKV.ts`) — used automatically on GitHub Pages and other static deployments where the Spark runtime is not available
 - **Supabase Edge Functions** — secure server-side proxying for GitHub Models API calls
 - **WatchCharts API client** (`src/lib/watchcharts-client.ts`) — optional live market value lookups
-- **Chrono24 sync workflow** (`.github/workflows/fetch-chrono24.yml`) — scheduled Python job that fetches listings with `irahorecka/chrono24` and upserts them into Supabase
+- **Chrono24 sync workflow** (`.github/workflows/fetch-chrono24.yml`) — scheduled Python job that fetches listings with Playwright (headless Chromium) and upserts them into Supabase
 
 ## Local Development
 
@@ -142,12 +142,6 @@ Recommended GitHub Environment variables for resilient sync behavior:
   (default: `4`)
 - `CHRONO24_STALE_AFTER_HOURS` — cached listing freshness window used for stale
   status reporting (default: `48`)
-- `FLARESOLVERR_ENABLED` — set to `true` to proxy Chrono24 requests through
-  the FlareSolverr service container (default: `false`)
-- `FLARESOLVERR_URL` — FlareSolverr base URL used by the sync script
-  (default: `http://localhost:8191`)
-- `FLARESOLVERR_MAX_TIMEOUT_MS` — per-request FlareSolverr timeout in
-  milliseconds (default: `60000`)
 
 ### WatchCharts live market values (optional)
 
@@ -278,8 +272,8 @@ tasks:
   snapshots for users with active watches via `node scripts/portfolio-snapshots.mjs`
 - `.github/workflows/check-price-alerts.yml` — checks active price alerts every
   six hours and sends Resend notifications via `node scripts/check-alerts.mjs`
-- `.github/workflows/fetch-chrono24.yml` — fetches live Chrono24 listings with
-  the `irahorecka/chrono24` Python library and upserts them into Supabase via
+- `.github/workflows/fetch-chrono24.yml` — fetches live Chrono24 listings using
+  Playwright (headless Chromium) and upserts them into Supabase via
   `python scripts/fetch-chrono24.py`
 - `.github/workflows/run-supabase-migrations.yml` — applies SQL migrations from
   `supabase/migrations` to Supabase on push to `main` (when migration files
