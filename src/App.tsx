@@ -41,6 +41,12 @@ function decodeLegacySharedSlug(value: string): string | null {
   }
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+function isValidUuid(value: string): boolean {
+  return UUID_REGEX.test(value)
+}
+
 function getUserPreferencesKey(userId: string): string {
   return `user_preferences_${userId}`
 }
@@ -315,14 +321,21 @@ function App() {
           if (missingKvWatches.length > 0) {
             const prepared = await Promise.all(
               missingKvWatches.map(async (watch) => {
+                // Legacy KV watches may have non-UUID IDs (e.g. "watch-<timestamp>").
+                // Supabase requires a valid UUID for the primary key, so generate
+                // a fresh one for any watch that doesn't already have one.
+                const migratedWatch = isValidUuid(watch.id)
+                  ? watch
+                  : { ...watch, id: crypto.randomUUID() }
+
                 if (isWatchPhotoRef(watch.imageUrl)) {
                   const legacyPhoto = await window.spark.kv.get<string>(getWatchPhotoKey(currentUser.id, watch.id))
                   if (legacyPhoto) {
-                    await window.spark.kv.set(getWatchPhotoKey(supabaseUserId, watch.id), legacyPhoto)
+                    await window.spark.kv.set(getWatchPhotoKey(supabaseUserId, migratedWatch.id), legacyPhoto)
                   }
                 }
                 return prepareWatchForStorage(
-                  watch,
+                  migratedWatch,
                   supabaseUserId,
                   (key, value) => window.spark.kv.set(key, value),
                 )

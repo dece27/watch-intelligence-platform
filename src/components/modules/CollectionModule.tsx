@@ -144,7 +144,7 @@ export function CollectionModule({
     }
 
     const watch: Watch = {
-      id: editingWatch?.id || `watch-${Date.now()}`,
+      id: editingWatch?.id || crypto.randomUUID(),
       brand: formData.brand,
       model: formData.model,
       referenceNumber: formData.referenceNumber,
