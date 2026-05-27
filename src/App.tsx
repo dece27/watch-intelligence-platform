@@ -45,6 +45,19 @@ function getUserPreferencesKey(userId: string): string {
   return `user_preferences_${userId}`
 }
 
+function getUserWatchesKey(userId: string): string {
+  return `watches_${userId}`
+}
+
+const SUPABASE_DEFAULT_PREFERENCES = {
+  locale: 'en',
+  theme: 'dark' as const,
+  showPurchasePrices: true,
+  emailPriceAlerts: true,
+  emailWeeklyDigest: false,
+  defaultPortfolioView: 'value' as const,
+}
+
 function App() {
   const [persistedUser, setPersistedUser] = useKV<User | null>("currentUser", null)
   const [currentUser, setCurrentUser] = useState<User | null>(persistedUser ?? null)
@@ -195,12 +208,7 @@ function App() {
         await upsertUserPreferences(client, {
           userId: supabaseUserId,
           currency: normalizeCurrency(stored?.currency),
-          locale: 'en',
-          theme: 'dark',
-          showPurchasePrices: true,
-          emailPriceAlerts: true,
-          emailWeeklyDigest: false,
-          defaultPortfolioView: 'value',
+          ...SUPABASE_DEFAULT_PREFERENCES,
         })
       } catch (error) {
         if (!active) return
@@ -275,7 +283,7 @@ function App() {
         if (supabaseUserId && hasSupabaseBrowserEnv()) {
           let rows = await getWatches(supabaseUserId, { limit: 1000, offset: 0 })
           if (rows.length === 0) {
-            const kvWatches = (await window.spark.kv.get<Watch[]>(`watches_${currentUser.id}`)) || []
+            const kvWatches = (await window.spark.kv.get<Watch[]>(getUserWatchesKey(currentUser.id))) || []
             if (kvWatches.length > 0) {
               const prepared = await Promise.all(
                 kvWatches.map(async (watch) => {
@@ -330,7 +338,7 @@ function App() {
         }
 
         // KV fallback.
-        const watchesKey = `watches_${currentUser.id}`
+        const watchesKey = getUserWatchesKey(currentUser.id)
         const loadedWatches = (await window.spark.kv.get<Watch[]>(watchesKey)) || []
         const hydratedWatches = await Promise.all(
           loadedWatches.map(async (watch) => {
@@ -511,7 +519,7 @@ function App() {
     }
 
     // KV fallback (original implementation).
-    const watchesKey = `watches_${currentUser.id}`
+    const watchesKey = getUserWatchesKey(currentUser.id)
 
     try {
       const currentWatches = await window.spark.kv.get<Watch[]>(watchesKey) || []
