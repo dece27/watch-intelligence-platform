@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Slider } from "@/components/ui/slider"
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table"
 import { CaretDown, CaretUp, Lightbulb } from "@phosphor-icons/react"
-import { DailyLimitError, callAI, createAICacheKey, hashAIInput } from "@/lib/ai/caller"
+import { DailyLimitError, callAI, createAICacheKey, hashAIInput, readAICache } from "@/lib/ai/caller"
 import { formatCurrency } from "@/lib/currency"
 
 interface WhatIfSellCalculatorProps {
@@ -40,6 +40,28 @@ export function WhatIfSellCalculator({ watches, getMockMarketValue, calculateHea
       setSalePrice((currentPrice) => currentPrice === 0 ? currentMarketValue : currentPrice)
     }
   }, [currentMarketValue, selectedWatch])
+
+  // Restore a cached AI suggestion for the selected watch at its initial market
+  // price so the user doesn't need to click "Generate" again after a tab switch.
+  useEffect(() => {
+    if (!selectedWatch) return
+    const marketValue = getMockMarketValue(selectedWatch)
+    const gain = marketValue - selectedWatch.purchasePrice
+    const tax = gain > 0 ? Math.round(gain * 0.28) : 0
+    const netAfterTax = marketValue - tax
+    const remainingWatches = watches.filter(w => w.id !== selectedWatch.id)
+    const collectionSummary = remainingWatches.length > 0
+      ? remainingWatches.map(w => `${w.brand} ${w.model}`).join(', ')
+      : 'empty (no remaining watches)'
+    const key = createAICacheKey(
+      'what-if-sell',
+      selectedWatch.id,
+      hashAIInput(`${preferredCurrency}|${netAfterTax}|${collectionSummary}`),
+    )
+    const cached = readAICache(key)
+    if (cached) setLlmSuggestion(cached)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedWatch?.id, preferredCurrency])
 
   const currentMetrics = useMemo(() => {
     const watchesWithValues = watches.map(w => ({
