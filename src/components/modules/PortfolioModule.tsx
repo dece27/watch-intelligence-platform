@@ -13,6 +13,9 @@ import { convertCurrency, formatCurrency } from "@/lib/currency"
 import { getPortfolioMarketSnapshots, marketConfidenceLabel, type NormalizedMarketData } from "@/lib/market-data"
 import { toast } from "sonner"
 
+const WATCHCHARTS_DEFAULT_CONFIDENCE = 0.95
+const HEURISTIC_DEFAULT_CONFIDENCE = 0.45
+
 interface PortfolioModuleProps {
   watches: Watch[]
   onUpdate: (updater: (currentWatches: Watch[]) => Watch[]) => Promise<void>
@@ -195,7 +198,7 @@ export function PortfolioModule({ watches, onUpdate, preferredCurrency = "USD", 
             ...watch,
             currentValue: value,
             marketSource: "watchcharts",
-            marketConfidence: 0.95,
+            marketConfidence: WATCHCHARTS_DEFAULT_CONFIDENCE,
             marketUpdatedAt: refreshedAt,
           }
         }),
@@ -220,6 +223,8 @@ export function PortfolioModule({ watches, onUpdate, preferredCurrency = "USD", 
       return watch.currentValue
     }
     const snapshot = marketSnapshots[watch.id]
+    // Heuristic snapshots are derived approximations and should not override
+    // canonical persisted market values during ROI calculations.
     const normalizedSnapshotValue = snapshot && snapshot.source !== "heuristic"
       ? convertCurrency(snapshot.latestPrice, snapshot.currency, "USD")
       : null
@@ -230,7 +235,7 @@ export function PortfolioModule({ watches, onUpdate, preferredCurrency = "USD", 
     return watches.map(watch => {
       const snapshot = marketSnapshots[watch.id]
       const marketValue = getMarketValue(watch)
-      const roi = watch.purchasePrice > 0 ? ((marketValue - watch.purchasePrice) / watch.purchasePrice) * 100 : 0
+      const roi = watch.purchasePrice > 0 ? ((marketValue - watch.purchasePrice) / watch.purchasePrice) * 100 : null
       const roiDollar = marketValue - watch.purchasePrice
       const holdPeriod = calculateHoldPeriod(watch.purchaseDate)
       
@@ -243,7 +248,7 @@ export function PortfolioModule({ watches, onUpdate, preferredCurrency = "USD", 
         holdPeriodDays: Math.ceil((new Date().getTime() - new Date(watch.purchaseDate).getTime()) / (1000 * 60 * 60 * 24)),
         marketSource: watch.marketSource ?? snapshot?.source ?? "heuristic",
         marketUpdatedAt: watch.marketUpdatedAt ?? snapshot?.updatedAt,
-        marketConfidence: watch.marketConfidence ?? snapshot?.confidence ?? 0.45,
+        marketConfidence: watch.marketConfidence ?? snapshot?.confidence ?? HEURISTIC_DEFAULT_CONFIDENCE,
       }
     })
   }, [watches, getMarketValue, marketSnapshots])
@@ -259,8 +264,8 @@ export function PortfolioModule({ watches, onUpdate, preferredCurrency = "USD", 
           bVal = b.brand
           break
         case 'roi':
-          aVal = a.roi
-          bVal = b.roi
+          aVal = a.roi ?? Number.NEGATIVE_INFINITY
+          bVal = b.roi ?? Number.NEGATIVE_INFINITY
           break
         case 'value':
           aVal = a.marketValue
@@ -301,7 +306,7 @@ export function PortfolioModule({ watches, onUpdate, preferredCurrency = "USD", 
       return Date.parse(watch.marketUpdatedAt) > Date.parse(latest) ? watch.marketUpdatedAt : latest
     }, null)
     const confidence = marketConfidenceLabel(
-      watchesWithMarket.reduce((sum, watch) => sum + (watch.marketConfidence || 0.45), 0) / watchesWithMarket.length
+      watchesWithMarket.reduce((sum, watch) => sum + (watch.marketConfidence ?? HEURISTIC_DEFAULT_CONFIDENCE), 0) / watchesWithMarket.length
     )
     return { source, updatedAt, confidence }
   }, [watchesWithMetrics])
@@ -573,7 +578,7 @@ export function PortfolioModule({ watches, onUpdate, preferredCurrency = "USD", 
                     <TableCell className="tabular-nums">
                       <div>{formatCurrency(watch.marketValue, preferredCurrency)}</div>
                       <div className="text-xs text-muted-foreground">
-                        Source: {watch.marketSource || 'heuristic'} · {watch.marketUpdatedAt ? new Date(watch.marketUpdatedAt).toLocaleDateString() : 'n/a'} · {marketConfidenceLabel(watch.marketConfidence || 0.45)}
+                        Source: {watch.marketSource || 'heuristic'} · {watch.marketUpdatedAt ? new Date(watch.marketUpdatedAt).toLocaleDateString() : 'n/a'} · {marketConfidenceLabel(watch.marketConfidence ?? HEURISTIC_DEFAULT_CONFIDENCE)}
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
@@ -581,13 +586,14 @@ export function PortfolioModule({ watches, onUpdate, preferredCurrency = "USD", 
                         <Badge 
                           variant="outline"
                           className={
+                            watch.roi === null ? 'bg-muted/50 text-muted-foreground border-border' :
                             watch.roi > 20 ? 'bg-primary/10 text-primary border-primary/30' :
                             watch.roi > 0 ? 'bg-success/10 text-success border-success/30' :
                             'bg-destructive/10 text-destructive border-destructive/30'
                           }
                         >
-                          {watch.roi > 0 ? <TrendUp className="mr-1" size={14} /> : <TrendDown className="mr-1" size={14} />}
-                          {watch.roi >= 0 ? '+' : ''}{watch.roi.toFixed(1)}%
+                          {watch.roi === null ? null : watch.roi > 0 ? <TrendUp className="mr-1" size={14} /> : <TrendDown className="mr-1" size={14} />}
+                          {watch.roi === null ? 'n/a' : `${watch.roi >= 0 ? '+' : ''}${watch.roi.toFixed(1)}%`}
                         </Badge>
                         <span className={`tabular-nums text-sm ${watch.roiDollar >= 0 ? 'text-success' : 'text-destructive'}`}>
                           {watch.roiDollar >= 0 ? '+' : '-'}{formatCurrency(Math.abs(watch.roiDollar), preferredCurrency)}

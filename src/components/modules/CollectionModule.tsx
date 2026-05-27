@@ -15,6 +15,8 @@ import { ShareCollectionModal } from "@/components/ShareCollectionModal"
 import { ImportCSVModal } from "@/components/ImportCSVModal"
 import { formatCurrency } from "@/lib/currency"
 
+const MANUAL_ENTRY_DEFAULT_CONFIDENCE = 0.6
+
 interface CollectionModuleProps {
   watches: Watch[]
   onUpdate: (updater: (currentWatches: Watch[]) => Watch[]) => void
@@ -155,7 +157,7 @@ export function CollectionModule({
       purchaseDate: formData.purchaseDate,
       currentValue: hasManualCurrentValue ? Number(formData.currentValue) : undefined,
       marketSource: hasManualCurrentValue ? "manual" : undefined,
-      marketConfidence: hasManualCurrentValue ? 0.6 : undefined,
+      marketConfidence: hasManualCurrentValue ? MANUAL_ENTRY_DEFAULT_CONFIDENCE : undefined,
       marketUpdatedAt: hasManualCurrentValue ? new Date().toISOString() : undefined,
       condition: formData.condition || 'excellent',
       category: formData.category || 'dress',
