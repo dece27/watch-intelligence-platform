@@ -27,6 +27,18 @@ jobs:
 
       - run: npm ci
 
+      - name: Create production env file
+        run: |
+          : "${SUPABASE_URL:?SUPABASE_URL secret is not configured in GitHub Actions secrets}"
+          : "${SUPABASE_ANON_KEY:?SUPABASE_ANON_KEY secret is not configured in GitHub Actions secrets}"
+          {
+            printf 'VITE_SUPABASE_URL=%s\n' "$SUPABASE_URL"
+            printf 'VITE_SUPABASE_ANON_KEY=%s\n' "$SUPABASE_ANON_KEY"
+          } > "$GITHUB_WORKSPACE/.env.production"
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+
       - name: Build static export
         run: |
           npm run build
@@ -35,8 +47,6 @@ jobs:
         env:
           NODE_ENV: production
           VITE_BASE_PATH: /${{ github.event.repository.name }}/
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
