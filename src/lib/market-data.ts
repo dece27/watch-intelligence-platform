@@ -362,7 +362,7 @@ function parseRetryAfterMs(retryAfterHeader: string | null): number | null {
   }
 
   const asDateMs = Date.parse(retryAfterHeader)
-  if (!Number.isFinite(asDateMs)) return null
+  if (Number.isNaN(asDateMs)) return null
   const delta = asDateMs - Date.now()
   return delta > 0 ? Math.max(250, delta) : null
 }
@@ -494,7 +494,7 @@ async function getPersistentSentimentCache(brand: string): Promise<number | null
   if (!isBrowser()) return null
   try {
     const cached = await window.spark.kv.get<{ cachedAt: string; score: number }>(key)
-    if (!cached || !Number.isFinite(cached.score)) return null
+    if (!cached || cached.score === null || cached.score === undefined || !Number.isFinite(cached.score)) return null
     const cachedAt = Date.parse(cached.cachedAt)
     if (!Number.isFinite(cachedAt)) return null
     if (Date.now() - cachedAt > SENTIMENT_CACHE_TTL_MS) return null
