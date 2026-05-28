@@ -415,7 +415,7 @@ function App() {
     }
   }, [currentUser?.id, supabaseUserId, persistenceState])
 
-  const watchList = watches || []
+  const watchList = watches
   const totalValue = watchList.reduce((sum, w) => sum + getEstimatedMarketValue(w), 0)
 
   useEffect(() => {
