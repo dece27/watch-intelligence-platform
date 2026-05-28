@@ -14,7 +14,7 @@ interface AppraisalModuleProps {
 }
 
 function hasStoredCurrentValue(watch?: Watch): watch is Watch & { currentValue: number } {
-  return typeof watch?.currentValue === "number" && Number.isFinite(watch.currentValue) && watch.currentValue > 0
+  return typeof watch?.currentValue === "number" && Number.isFinite(watch.currentValue) && watch.currentValue >= 0
 }
 
 export function AppraisalModule({ watches, preferredCurrency = "USD" }: AppraisalModuleProps) {
