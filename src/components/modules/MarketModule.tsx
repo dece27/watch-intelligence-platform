@@ -268,6 +268,12 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
     return brandIndices.filter(b => getTrendChange(b.trend, 1) > 0).length
   }, [brandIndices])
 
+  const hasMissingSentiment = useMemo(() => {
+    if (brandIndices.length === 0) return false
+    const availableSentimentCount = brandIndices.filter((brand) => typeof brand.sentimentScore === "number").length
+    return availableSentimentCount < brandIndices.length
+  }, [brandIndices])
+
   const sentimentMonthLabels = useMemo(() => {
     const formatter = new Intl.DateTimeFormat('en-US', { month: 'short' })
     const now = new Date()
@@ -581,6 +587,11 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
                 )
               })}
             </div>
+            {hasMissingSentiment && (
+              <div className="text-xs text-muted-foreground">
+                Some GDELT sentiment data is temporarily unavailable due to rate limiting.
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
