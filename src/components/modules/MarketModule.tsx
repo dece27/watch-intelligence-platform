@@ -29,6 +29,8 @@ interface MarketModuleProps {
   preferredCurrency?: string
 }
 
+type MarketDataStatus = 'loading' | 'ready' | 'empty' | 'error'
+
 const getHostname = (url: string): string | undefined => {
   try {
     return new URL(url).hostname.toLowerCase()
@@ -212,7 +214,7 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
   const [brandIndices, setBrandIndices] = useState<BrandMarketIndex[]>([])
   const [topMovers, setTopMovers] = useState<MarketMover[]>([])
   const [marketDataUpdatedAt, setMarketDataUpdatedAt] = useState<string | null>(null)
-  const [marketDataStatus, setMarketDataStatus] = useState<'loading' | 'ready' | 'empty' | 'error'>('loading')
+  const [marketDataStatus, setMarketDataStatus] = useState<MarketDataStatus>('loading')
   const [referenceSnapshot, setReferenceSnapshot] = useState<NormalizedMarketData | null>(null)
   const [isReferenceLoading, setIsReferenceLoading] = useState(false)
   const [alertEvaluations, setAlertEvaluations] = useState<Record<string, PriceAlertEvaluation>>({})

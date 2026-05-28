@@ -142,6 +142,10 @@ function extractString(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null
 }
 
+/**
+ * Safely parses a finite numeric value from unknown input.
+ * Returns undefined for non-numeric, NaN, and infinite values.
+ */
 function toNumberOrUndefined(value: unknown): number | undefined {
   if (typeof value === "number" && Number.isFinite(value)) return value
   if (typeof value !== "string") return undefined
@@ -149,6 +153,11 @@ function toNumberOrUndefined(value: unknown): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined
 }
 
+/**
+ * Normalizes a lookup candidate into a safe market lookup input.
+ * Requires non-empty brand and model strings; reference and heuristic are optional.
+ * Returns null when required fields are missing or invalid.
+ */
 function sanitizeLookupInput(input: MarketLookupCandidate): MarketLookupInput | null {
   const brand = extractString(input.brand)
   const model = extractString(input.model)
