@@ -13,6 +13,10 @@ interface AppraisalModuleProps {
   preferredCurrency?: string
 }
 
+function hasStoredCurrentValue(watch?: Watch): watch is Watch & { currentValue: number } {
+  return typeof watch?.currentValue === "number" && Number.isFinite(watch.currentValue) && watch.currentValue > 0
+}
+
 export function AppraisalModule({ watches, preferredCurrency = "USD" }: AppraisalModuleProps) {
   const [selectedWatchId, setSelectedWatchId] = useState<string>(watches[0]?.id || '')
   const [marketValue, setMarketValue] = useState<number | null>(null)
@@ -26,6 +30,13 @@ export function AppraisalModule({ watches, preferredCurrency = "USD" }: Appraisa
     const loadMarketValue = async () => {
       if (!selectedWatch) {
         setMarketValue(null)
+        setMarketSnapshot(null)
+        return
+      }
+
+      if (hasStoredCurrentValue(selectedWatch)) {
+        setMarketValue(null)
+        setMarketSnapshot(null)
         return
       }
 
@@ -87,7 +98,9 @@ export function AppraisalModule({ watches, preferredCurrency = "USD" }: Appraisa
     )
   }
 
-  const appraisalValue = marketValue ?? marketSnapshot?.latestPrice ?? selectedWatch.currentValue ?? null
+  const appraisalValue = hasStoredCurrentValue(selectedWatch)
+    ? selectedWatch.currentValue
+    : marketValue ?? marketSnapshot?.latestPrice ?? null
   const appraisalDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
 
   return (
@@ -222,13 +235,15 @@ export function AppraisalModule({ watches, preferredCurrency = "USD" }: Appraisa
               <div className="text-sm text-muted-foreground print:text-gray-600 mb-2">Current Market Value</div>
                 <div className="text-4xl font-bold text-primary print:text-black tabular-nums">
                   {appraisalValue !== null
-                    ? formatCurrency(appraisalValue, preferredCurrency, { sourceCurrency: marketValue ? "USD" : (marketSnapshot?.currency || "USD") })
+                    ? hasStoredCurrentValue(selectedWatch)
+                      ? formatCurrency(appraisalValue, preferredCurrency)
+                      : formatCurrency(appraisalValue, preferredCurrency, { sourceCurrency: marketValue ? "USD" : (marketSnapshot?.currency || "USD") })
                     : "Unavailable"}
                 </div>
               <div className="text-sm text-muted-foreground print:text-gray-600 mt-3">
                 Based on current market conditions, condition assessment, and comparable sales data
               </div>
-              {marketSnapshot && (
+              {!hasStoredCurrentValue(selectedWatch) && marketSnapshot && (
                 <div className="text-xs text-muted-foreground print:text-gray-600 mt-3">
                   Source: {marketValue ? 'watchcharts' : marketSnapshot.source} · Updated {new Date(marketSnapshot.updatedAt).toLocaleString()} · Confidence {marketConfidenceLabel(marketSnapshot.confidence)}
                 </div>
