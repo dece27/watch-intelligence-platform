@@ -17,6 +17,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import random
 import sys
 import uuid
 from datetime import datetime, timezone
@@ -285,8 +286,6 @@ def search_listings_playwright(query: str, limit: int) -> list[dict[str, Any]]:
     Raises :class:`UpstreamFetchError` on navigation timeout or bot-detection pages.
     Raises :class:`ListingsNotFoundError` when the page renders but contains no listing cards.
     """
-    import random
-
     from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
     from playwright.sync_api import sync_playwright
     from playwright_stealth import Stealth
