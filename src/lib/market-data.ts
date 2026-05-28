@@ -81,6 +81,7 @@ const FX_CACHE_TTL_MS = 1000 * 60 * 60 * 6
 const SENTIMENT_CACHE_TTL_MS = 1000 * 60 * 60 * 2
 const MAX_GDELT_BRANDS_PER_LOAD = 4
 const SENTIMENT_REQUEST_SPACING_MS = import.meta.env.MODE === "test" ? 0 : 400
+const MIN_RETRY_DELAY_MS = 250
 const DEFAULT_LOOKUP_BRAND = "Unknown"
 const DEFAULT_LOOKUP_MODEL = "Unknown Model"
 
@@ -358,13 +359,13 @@ function parseRetryAfterMs(retryAfterHeader: string | null): number | null {
   if (!retryAfterHeader) return null
   const asSeconds = Number(retryAfterHeader)
   if (Number.isFinite(asSeconds) && asSeconds > 0) {
-    return Math.max(250, Math.round(asSeconds * 1000))
+    return Math.max(MIN_RETRY_DELAY_MS, Math.round(asSeconds * 1000))
   }
 
   const asDateMs = Date.parse(retryAfterHeader)
   if (Number.isNaN(asDateMs)) return null
   const delta = asDateMs - Date.now()
-  return delta > 0 ? Math.max(250, delta) : null
+  return delta > 0 ? Math.max(MIN_RETRY_DELAY_MS, delta) : null
 }
 
 function sleep(ms: number): Promise<void> {
@@ -868,11 +869,10 @@ export async function getMarketDashboardData(watches: Watch[]): Promise<MarketDa
     try {
       sentimentByBrand[brand] = await getBrandSentimentScore(brand)
     } catch (error) {
+      sentimentByBrand[brand] = null
       if (error instanceof RateLimitError) {
-        sentimentByBrand[brand] = null
         break
       }
-      sentimentByBrand[brand] = null
     }
 
     if (index < prioritizedBrands.length - 1) {
