@@ -75,6 +75,7 @@ describe("AppraisalModule", () => {
     await act(async () => {
       root.unmount()
     })
+    ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false
   })
 
   it("uses the stored collection current value instead of overriding it with live market data", async () => {
