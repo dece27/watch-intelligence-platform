@@ -64,12 +64,37 @@ PLAYWRIGHT_USER_AGENT = (
 PLAYWRIGHT_NAVIGATION_TIMEOUT_MS = 60_000
 PLAYWRIGHT_WAIT_FOR_LISTINGS_MS = 30_000
 PLAYWRIGHT_DEBUG_ARTIFACTS_DIR = os.environ.get("CHRONO24_PLAYWRIGHT_DEBUG_DIR", "/tmp")
+_DEBUG_HTML_SNIPPET_LENGTH = 500
 
-# CSS selector string used by wait_for_selector and the JS extractor
+# CSS selector string used by wait_for_selector and the JS extractor.
+# Listed from most-specific to broadest so that the narrowest match wins first
+# while the wildcards ensure we still find cards after a Chrono24 DOM update.
 _CARD_SELECTORS_CSS = (
     "article.article-item,"
     "[data-article-id],"
-    ".js-article-item"
+    ".js-article-item,"
+    "[class*='article-item'],"
+    "[class*='ArticleItem'],"
+    "[data-listing-id],"
+    "[class*='listing-item'],"
+    "[class*='ListingItem']"
+)
+
+# Bot-detection signals to look for in the page HTML when no listing cards
+# are found after the timeout. Presence of any of these causes the error to be
+# classified as an UpstreamFetchError (retryable) rather than ListingsNotFoundError.
+_BOT_DETECTION_KEYWORDS = (
+    "just a moment",
+    "cf-browser-verification",
+    "cf_chl_",
+    "challenge-form",
+    "captcha",
+    "please complete the security check",
+    "human verification",
+    "access denied",
+    "bot detection",
+    "are you a robot",
+    "enable javascript and cookies",
 )
 
 # JavaScript evaluated inside the browser page to extract raw listing dicts
@@ -81,6 +106,9 @@ _JS_EXTRACT_LISTINGS = """
         '.js-article-item',
         '[class*="article-item"]',
         '[class*="ArticleItem"]',
+        '[data-listing-id]',
+        '[class*="listing-item"]',
+        '[class*="ListingItem"]',
     ];
     let cards = [];
     for (const sel of CARD_SELECTORS) {
@@ -255,6 +283,17 @@ def _dismiss_cookie_banner(page: Any) -> None:
         "button[class*='accept']",
         "[data-testid*='accept']",
         ".js-consent-accept",
+        # Chrono24 / Quantcast CMP
+        ".qc-cmp2-summary-buttons button:first-child",
+        "[data-gdpr-expression='acceptAll']",
+        "button[aria-label*='accept' i]",
+        "button[aria-label*='agree' i]",
+        "button[aria-label*='consent' i]",
+        # Generic "agree / OK" patterns
+        "button[id*='agree']",
+        "button[class*='agree']",
+        "button[id*='consent']",
+        "button[class*='consent']",
     ]
     for sel in consent_selectors:
         try:
@@ -343,15 +382,30 @@ def search_listings_playwright(query: str, limit: int) -> list[dict[str, Any]]:
         _dismiss_cookie_banner(page)
 
         try:
-            page.wait_for_selector(_CARD_SELECTORS_CSS, timeout=PLAYWRIGHT_WAIT_FOR_LISTINGS_MS)
+            page.wait_for_selector(
+                _CARD_SELECTORS_CSS,
+                state="attached",
+                timeout=PLAYWRIGHT_WAIT_FOR_LISTINGS_MS,
+            )
         except PlaywrightTimeoutError:
-            html_lower = page.content().lower()
+            html = page.content()
+            html_lower = html.lower()
+            # Capture diagnostic info before closing the browser
+            try:
+                page_title = page.title()
+            except Exception:
+                page_title = ""
             _save_debug_screenshot(page, query)
             browser.close()
-            if "just a moment" in html_lower or "cf-browser-verification" in html_lower:
+            if any(kw in html_lower for kw in _BOT_DETECTION_KEYWORDS):
                 raise UpstreamFetchError(
-                    f"Bot-detection page detected for '{query}'; Cloudflare may be blocking the request."
+                    f"Bot-detection page detected for '{query}'; upstream may be blocking the request."
                 )
+            print(
+                f"  No listing cards found for '{query}'. "
+                f"Page title: {page_title!r}. "
+                f"HTML snippet: {html[:_DEBUG_HTML_SNIPPET_LENGTH]!r}"
+            )
             raise ListingsNotFoundError(f"No listing cards found for '{query}'")
 
         raw: list[dict[str, Any]] = page.evaluate(_JS_EXTRACT_LISTINGS, limit)
