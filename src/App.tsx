@@ -58,6 +58,20 @@ function getUserWatchesKey(userId: string): string {
   return `watches_${userId}`
 }
 
+const DEFAULT_WATCH_BRAND = "Unknown"
+const DEFAULT_WATCH_MODEL = "Unknown Model"
+
+function normalizeWatchForDisplay(watch: Watch): Watch {
+  const normalizedBrand = typeof watch.brand === "string" ? watch.brand.trim() : ""
+  const normalizedModel = typeof watch.model === "string" ? watch.model.trim() : ""
+
+  return {
+    ...watch,
+    brand: normalizedBrand || DEFAULT_WATCH_BRAND,
+    model: normalizedModel || DEFAULT_WATCH_MODEL,
+  }
+}
+
 async function syncCachedUserPreferences(userId: string, currency: string): Promise<void> {
   const key = getUserPreferencesKey(userId)
   const existing = await window.spark.kv.get<UserPreferences>(key)
@@ -551,9 +565,10 @@ function App() {
         const photoUserId = supabaseUserId ?? currentUser.id
         const hydratedWatches = await Promise.all(
           loadedWatches.map(async (watch) => {
+            const normalizedWatch = normalizeWatchForDisplay(watch)
             const rawImage = watch.imageUrl
             if (!rawImage) {
-              return { ...watch, imageUrl: undefined }
+              return { ...normalizedWatch, imageUrl: undefined }
             }
 
             if (isWatchPhotoRef(rawImage)) {
@@ -567,13 +582,13 @@ function App() {
                 console.error(`Error loading watch photo for ${watch.id}:`, error)
               }
               return {
-                ...watch,
+                ...normalizedWatch,
                 imageUrl: sanitizeWatchImageUrl(storedPhoto),
               }
             }
 
             return {
-              ...watch,
+              ...normalizedWatch,
               imageUrl: sanitizeWatchImageUrl(rawImage),
             }
           }),

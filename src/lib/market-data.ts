@@ -71,6 +71,8 @@ const CACHE_TTL_MS = 1000 * 60 * 30
 const DAILY_BUDGET_STORAGE_KEY = "market_data_daily_budget_v1"
 const FX_CACHE_TTL_MS = 1000 * 60 * 60 * 6
 const SENTIMENT_CACHE_TTL_MS = 1000 * 60 * 60 * 2
+const DEFAULT_LOOKUP_BRAND = "Unknown"
+const DEFAULT_LOOKUP_MODEL = "Unknown Model"
 
 type BudgetProvider = MarketDataSource | "gdelt" | "frankfurter"
 
@@ -102,8 +104,26 @@ const nowIso = () => new Date().toISOString()
 
 const toMonthLabel = (date: Date) => date.toLocaleDateString("en-US", { month: "short" })
 
-const toSnapshotKey = (input: MarketLookupInput) =>
-  `${input.brand.toLowerCase()}|${input.model.toLowerCase()}|${(input.referenceNumber || "").toLowerCase()}`
+function normalizeLookupInput(input: MarketLookupInput): MarketLookupInput {
+  const normalizedReference = extractString(input.referenceNumber) || undefined
+  const normalizedBrand = extractString(input.brand) || DEFAULT_LOOKUP_BRAND
+  const normalizedModel = extractString(input.model) || normalizedReference || DEFAULT_LOOKUP_MODEL
+  const heuristicPrice = Number.isFinite(input.heuristicPrice) && Number(input.heuristicPrice) > 0
+    ? Number(input.heuristicPrice)
+    : undefined
+
+  return {
+    brand: normalizedBrand,
+    model: normalizedModel,
+    referenceNumber: normalizedReference,
+    heuristicPrice,
+  }
+}
+
+const toSnapshotKey = (input: MarketLookupInput) => {
+  const normalized = normalizeLookupInput(input)
+  return `${normalized.brand.toLowerCase()}|${normalized.model.toLowerCase()}|${(normalized.referenceNumber || "").toLowerCase()}`
+}
 
 const buildCacheStorageKey = (input: MarketLookupInput) => `${CACHE_KEY_PREFIX}${toSnapshotKey(input)}`
 
@@ -629,18 +649,19 @@ export function marketConfidenceLabel(confidence: number): "high" | "medium" | "
 }
 
 export async function getNormalizedMarketData(input: MarketLookupInput): Promise<NormalizedMarketData> {
-  const cached = await getPersistentCache(input)
+  const normalizedInput = normalizeLookupInput(input)
+  const cached = await getPersistentCache(normalizedInput)
   if (cached) return cached
 
   const providerResults = await Promise.all([
-    fromWatchCharts(input),
-    fromTheWatchApi(input),
-    fromEbay(input),
+    fromWatchCharts(normalizedInput),
+    fromTheWatchApi(normalizedInput),
+    fromEbay(normalizedInput),
   ])
 
   const snapshot = providerResults.find((result): result is NormalizedMarketData => result !== null)
-    || fromHeuristic(input)
-  await setPersistentCache(input, snapshot)
+    || fromHeuristic(normalizedInput)
+  await setPersistentCache(normalizedInput, snapshot)
   return snapshot
 }
 
@@ -667,14 +688,22 @@ function average(values: number[]): number {
 }
 
 export async function getMarketDashboardData(watches: Watch[]): Promise<MarketDashboardData> {
-  const watchTargets = watches
+  const watchTargets: MarketLookupInput[] = watches
     .slice(0, 18)
-    .map((watch) => ({
-      brand: watch.brand,
-      model: watch.model,
-      referenceNumber: watch.referenceNumber,
-      heuristicPrice: watch.currentValue,
-    }))
+    .flatMap((watch) => {
+      const brand = extractString(watch.brand)
+      const model = extractString(watch.model)
+      const referenceNumber = extractString(watch.referenceNumber)
+
+      if (!brand && !model && !referenceNumber) return []
+
+      return [normalizeLookupInput({
+        brand: brand || "",
+        model: model || "",
+        referenceNumber: referenceNumber ?? undefined,
+        heuristicPrice: watch.currentValue,
+      })]
+    })
 
   const uniqueTargets = new Map<string, MarketLookupInput>()
   for (const target of [...watchTargets, ...DEFAULT_REFERENCE_TARGETS]) {
@@ -682,9 +711,20 @@ export async function getMarketDashboardData(watches: Watch[]): Promise<MarketDa
     if (!uniqueTargets.has(key)) uniqueTargets.set(key, target)
   }
 
-  const snapshots = await Promise.all(
+  const snapshotResults = await Promise.allSettled(
     Array.from(uniqueTargets.values()).slice(0, 16).map((target) => getNormalizedMarketData(target))
   )
+  const snapshots = snapshotResults
+    .filter((result): result is PromiseFulfilledResult<NormalizedMarketData> => result.status === "fulfilled")
+    .map((result) => result.value)
+
+  if (snapshots.length === 0) {
+    return {
+      brandIndices: [],
+      topMovers: [],
+      updatedAt: nowIso(),
+    }
+  }
 
   const groupedByBrand = snapshots.reduce<Record<string, NormalizedMarketData[]>>((acc, snapshot) => {
     if (!acc[snapshot.brand]) acc[snapshot.brand] = []
