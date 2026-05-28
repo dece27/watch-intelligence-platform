@@ -281,12 +281,15 @@ function consumeBudget(source: BudgetProvider) {
   writeDailyBudgetState(state)
 }
 
-async function requestJsonWithBackoff(url: string, init?: RequestInit, retries = 2): Promise<unknown> {
+async function requestJsonWithBackoff(url: string, init?: RequestInit, retries = 2, timeoutMs = 10000): Promise<unknown> {
   let attempt = 0
   let lastError: unknown
   while (attempt <= retries) {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
     try {
-      const response = await fetch(url, init)
+      const response = await fetch(url, { signal: controller.signal, ...init })
+      clearTimeout(timeoutId)
       if (!response.ok) {
         if (response.status === 429 || response.status >= 500) {
           throw new Error(`retryable_http_${response.status}`)
@@ -295,6 +298,7 @@ async function requestJsonWithBackoff(url: string, init?: RequestInit, retries =
       }
       return await response.json()
     } catch (error) {
+      clearTimeout(timeoutId)
       lastError = error
       if (attempt === retries) break
       await new Promise((resolve) => setTimeout(resolve, (attempt + 1) * 350))
