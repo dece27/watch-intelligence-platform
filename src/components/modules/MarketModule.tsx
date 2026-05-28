@@ -338,8 +338,9 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
         setBrandIndices(dashboardData.brandIndices)
         setTopMovers(dashboardData.topMovers)
         setMarketDataUpdatedAt(dashboardData.updatedAt)
-      } catch {
+      } catch (error) {
         if (!isMounted) return
+        console.error("Failed to load market dashboard data:", error)
         setBrandIndices([])
         setTopMovers([])
       }

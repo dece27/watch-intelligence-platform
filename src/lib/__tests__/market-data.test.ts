@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { watchChartsClient } from "@/lib/watchcharts-client"
-import { enrichDealsWithMarketData, getNormalizedMarketData, getPortfolioMarketSnapshots } from "@/lib/market-data"
-import type { Deal } from "@/lib/types"
+import { enrichDealsWithMarketData, getMarketDashboardData, getNormalizedMarketData, getPortfolioMarketSnapshots } from "@/lib/market-data"
+import type { Deal, Watch } from "@/lib/types"
 
 describe("market-data", () => {
   afterEach(() => {
@@ -71,5 +71,53 @@ describe("market-data", () => {
 
     expect(snapshot.source).toBe("heuristic")
     expect(snapshot.latestPrice).toBe(100)
+  })
+
+  it("normalizes malformed lookup inputs so missing brand/model do not crash", async () => {
+    vi.spyOn(watchChartsClient, "getMarketValue").mockResolvedValue(null)
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    } as Response)
+
+    const snapshot = await getNormalizedMarketData({
+      brand: "",
+      model: "",
+      referenceNumber: "MALFORMED-REF",
+      heuristicPrice: 1500,
+    })
+
+    expect(snapshot.brand).toBe("Unknown")
+    expect(snapshot.model).toBe("MALFORMED-REF")
+    expect(snapshot.latestPrice).toBe(1500)
+  })
+
+  it("keeps top movers available with malformed watches and provider failures", async () => {
+    vi.spyOn(watchChartsClient, "getMarketValue").mockImplementation(async ({ referenceNumber }) => {
+      if (referenceNumber === "126610LN") {
+        throw new Error("provider unavailable")
+      }
+      return null
+    })
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    } as Response)
+
+    const malformedWatch = {
+      id: "watch-malformed",
+      brand: "",
+      model: "",
+      purchasePrice: 5000,
+      purchaseDate: "2024-01-01",
+      condition: "good",
+      category: "sport",
+      hasBox: false,
+      hasPapers: false,
+    } as Watch
+
+    const dashboard = await getMarketDashboardData([malformedWatch])
+    expect(dashboard.topMovers.length).toBeGreaterThan(0)
+    expect(dashboard.brandIndices.length).toBeGreaterThan(0)
   })
 })
