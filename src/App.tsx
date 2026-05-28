@@ -876,7 +876,6 @@ function App() {
             watches={watchList}
             onUpdate={handleUpdateWatches}
             preferredCurrency={preferredCurrency}
-            onNavigateToNews={() => setActiveModule('news')}
           />
         )
       case 'market':
