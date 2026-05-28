@@ -50,6 +50,7 @@ export class WatchChartsClient {
   private readonly baseURL: string
   private readonly timeoutMs: number
   private readonly headers: Record<string, string>
+  private readonly hasCredentials: boolean
 
   constructor({
     apiKey = import.meta.env.VITE_WATCHCHARTS_API_KEY,
@@ -63,8 +64,10 @@ export class WatchChartsClient {
       Accept: 'application/json',
     }
 
-    if (apiKey) {
-      this.headers[apiKeyHeader] = apiKey
+    const trimmedKey = apiKey?.trim()
+    this.hasCredentials = Boolean(trimmedKey)
+    if (trimmedKey) {
+      this.headers[apiKeyHeader] = trimmedKey
     }
   }
 
@@ -108,6 +111,7 @@ export class WatchChartsClient {
   }
 
   async getMarketValue(input: WatchChartsLookupInput): Promise<number | null> {
+    if (!this.hasCredentials) return null
     const query = input.referenceNumber || `${input.brand} ${input.model}`
 
     const searchResponse = await this.searchWatches({
