@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { SharedCollectionRecord, Watch, User, UserPreferences } from "@/lib/types"
 import { DEFAULT_CURRENCY, normalizeCurrency } from "@/lib/currency"
@@ -415,7 +415,7 @@ function App() {
     }
   }, [currentUser?.id, supabaseUserId, persistenceState])
 
-  const watchList = watches
+  const watchList = useMemo(() => watches ?? [], [watches])
   const totalValue = watchList.reduce((sum, w) => sum + getEstimatedMarketValue(w), 0)
 
   useEffect(() => {
