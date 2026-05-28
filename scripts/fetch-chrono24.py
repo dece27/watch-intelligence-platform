@@ -58,10 +58,10 @@ CHRONO24_STALE_AFTER_HOURS = env_int("CHRONO24_STALE_AFTER_HOURS", 48)
 PLAYWRIGHT_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/124.0.0.0 Safari/537.36"
+    "Chrome/131.0.0.0 Safari/537.36"
 )
 PLAYWRIGHT_NAVIGATION_TIMEOUT_MS = 60_000
-PLAYWRIGHT_WAIT_FOR_LISTINGS_MS = 20_000
+PLAYWRIGHT_WAIT_FOR_LISTINGS_MS = 30_000
 PLAYWRIGHT_DEBUG_ARTIFACTS_DIR = os.environ.get("CHRONO24_PLAYWRIGHT_DEBUG_DIR", "/tmp")
 
 # CSS selector string used by wait_for_selector and the JS extractor
@@ -283,10 +283,13 @@ def search_listings_playwright(query: str, limit: int) -> list[dict[str, Any]]:
 
     Returns a list of raw listing dicts compatible with :func:`to_deal_listing`.
     Raises :class:`UpstreamFetchError` on navigation timeout or bot-detection pages.
-    Raises :class:`ListingsNotFoundError` when the page renders with no listing cards.
+    Raises :class:`ListingsNotFoundError` when the page renders but contains no listing cards.
     """
+    import random
+
     from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
     from playwright.sync_api import sync_playwright
+    from playwright_stealth import Stealth
 
     limit = max(1, int(limit))
 
@@ -303,6 +306,10 @@ def search_listings_playwright(query: str, limit: int) -> list[dict[str, Any]]:
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
                 "--disable-blink-features=AutomationControlled",
+                "--disable-infobars",
+                "--disable-extensions",
+                "--disable-plugins-discovery",
+                "--window-size=1280,900",
             ],
         )
         context = browser.new_context(
@@ -310,11 +317,15 @@ def search_listings_playwright(query: str, limit: int) -> list[dict[str, Any]]:
             viewport={"width": 1280, "height": 900},
             locale="en-US",
             timezone_id="America/New_York",
-        )
-        context.add_init_script(
-            "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+            extra_http_headers={
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                "Accept-Encoding": "gzip, deflate, br",
+                "Upgrade-Insecure-Requests": "1",
+            },
         )
         page = context.new_page()
+        Stealth().apply_stealth_sync(page)
 
         try:
             page.goto(
@@ -326,6 +337,9 @@ def search_listings_playwright(query: str, limit: int) -> list[dict[str, Any]]:
             _save_debug_screenshot(page, query)
             browser.close()
             raise UpstreamFetchError(f"Navigation timeout for '{query}'") from exc
+
+        # Brief human-like pause before interacting with the page
+        page.wait_for_timeout(random.randint(1500, 3000))
 
         _dismiss_cookie_banner(page)
 
