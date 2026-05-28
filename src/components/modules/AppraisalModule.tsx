@@ -100,7 +100,7 @@ export function AppraisalModule({ watches, preferredCurrency = "USD" }: Appraisa
 
   const appraisalValue = hasStoredCurrentValue(selectedWatch)
     ? selectedWatch.currentValue
-    : marketValue ?? marketSnapshot?.latestPrice ?? null
+    : marketValue ?? (marketSnapshot?.latestPrice || null)
   const appraisalDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
 
   return (

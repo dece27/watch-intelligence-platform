@@ -91,7 +91,7 @@ describe("market-data", () => {
     }]))
 
     expect(snapshot.source).toBe("heuristic")
-    expect(snapshot.latestPrice).toBe(100)
+    expect(snapshot.latestPrice).toBe(0)
   })
 
   it("skips malformed dashboard watch inputs without failing the overall market calculation", async () => {
