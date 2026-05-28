@@ -11,7 +11,7 @@ const BRAND_MULTIPLIERS: Record<string, number> = {
   'A. Lange & Söhne': 1.18,
 }
 
-const REF_MULTIPLIERS: Record<string, number> = {
+const MODEL_MULTIPLIERS: Record<string, number> = {
   'Daytona': 1.35,
   'Submariner': 1.20,
   'GMT': 1.18,
@@ -32,9 +32,9 @@ export function getEstimatedMarketValue(watch: Watch): number {
 
   let multiplier = BRAND_MULTIPLIERS[watch.brand] || 1.05
 
-  Object.keys(REF_MULTIPLIERS).forEach(ref => {
-    if (watch.model.includes(ref)) {
-      multiplier = Math.max(multiplier, REF_MULTIPLIERS[ref])
+  Object.keys(MODEL_MULTIPLIERS).forEach(model => {
+    if (watch.model.includes(model)) {
+      multiplier = Math.max(multiplier, MODEL_MULTIPLIERS[model])
     }
   })
 
