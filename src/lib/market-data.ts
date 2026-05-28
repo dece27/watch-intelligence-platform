@@ -71,6 +71,8 @@ const CACHE_TTL_MS = 1000 * 60 * 30
 const DAILY_BUDGET_STORAGE_KEY = "market_data_daily_budget_v1"
 const FX_CACHE_TTL_MS = 1000 * 60 * 60 * 6
 const SENTIMENT_CACHE_TTL_MS = 1000 * 60 * 60 * 2
+const DEFAULT_LOOKUP_BRAND = "Unknown"
+const DEFAULT_LOOKUP_MODEL = "Unknown Model"
 
 type BudgetProvider = MarketDataSource | "gdelt" | "frankfurter"
 
@@ -103,10 +105,12 @@ const nowIso = () => new Date().toISOString()
 const toMonthLabel = (date: Date) => date.toLocaleDateString("en-US", { month: "short" })
 
 function normalizeLookupInput(input: MarketLookupInput): MarketLookupInput {
-  const normalizedReference = extractString(input.referenceNumber) ?? undefined
-  const normalizedBrand = extractString(input.brand) || "Unknown"
-  const normalizedModel = extractString(input.model) || normalizedReference || "Unknown Model"
-  const heuristicPrice = Number.isFinite(input.heuristicPrice) ? input.heuristicPrice : undefined
+  const normalizedReference = extractString(input.referenceNumber) || undefined
+  const normalizedBrand = extractString(input.brand) || DEFAULT_LOOKUP_BRAND
+  const normalizedModel = extractString(input.model) || normalizedReference || DEFAULT_LOOKUP_MODEL
+  const heuristicPrice = Number.isFinite(input.heuristicPrice) && Number(input.heuristicPrice) > 0
+    ? Number(input.heuristicPrice)
+    : undefined
 
   return {
     brand: normalizedBrand,
@@ -687,18 +691,18 @@ export async function getMarketDashboardData(watches: Watch[]): Promise<MarketDa
   const watchTargets: MarketLookupInput[] = watches
     .slice(0, 18)
     .flatMap((watch) => {
-      const brand = typeof watch.brand === "string" ? watch.brand.trim() : ""
-      const model = typeof watch.model === "string" ? watch.model.trim() : ""
-      const referenceNumber = typeof watch.referenceNumber === "string" ? watch.referenceNumber.trim() : undefined
+      const brand = extractString(watch.brand)
+      const model = extractString(watch.model)
+      const referenceNumber = extractString(watch.referenceNumber)
 
       if (!brand && !model && !referenceNumber) return []
 
-      return [{
-        brand: brand || "Unknown",
-        model: model || referenceNumber || "Unknown Model",
-        referenceNumber,
+      return [normalizeLookupInput({
+        brand: brand || "",
+        model: model || "",
+        referenceNumber: referenceNumber ?? undefined,
         heuristicPrice: watch.currentValue,
-      } satisfies MarketLookupInput]
+      })]
     })
 
   const uniqueTargets = new Map<string, MarketLookupInput>()

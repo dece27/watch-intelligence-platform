@@ -58,14 +58,17 @@ function getUserWatchesKey(userId: string): string {
   return `watches_${userId}`
 }
 
+const DEFAULT_WATCH_BRAND = "Unknown"
+const DEFAULT_WATCH_MODEL = "Unknown Model"
+
 function normalizeWatchForDisplay(watch: Watch): Watch {
-  const normalizedBrand = typeof watch.brand === 'string' ? watch.brand.trim() : ''
-  const normalizedModel = typeof watch.model === 'string' ? watch.model.trim() : ''
+  const normalizedBrand = typeof watch.brand === "string" ? watch.brand.trim() : ""
+  const normalizedModel = typeof watch.model === "string" ? watch.model.trim() : ""
 
   return {
     ...watch,
-    brand: normalizedBrand || 'Unknown',
-    model: normalizedModel || 'Unknown Model',
+    brand: normalizedBrand || DEFAULT_WATCH_BRAND,
+    model: normalizedModel || DEFAULT_WATCH_MODEL,
   }
 }
 
