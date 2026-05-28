@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { watchChartsClient } from "@/lib/watchcharts-client"
-import { enrichDealsWithMarketData, getNormalizedMarketData, getPortfolioMarketSnapshots } from "@/lib/market-data"
-import type { Deal } from "@/lib/types"
+import { enrichDealsWithMarketData, getMarketDashboardData, getNormalizedMarketData, getPortfolioMarketSnapshots } from "@/lib/market-data"
+import type { Deal, Watch } from "@/lib/types"
 
 describe("market-data", () => {
   afterEach(() => {
@@ -71,5 +71,40 @@ describe("market-data", () => {
 
     expect(snapshot.source).toBe("heuristic")
     expect(snapshot.latestPrice).toBe(100)
+  })
+
+  it("skips malformed dashboard watch inputs without failing the overall market calculation", async () => {
+    vi.spyOn(watchChartsClient, "getMarketValue").mockResolvedValue(12000)
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    } as Response)
+
+    const malformedWatch = {
+      id: "watch-malformed",
+      brand: undefined,
+      model: undefined,
+      purchasePrice: 10000,
+      purchaseDate: "2024-01-01",
+      condition: "excellent",
+      category: "sport",
+    } as unknown as Watch
+
+    const dashboard = await getMarketDashboardData([
+      {
+        id: "watch-valid",
+        brand: "Rolex",
+        model: "Submariner",
+        referenceNumber: "126610LN",
+        purchasePrice: 11000,
+        purchaseDate: "2024-01-01",
+        condition: "excellent",
+        category: "sport",
+      },
+      malformedWatch,
+    ])
+
+    expect(dashboard.brandIndices.length).toBeGreaterThan(0)
+    expect(dashboard.brandIndices.some((index) => index.brand === "Rolex")).toBe(true)
   })
 })
