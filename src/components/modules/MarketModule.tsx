@@ -457,6 +457,7 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
   useEffect(() => {
     let isMounted = true
     const loadAlertEvaluations = async () => {
+      if (isMarketDataLoading) return
       if (alerts.length === 0) {
         if (isMounted) setAlertEvaluations({})
         return
@@ -477,7 +478,7 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
     return () => {
       isMounted = false
     }
-  }, [alerts, preferredCurrency])
+  }, [alerts, preferredCurrency, isMarketDataLoading])
 
   const handleAddAlert = () => {
     if (!newAlert.watchRef || !newAlert.brand || !newAlert.model || !newAlert.targetPrice) {

@@ -22,6 +22,11 @@ interface FeedConfig {
 
 const DEFAULT_RESULT_LIMIT = 8
 const RECENT_WINDOW_MONTHS = 12
+const AUCTION_CACHE_KEY_PREFIX = 'auction_results_v1_'
+const AUCTION_CACHE_TTL_MS = 1000 * 60 * 20
+const AUCTION_CACHE_STALE_TTL_MS = 1000 * 60 * 60 * 8
+const auctionMemoryCache = new Map<string, { expiresAt: number; cachedAt: number; data: AuctionResult[] }>()
+const auctionRefreshInflight = new Map<string, Promise<AuctionResult[]>>()
 
 // Optional env-var-configured custom feed URLs (take precedence over the built-in endpoints).
 const CUSTOM_FEED_CONFIGS: FeedConfig[] = [
@@ -36,6 +41,83 @@ const PHILLIPS_BASE_URL = 'https://www.phillips.com'
 const PHILLIPS_SEARCH_PATH = '/api/search'
 
 type UnknownRecord = Record<string, unknown>
+
+interface AuctionCacheRecord {
+  cachedAt: string
+  data: AuctionResult[]
+}
+
+type AuctionCacheState = 'fresh' | 'stale' | 'expired'
+
+function isBrowser(): boolean {
+  return typeof window !== 'undefined'
+}
+
+function computeCacheHash(value: string): string {
+  let hash = 2166136261
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
+    hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24)
+  }
+  return (hash >>> 0).toString(36)
+}
+
+function buildAuctionCacheKey(references: string[], limit: number): string {
+  const normalizedRefs = references.map((reference) => reference.trim().toLowerCase()).sort().join('\u0000')
+  const refsHash = computeCacheHash(normalizedRefs)
+  return `${AUCTION_CACHE_KEY_PREFIX}${refsHash}_${limit}`
+}
+
+function resolveAuctionCacheState(cachedAt: number): AuctionCacheState {
+  const ageMs = Date.now() - cachedAt
+  if (ageMs <= AUCTION_CACHE_TTL_MS) return 'fresh'
+  if (ageMs <= AUCTION_CACHE_STALE_TTL_MS) return 'stale'
+  return 'expired'
+}
+
+async function readAuctionCache(cacheKey: string): Promise<{ state: AuctionCacheState; data: AuctionResult[] | null }> {
+  const inMemory = auctionMemoryCache.get(cacheKey)
+  if (inMemory) {
+    const state = inMemory.expiresAt > Date.now() ? 'fresh' : 'stale'
+    return { state, data: inMemory.data }
+  }
+
+  if (!isBrowser()) return { state: 'expired', data: null }
+
+  try {
+    const raw = window.localStorage.getItem(cacheKey)
+    if (!raw) return { state: 'expired', data: null }
+    const parsed = JSON.parse(raw) as AuctionCacheRecord
+    if (!Array.isArray(parsed?.data)) return { state: 'expired', data: null }
+    const cachedAt = Date.parse(parsed.cachedAt)
+    if (!Number.isFinite(cachedAt)) return { state: 'expired', data: null }
+    const state = resolveAuctionCacheState(cachedAt)
+    if (state === 'expired') return { state, data: null }
+    auctionMemoryCache.set(cacheKey, {
+      expiresAt: cachedAt + AUCTION_CACHE_TTL_MS,
+      cachedAt,
+      data: parsed.data,
+    })
+    return { state, data: parsed.data }
+  } catch {
+    return { state: 'expired', data: null }
+  }
+}
+
+async function writeAuctionCache(cacheKey: string, data: AuctionResult[]): Promise<void> {
+  const cachedAt = Date.now()
+  auctionMemoryCache.set(cacheKey, { expiresAt: cachedAt + AUCTION_CACHE_TTL_MS, cachedAt, data })
+  if (!isBrowser()) return
+  try {
+    const payload: AuctionCacheRecord = {
+      cachedAt: new Date(cachedAt).toISOString(),
+      data,
+    }
+    window.localStorage.setItem(cacheKey, JSON.stringify(payload))
+  } catch {
+    // no-op
+  }
+}
 
 function isTrustedHost(hostname: string, trustedDomain: string): boolean {
   const normalizedHost = hostname.toLowerCase()
@@ -509,16 +591,47 @@ export async function fetchRecentAuctionResults({
     return []
   }
 
-  // Always attempt the Christie's and Phillips APIs directly. Any optional
-  // env-var-configured custom feeds are also included.
-  const fetchers: Array<() => Promise<AuctionResult[]>> = [
-    () => fetchChristiesResults(references),
-    () => fetchPhillipsResults(references),
-    ...CUSTOM_FEED_CONFIGS.map((feed) => () => fetchFeed(feed)),
-  ]
+  const cacheKey = buildAuctionCacheKey(references, limit)
+  const cached = await readAuctionCache(cacheKey)
 
-  const feedResults = await Promise.allSettled(fetchers.map((fetcher) => fetcher()))
-  const allItems = feedResults.flatMap((result) => (result.status === 'fulfilled' ? result.value : []))
+  const loadFromNetwork = async (): Promise<AuctionResult[]> => {
+    // Always attempt the Christie's and Phillips APIs directly. Any optional
+    // env-var-configured custom feeds are also included.
+    const fetchers: Array<() => Promise<AuctionResult[]>> = [
+      () => fetchChristiesResults(references),
+      () => fetchPhillipsResults(references),
+      ...CUSTOM_FEED_CONFIGS.map((feed) => () => fetchFeed(feed)),
+    ]
 
-  return normalizeAndFilter(allItems, references, limit)
+    const feedResults = await Promise.allSettled(fetchers.map((fetcher) => fetcher()))
+    const allItems = feedResults.flatMap((result) => (result.status === 'fulfilled' ? result.value : []))
+    const normalized = normalizeAndFilter(allItems, references, limit)
+    await writeAuctionCache(cacheKey, normalized)
+    return normalized
+  }
+
+  if (cached.state === 'fresh' && cached.data) {
+    return cached.data
+  }
+
+  if (cached.state === 'stale' && cached.data) {
+    if (!auctionRefreshInflight.has(cacheKey)) {
+      const refreshRequest = loadFromNetwork()
+        .catch(() => cached.data ?? [])
+        .finally(() => {
+          auctionRefreshInflight.delete(cacheKey)
+        })
+      auctionRefreshInflight.set(cacheKey, refreshRequest)
+    }
+    return cached.data
+  }
+
+  const inflight = auctionRefreshInflight.get(cacheKey)
+  if (inflight) return inflight
+
+  const request = loadFromNetwork().finally(() => {
+    auctionRefreshInflight.delete(cacheKey)
+  })
+  auctionRefreshInflight.set(cacheKey, request)
+  return request
 }
