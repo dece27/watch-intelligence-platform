@@ -78,6 +78,8 @@ const CACHE_TTL_MS = 1000 * 60 * 30
 const DAILY_BUDGET_STORAGE_KEY = "market_data_daily_budget_v1"
 const FX_CACHE_TTL_MS = 1000 * 60 * 60 * 6
 const SENTIMENT_CACHE_TTL_MS = 1000 * 60 * 60 * 2
+const DEFAULT_LOOKUP_BRAND = "Unknown"
+const DEFAULT_LOOKUP_MODEL = "Unknown Model"
 
 type BudgetProvider = MarketDataSource | "gdelt" | "frankfurter"
 
@@ -109,8 +111,26 @@ const nowIso = () => new Date().toISOString()
 
 const toMonthLabel = (date: Date) => date.toLocaleDateString("en-US", { month: "short" })
 
-const toSnapshotKey = (input: MarketLookupInput) =>
-  `${input.brand.toLowerCase()}|${input.model.toLowerCase()}|${(input.referenceNumber || "").toLowerCase()}`
+function normalizeLookupInput(input: MarketLookupInput): MarketLookupInput {
+  const normalizedReference = extractString(input.referenceNumber) || undefined
+  const normalizedBrand = extractString(input.brand) || DEFAULT_LOOKUP_BRAND
+  const normalizedModel = extractString(input.model) || normalizedReference || DEFAULT_LOOKUP_MODEL
+  const heuristicPrice = Number.isFinite(input.heuristicPrice) && Number(input.heuristicPrice) > 0
+    ? Number(input.heuristicPrice)
+    : undefined
+
+  return {
+    brand: normalizedBrand,
+    model: normalizedModel,
+    referenceNumber: normalizedReference,
+    heuristicPrice,
+  }
+}
+
+const toSnapshotKey = (input: MarketLookupInput) => {
+  const normalized = normalizeLookupInput(input)
+  return `${normalized.brand.toLowerCase()}|${normalized.model.toLowerCase()}|${(normalized.referenceNumber || "").toLowerCase()}`
+}
 
 const buildCacheStorageKey = (input: MarketLookupInput) => `${CACHE_KEY_PREFIX}${toSnapshotKey(input)}`
 
@@ -320,12 +340,15 @@ function consumeBudget(source: BudgetProvider) {
   writeDailyBudgetState(state)
 }
 
-async function requestJsonWithBackoff(url: string, init?: RequestInit, retries = 2): Promise<unknown> {
+async function requestJsonWithBackoff(url: string, init?: RequestInit, retries = 2, timeoutMs = 10000): Promise<unknown> {
   let attempt = 0
   let lastError: unknown
   while (attempt <= retries) {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
     try {
-      const response = await fetch(url, init)
+      const response = await fetch(url, { signal: controller.signal, ...init })
+      clearTimeout(timeoutId)
       if (!response.ok) {
         if (response.status === 429 || response.status >= 500) {
           throw new Error(`retryable_http_${response.status}`)
@@ -334,6 +357,7 @@ async function requestJsonWithBackoff(url: string, init?: RequestInit, retries =
       }
       return await response.json()
     } catch (error) {
+      clearTimeout(timeoutId)
       lastError = error
       if (attempt === retries) break
       await new Promise((resolve) => setTimeout(resolve, (attempt + 1) * 350))
@@ -668,18 +692,19 @@ export function marketConfidenceLabel(confidence: number): "high" | "medium" | "
 }
 
 export async function getNormalizedMarketData(input: MarketLookupInput): Promise<NormalizedMarketData> {
-  const cached = await getPersistentCache(input)
+  const normalizedInput = normalizeLookupInput(input)
+  const cached = await getPersistentCache(normalizedInput)
   if (cached) return cached
 
   const providerResults = await Promise.all([
-    fromWatchCharts(input),
-    fromTheWatchApi(input),
-    fromEbay(input),
+    fromWatchCharts(normalizedInput),
+    fromTheWatchApi(normalizedInput),
+    fromEbay(normalizedInput),
   ])
 
   const snapshot = providerResults.find((result): result is NormalizedMarketData => result !== null)
-    || fromHeuristic(input)
-  await setPersistentCache(input, snapshot)
+    || fromHeuristic(normalizedInput)
+  await setPersistentCache(normalizedInput, snapshot)
   return snapshot
 }
 
@@ -710,7 +735,7 @@ function isFulfilled<T>(result: PromiseSettledResult<T>): result is PromiseFulfi
 }
 
 export async function getMarketDashboardData(watches: Watch[]): Promise<MarketDashboardData> {
-  const watchTargets = watches
+  const watchTargets: MarketLookupInput[] = watches
     .slice(0, 18)
     .map((watch) => sanitizeLookupInput({
       brand: watch.brand,

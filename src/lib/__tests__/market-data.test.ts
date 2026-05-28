@@ -75,6 +75,7 @@ describe("market-data", () => {
 
   it("skips malformed dashboard watch inputs without failing the overall market calculation", async () => {
     vi.spyOn(watchChartsClient, "getMarketValue").mockResolvedValue(12000)
+
     vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
       json: async () => ({}),
@@ -106,5 +107,53 @@ describe("market-data", () => {
 
     expect(dashboard.brandIndices.length).toBeGreaterThan(0)
     expect(dashboard.brandIndices.some((index) => index.brand === "Rolex")).toBe(true)
+  })
+
+  it("normalizes malformed lookup inputs so missing brand/model do not crash", async () => {
+    vi.spyOn(watchChartsClient, "getMarketValue").mockResolvedValue(null)
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    } as Response)
+
+    const snapshot = await getNormalizedMarketData({
+      brand: "",
+      model: "",
+      referenceNumber: "MALFORMED-REF",
+      heuristicPrice: 1500,
+    })
+
+    expect(snapshot.brand).toBe("Unknown")
+    expect(snapshot.model).toBe("MALFORMED-REF")
+    expect(snapshot.latestPrice).toBe(1500)
+  })
+
+  it("keeps top movers available with malformed watches and provider failures", async () => {
+    vi.spyOn(watchChartsClient, "getMarketValue").mockImplementation(async ({ referenceNumber }) => {
+      if (referenceNumber === "126610LN") {
+        throw new Error("provider unavailable")
+      }
+      return null
+    })
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    } as Response)
+
+    const malformedWatch = {
+      id: "watch-malformed",
+      brand: "",
+      model: "",
+      purchasePrice: 5000,
+      purchaseDate: "2024-01-01",
+      condition: "good",
+      category: "sport",
+      hasBox: false,
+      hasPapers: false,
+    } as Watch
+
+    const dashboard = await getMarketDashboardData([malformedWatch])
+    expect(dashboard.topMovers.length).toBeGreaterThan(0)
+    expect(dashboard.brandIndices.length).toBeGreaterThan(0)
   })
 })

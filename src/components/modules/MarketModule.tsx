@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Skeleton } from "@/components/ui/skeleton"
 import { TrendUp, TrendDown, Bell, X, MagnifyingGlass } from "@phosphor-icons/react"
 import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend, CartesianGrid } from 'recharts'
 import { toast } from "sonner"
@@ -213,6 +214,7 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
   const [isAlertDialogOpen, setIsAlertDialogOpen] = useState(false)
   const [brandIndices, setBrandIndices] = useState<BrandMarketIndex[]>([])
   const [topMovers, setTopMovers] = useState<MarketMover[]>([])
+  const [isMarketDataLoading, setIsMarketDataLoading] = useState(true)
   const [marketDataUpdatedAt, setMarketDataUpdatedAt] = useState<string | null>(null)
   const [marketDataStatus, setMarketDataStatus] = useState<MarketDataStatus>('loading')
   const [referenceSnapshot, setReferenceSnapshot] = useState<NormalizedMarketData | null>(null)
@@ -295,9 +297,7 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
     }))
   }, [brandIndices])
 
-  const [visibleSentimentBrands, setVisibleSentimentBrands] = useState<string[]>(() =>
-    brandIndices.map((_, index) => `brand-${index}`)
-  )
+  const [visibleSentimentBrands, setVisibleSentimentBrands] = useState<string[]>([])
 
   const overallSentimentChartData = useMemo(() => {
     return sentimentMonthLabels.map((month, monthIndex) => {
@@ -336,6 +336,7 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
 
     const loadMarketData = async () => {
       setMarketDataStatus('loading')
+      setIsMarketDataLoading(true)
       try {
         const dashboardData = await getMarketDashboardData(watches)
         if (!isMounted) return
@@ -343,12 +344,15 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
         setTopMovers(dashboardData.topMovers)
         setMarketDataUpdatedAt(dashboardData.updatedAt)
         setMarketDataStatus(dashboardData.brandIndices.length > 0 ? 'ready' : 'empty')
-      } catch {
+      } catch (error) {
         if (!isMounted) return
+        console.error("Failed to load market dashboard data:", error)
         setBrandIndices([])
         setTopMovers([])
         setMarketDataUpdatedAt(null)
         setMarketDataStatus('error')
+      } finally {
+        if (isMounted) setIsMarketDataLoading(false)
       }
     }
 
@@ -525,6 +529,9 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
           </div>
           <div className="space-y-3">
             <div className="h-56">
+              {isMarketDataLoading ? (
+                <Skeleton className="h-full w-full rounded-lg" />
+              ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={overallSentimentChartData}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
@@ -554,6 +561,7 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
                     ))}
                 </LineChart>
               </ResponsiveContainer>
+              )}
             </div>
             <div className="flex flex-wrap gap-2">
               {brandSentimentSeries.map((series) => {
