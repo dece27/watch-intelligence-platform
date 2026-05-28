@@ -703,7 +703,7 @@ def main() -> None:
         "no_cached_listings": no_cached_listings,
         "hard_upstream_failure": hard_upstream_failure,
         "upstream_failure_threshold": CHRONO24_UPSTREAM_FAILURE_THRESHOLD,
-        "failed": status in {"failed_upsert", "mapping_empty"} or hard_upstream_failure,
+        "failed": status == "failed_upsert" or hard_upstream_failure,
     }
 
     print(
@@ -725,6 +725,11 @@ def main() -> None:
             f"Consecutive upstream failures: {consecutive_upstream_failures}/"
             f"{CHRONO24_UPSTREAM_FAILURE_THRESHOLD}."
         )
+    elif status == "mapping_empty":
+        print(
+            "::warning::Chrono24 listings were fetched but mapping produced no valid rows. "
+            "Preserving existing cached listings and continuing without failing this run."
+        )
 
     write_sync_metrics(metrics)
     persist_observability(
@@ -738,14 +743,6 @@ def main() -> None:
 
     if status == "failed_upsert":
         print("ERROR: One or more Supabase upserts failed.", file=sys.stderr)
-        sys.exit(1)
-
-    if status == "mapping_empty":
-        print(
-            "ERROR: Listings were retrieved but none were valid for upsert. "
-            "Verify field mapping in scripts/fetch-chrono24.py.",
-            file=sys.stderr,
-        )
         sys.exit(1)
 
     if hard_upstream_failure:
