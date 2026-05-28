@@ -6,6 +6,7 @@ import { createRoot, type Root } from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import App from "@/App"
 import type { User, UserPreferences, Watch } from "@/lib/types"
+import { getEstimatedMarketValue } from "@/lib/watchValue"
 
 const cacheUser: User = {
   id: "cache-user-1",
@@ -322,15 +323,18 @@ vi.mock("@/components/LoginScreen", () => ({
 
 vi.mock("@/components/AppHeader", () => ({
   AppHeader: ({
+    totalValue,
     preferredCurrency,
     onCurrencyChange,
     onLogout,
   }: {
+    totalValue: number
     preferredCurrency: string
     onCurrencyChange: (currency: string) => void | Promise<void>
     onLogout: () => void | Promise<void>
   }) => (
     <div>
+      <div data-testid="total-value">{totalValue}</div>
       <div data-testid="currency">{preferredCurrency}</div>
       <button data-testid="set-currency-chf" onClick={() => void onCurrencyChange("CHF")}>
         Set CHF
@@ -690,4 +694,50 @@ describe("App Supabase persistence flow", () => {
       expect(createWatchMock).toHaveBeenCalledTimes(1)
     })
   }, 15000)
+
+  it("passes a non-zero totalValue to AppHeader when watches have no stored market_value", async () => {
+    // Seed a watch with no market_value so currentValue will be undefined after rowToWatch.
+    mockState.supabaseWatches.clear()
+    const watchId = "a1b2c3d4-0000-4000-8000-000000000002"
+    mockState.supabaseWatches.set(
+      watchId,
+      createSupabaseWatchRow({
+        id: watchId,
+        brand: "Omega",
+        model: "Speedmaster",
+        purchase_price: 7500,
+        year: 2024,
+        condition: "Excellent",
+        has_box: true,
+        has_papers: true,
+        updated_at: "2024-03-01T00:00:00.000Z",
+      }),
+    )
+
+    await act(async () => {
+      root.render(<App />)
+    })
+
+    await click("login")
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="watch-count"]')?.textContent).toBe("1")
+    })
+
+    const displayedValue = Number(container.querySelector('[data-testid="total-value"]')?.textContent)
+    const watch: Watch = {
+      id: watchId,
+      brand: "Omega",
+      model: "Speedmaster",
+      purchasePrice: 7500,
+      purchaseDate: "2024-01-01",
+      year: 2024,
+      condition: "excellent",
+      category: "chronograph",
+      hasBox: true,
+      hasPapers: true,
+    }
+    expect(displayedValue).toBe(getEstimatedMarketValue(watch))
+    expect(displayedValue).toBeGreaterThan(0)
+  })
 })

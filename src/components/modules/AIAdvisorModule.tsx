@@ -14,6 +14,7 @@ import { useAIQuota } from "@/lib/ai/useAIQuota"
 import { areDealListingsConfigured, fetchDealListings } from "@/lib/deal-listings-client"
 import { formatCurrency } from "@/lib/currency"
 import { useKV } from "@/lib/useKV"
+import { getEstimatedMarketValue } from "@/lib/watchValue"
 
 interface AIAdvisorModuleProps {
   watches: Watch[]
@@ -79,7 +80,7 @@ const getDependencyHash = (
   watches: Watch[],
   preferredCurrency: string
 ) => {
-  const derivedTotalValue = watches.reduce((sum, watch) => sum + (watch.currentValue || watch.purchasePrice), 0)
+  const derivedTotalValue = watches.reduce((sum, watch) => sum + getEstimatedMarketValue(watch), 0)
   return JSON.stringify({
     watches: getNormalizedWatchesForDependency(watches),
     preferredCurrency,
@@ -284,9 +285,9 @@ const buildDealAssessmentFallback = (deal: Deal, preferredCurrency: string) => {
 }
 
 const buildFallbackRebalanceAnalysis = (watches: Watch[]): RebalanceAnalysis => {
-  const totalValue = watches.reduce((sum, watch) => sum + (watch.currentValue || watch.purchasePrice), 0)
+  const totalValue = watches.reduce((sum, watch) => sum + getEstimatedMarketValue(watch), 0)
   const brandBreakdown = watches.reduce<Record<string, number>>((acc, watch) => {
-    acc[watch.brand] = (acc[watch.brand] || 0) + (watch.currentValue || watch.purchasePrice)
+    acc[watch.brand] = (acc[watch.brand] || 0) + getEstimatedMarketValue(watch)
     return acc
   }, {})
   const [topBrand = 'Collection', topValue = 0] = Object.entries(brandBreakdown).sort((a, b) => b[1] - a[1])[0] || []
@@ -747,12 +748,11 @@ Respond in valid JSON format:
     
     setIsLoadingRebalance(true)
     try {
-      const totalValue = watches.reduce((sum, w) => sum + (w.currentValue || w.purchasePrice), 0)
+      const totalValue = watches.reduce((sum, w) => sum + getEstimatedMarketValue(w), 0)
       
       const brandBreakdown: Record<string, number> = {}
       watches.forEach(w => {
-        const value = w.currentValue || w.purchasePrice
-        brandBreakdown[w.brand] = (brandBreakdown[w.brand] || 0) + value
+        brandBreakdown[w.brand] = (brandBreakdown[w.brand] || 0) + getEstimatedMarketValue(w)
       })
       
       const brandPcts = Object.entries(brandBreakdown)
@@ -763,7 +763,7 @@ Respond in valid JSON format:
         brand: w.brand,
         reference: w.referenceNumber || w.model,
         purchasePrice: w.purchasePrice,
-        currentMarketValue: w.currentValue || w.purchasePrice,
+        currentMarketValue: getEstimatedMarketValue(w),
         condition: w.condition
       }))
       

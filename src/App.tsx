@@ -31,6 +31,7 @@ import { hasSupabaseBrowserEnv, getSupabaseBrowserEnvStatus, getSupabaseClient }
 import { getWatches, createWatch, updateWatch, softDeleteWatch, WatchConflictError } from "@/lib/db/watches"
 import { getUserPreferences, upsertUserPreferences, getSharedCollectionBySlug, upsertUserProfile } from "@/lib/db/user"
 import { watchToInsert, watchToUpdate, rowToWatch } from "@/lib/db/watchMapper"
+import { getEstimatedMarketValue } from "@/lib/watchValue"
 import { toast } from "sonner"
 
 function decodeLegacySharedSlug(value: string): string | null {
@@ -393,10 +394,7 @@ function App() {
   }, [currentUser?.id, supabaseUserId, persistenceState])
 
   const watchList = watches || []
-  const totalValue = watchList.reduce(
-    (sum, w) => sum + (typeof w.currentValue === 'number' && Number.isFinite(w.currentValue) ? w.currentValue : 0),
-    0,
-  )
+  const totalValue = watchList.reduce((sum, w) => sum + getEstimatedMarketValue(w), 0)
   const activeUserId = supabaseUserId ?? undefined
 
   useEffect(() => {
