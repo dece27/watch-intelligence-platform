@@ -32,6 +32,7 @@ import { getWatches, createWatch, updateWatch, softDeleteWatch, WatchConflictErr
 import { getUserPreferences, upsertUserPreferences, getSharedCollectionBySlug, upsertUserProfile } from "@/lib/db/user"
 import { watchToInsert, watchToUpdate, rowToWatch } from "@/lib/db/watchMapper"
 import { getEstimatedMarketValue } from "@/lib/watchValue"
+import { getMarketDashboardData } from "@/lib/market-data"
 import { toast } from "sonner"
 
 function decodeLegacySharedSlug(value: string): string | null {
@@ -416,6 +417,13 @@ function App() {
 
   const watchList = watches || []
   const totalValue = watchList.reduce((sum, w) => sum + getEstimatedMarketValue(w), 0)
+
+  useEffect(() => {
+    if (!currentUser || !watchesLoaded) return
+    void getMarketDashboardData(watchList).catch(() => {
+      // no-op: warm cache opportunistically to speed up Market Intelligence first paint
+    })
+  }, [currentUser, watchesLoaded, watchList])
   const activeUserId = supabaseUserId ?? undefined
 
   useEffect(() => {
