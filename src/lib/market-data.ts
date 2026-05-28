@@ -66,6 +66,13 @@ interface MarketLookupInput {
   heuristicPrice?: number
 }
 
+interface MarketLookupCandidate {
+  brand?: unknown
+  model?: unknown
+  referenceNumber?: unknown
+  heuristicPrice?: unknown
+}
+
 const CACHE_KEY_PREFIX = "market_data_snapshot_v1_"
 const CACHE_TTL_MS = 1000 * 60 * 30
 const DAILY_BUDGET_STORAGE_KEY = "market_data_daily_budget_v1"
@@ -153,6 +160,38 @@ function extractString(value: unknown): string | null {
   if (typeof value !== "string") return null
   const trimmed = value.trim()
   return trimmed.length > 0 ? trimmed : null
+}
+
+/**
+ * Safely parses a finite numeric value from unknown input.
+ * Returns undefined for non-numeric, NaN, and infinite values.
+ */
+function toNumberOrUndefined(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value
+  if (typeof value !== "string") return undefined
+  const parsed = Number(value.trim())
+  return Number.isFinite(parsed) ? parsed : undefined
+}
+
+/**
+ * Normalizes a lookup candidate into a safe market lookup input.
+ * Requires non-empty brand and model strings; reference and heuristic are optional.
+ * Returns null when required fields are missing or invalid.
+ */
+function sanitizeLookupInput(input: MarketLookupCandidate): MarketLookupInput | null {
+  const brand = extractString(input.brand)
+  const model = extractString(input.model)
+  if (!brand || !model) return null
+
+  const referenceNumber = extractString(input.referenceNumber) || undefined
+  const heuristicPrice = toNumberOrUndefined(input.heuristicPrice)
+
+  return {
+    brand,
+    model,
+    referenceNumber,
+    heuristicPrice,
+  }
 }
 
 function normalizeSeries(points: Array<{ date: string; price: number }>, fallbackPrice: number): MarketSeriesPoint[] {
@@ -691,36 +730,45 @@ function average(values: number[]): number {
   return values.reduce((sum, value) => sum + value, 0) / values.length
 }
 
+function isFulfilled<T>(result: PromiseSettledResult<T>): result is PromiseFulfilledResult<T> {
+  return result.status === "fulfilled"
+}
+
 export async function getMarketDashboardData(watches: Watch[]): Promise<MarketDashboardData> {
   const watchTargets: MarketLookupInput[] = watches
     .slice(0, 18)
-    .flatMap((watch) => {
-      const brand = extractString(watch.brand)
-      const model = extractString(watch.model)
-      const referenceNumber = extractString(watch.referenceNumber)
-
-      if (!brand && !model && !referenceNumber) return []
-
-      return [normalizeLookupInput({
-        brand: brand || "",
-        model: model || "",
-        referenceNumber: referenceNumber ?? undefined,
-        heuristicPrice: watch.currentValue,
-      })]
-    })
+    .map((watch) => sanitizeLookupInput({
+      brand: watch.brand,
+      model: watch.model,
+      referenceNumber: watch.referenceNumber,
+      heuristicPrice: watch.currentValue,
+    }))
+    .filter((target): target is MarketLookupInput => target !== null)
 
   const uniqueTargets = new Map<string, MarketLookupInput>()
-  for (const target of [...watchTargets, ...DEFAULT_REFERENCE_TARGETS]) {
+  for (const target of [
+    ...watchTargets,
+    ...DEFAULT_REFERENCE_TARGETS
+      .map((target) => sanitizeLookupInput(target))
+      .filter((target): target is MarketLookupInput => target !== null)
+  ]) {
     const key = toSnapshotKey(target)
     if (!uniqueTargets.has(key)) uniqueTargets.set(key, target)
   }
 
   const snapshotResults = await Promise.allSettled(
-    Array.from(uniqueTargets.values()).slice(0, 16).map((target) => getNormalizedMarketData(target))
+    Array.from(uniqueTargets.values()).slice(0, 16).map(async (target) => {
+      try {
+        return await getNormalizedMarketData(target)
+      } catch {
+        return null
+      }
+    })
   )
   const snapshots = snapshotResults
-    .filter((result): result is PromiseFulfilledResult<NormalizedMarketData> => result.status === "fulfilled")
+    .filter(isFulfilled)
     .map((result) => result.value)
+    .filter((snapshot): snapshot is NormalizedMarketData => snapshot !== null)
 
   if (snapshots.length === 0) {
     return {
@@ -736,10 +784,14 @@ export async function getMarketDashboardData(watches: Watch[]): Promise<MarketDa
     return acc
   }, {})
 
-  const sentimentByBrandEntries = await Promise.all(
+  const sentimentByBrandEntries = await Promise.allSettled(
     Object.keys(groupedByBrand).map(async (brand) => [brand, await getBrandSentimentScore(brand)] as const)
   )
-  const sentimentByBrand = Object.fromEntries(sentimentByBrandEntries) as Record<string, number | null>
+  const sentimentByBrand = Object.fromEntries(
+    sentimentByBrandEntries
+      .filter(isFulfilled)
+      .map((result) => result.value)
+  ) as Record<string, number | null>
 
   const brandIndices = Object.entries(groupedByBrand).map(([brand, brandSnapshots]) => {
     const firstSeries = brandSnapshots[0]?.series12m || []

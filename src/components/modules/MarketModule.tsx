@@ -30,6 +30,8 @@ interface MarketModuleProps {
   preferredCurrency?: string
 }
 
+type MarketDataStatus = 'loading' | 'ready' | 'empty' | 'error'
+
 const getHostname = (url: string): string | undefined => {
   try {
     return new URL(url).hostname.toLowerCase()
@@ -214,6 +216,7 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
   const [topMovers, setTopMovers] = useState<MarketMover[]>([])
   const [isMarketDataLoading, setIsMarketDataLoading] = useState(true)
   const [marketDataUpdatedAt, setMarketDataUpdatedAt] = useState<string | null>(null)
+  const [marketDataStatus, setMarketDataStatus] = useState<MarketDataStatus>('loading')
   const [referenceSnapshot, setReferenceSnapshot] = useState<NormalizedMarketData | null>(null)
   const [isReferenceLoading, setIsReferenceLoading] = useState(false)
   const [alertEvaluations, setAlertEvaluations] = useState<Record<string, PriceAlertEvaluation>>({})
@@ -237,7 +240,7 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
   }, [watches])
 
   const overallIndex = useMemo(() => {
-    if (brandIndices.length === 0) return "100.0"
+    if (brandIndices.length === 0) return null
     const total = brandIndices.reduce((sum, b) => sum + b.currentIndex, 0)
     return (total / brandIndices.length).toFixed(1)
   }, [brandIndices])
@@ -332,6 +335,7 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
     let isMounted = true
 
     const loadMarketData = async () => {
+      setMarketDataStatus('loading')
       setIsMarketDataLoading(true)
       try {
         const dashboardData = await getMarketDashboardData(watches)
@@ -339,11 +343,14 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
         setBrandIndices(dashboardData.brandIndices)
         setTopMovers(dashboardData.topMovers)
         setMarketDataUpdatedAt(dashboardData.updatedAt)
+        setMarketDataStatus(dashboardData.brandIndices.length > 0 ? 'ready' : 'empty')
       } catch (error) {
         if (!isMounted) return
         console.error("Failed to load market dashboard data:", error)
         setBrandIndices([])
         setTopMovers([])
+        setMarketDataUpdatedAt(null)
+        setMarketDataStatus('error')
       } finally {
         if (isMounted) setIsMarketDataLoading(false)
       }
@@ -584,11 +591,19 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
             <CardTitle className="text-sm font-medium text-muted-foreground">Overall Market</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-semibold tabular-nums text-primary">{overallIndex}</div>
-            <div className="flex items-center gap-1 mt-1">
-              {overallChange1m >= 0 ? <TrendUp className="text-success" size={14} /> : <TrendDown className="text-destructive" size={14} />}
-              <span className={overallChange1m >= 0 ? 'text-xs text-success' : 'text-xs text-destructive'}>{formatTrend(overallChange1m)} (1m)</span>
-            </div>
+            <div className="text-3xl font-semibold tabular-nums text-primary">{overallIndex ?? "—"}</div>
+            {marketDataStatus === 'ready' ? (
+              <div className="flex items-center gap-1 mt-1">
+                {overallChange1m >= 0 ? <TrendUp className="text-success" size={14} /> : <TrendDown className="text-destructive" size={14} />}
+                <span className={overallChange1m >= 0 ? 'text-xs text-success' : 'text-xs text-destructive'}>{formatTrend(overallChange1m)} (1m)</span>
+              </div>
+            ) : (
+              <div className="text-xs text-muted-foreground mt-1">
+                {marketDataStatus === 'loading' && 'Loading market data…'}
+                {marketDataStatus === 'empty' && 'No market index data available'}
+                {marketDataStatus === 'error' && 'Market data unavailable'}
+              </div>
+            )}
           </CardContent>
         </Card>
 

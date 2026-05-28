@@ -73,6 +73,42 @@ describe("market-data", () => {
     expect(snapshot.latestPrice).toBe(100)
   })
 
+  it("skips malformed dashboard watch inputs without failing the overall market calculation", async () => {
+    vi.spyOn(watchChartsClient, "getMarketValue").mockResolvedValue(12000)
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    } as Response)
+
+    const malformedWatch = {
+      id: "watch-malformed",
+      brand: undefined,
+      model: undefined,
+      purchasePrice: 10000,
+      purchaseDate: "2024-01-01",
+      condition: "excellent",
+      category: "sport",
+    } as unknown as Watch
+
+    const dashboard = await getMarketDashboardData([
+      {
+        id: "watch-valid",
+        brand: "Rolex",
+        model: "Submariner",
+        referenceNumber: "126610LN",
+        purchasePrice: 11000,
+        purchaseDate: "2024-01-01",
+        condition: "excellent",
+        category: "sport",
+      },
+      malformedWatch,
+    ])
+
+    expect(dashboard.brandIndices.length).toBeGreaterThan(0)
+    expect(dashboard.brandIndices.some((index) => index.brand === "Rolex")).toBe(true)
+  })
+
   it("normalizes malformed lookup inputs so missing brand/model do not crash", async () => {
     vi.spyOn(watchChartsClient, "getMarketValue").mockResolvedValue(null)
     vi.spyOn(globalThis, "fetch").mockResolvedValue({
