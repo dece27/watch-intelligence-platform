@@ -53,9 +53,19 @@ function isBrowser(): boolean {
   return typeof window !== 'undefined'
 }
 
+function computeCacheHash(value: string): string {
+  let hash = 2166136261
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
+    hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24)
+  }
+  return (hash >>> 0).toString(36)
+}
+
 function buildAuctionCacheKey(references: string[], limit: number): string {
-  const normalizedRefs = references.map((reference) => reference.trim().toLowerCase()).sort().join('|')
-  return `${AUCTION_CACHE_KEY_PREFIX}${normalizedRefs}_${limit}`
+  const normalizedRefs = references.map((reference) => reference.trim().toLowerCase()).sort().join('\u0000')
+  const refsHash = computeCacheHash(normalizedRefs)
+  return `${AUCTION_CACHE_KEY_PREFIX}${refsHash}_${limit}`
 }
 
 function resolveAuctionCacheState(cachedAt: number): AuctionCacheState {

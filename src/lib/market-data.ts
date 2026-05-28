@@ -130,6 +130,7 @@ const sentimentInflightRequests = new Map<string, Promise<number | null>>()
 const providerCooldowns = new Map<BudgetProvider, number>()
 
 const nowIso = () => new Date().toISOString()
+const createEmptyDashboard = (): MarketDashboardData => ({ brandIndices: [], topMovers: [], updatedAt: nowIso() })
 
 const toMonthLabel = (date: Date) => date.toLocaleDateString("en-US", { month: "short" })
 
@@ -157,7 +158,7 @@ const toSnapshotKey = (input: MarketLookupInput) => {
 const buildCacheStorageKey = (input: MarketLookupInput) => `${CACHE_KEY_PREFIX}${toSnapshotKey(input)}`
 const buildSentimentCacheStorageKey = (brand: string) => `${SENTIMENT_CACHE_KEY_PREFIX}${brand.trim().toLowerCase()}`
 
-function hashString(value: string): string {
+function computeFNV1aHash(value: string): string {
   let hash = 2166136261
   for (let index = 0; index < value.length; index += 1) {
     hash ^= value.charCodeAt(index)
@@ -177,7 +178,7 @@ function buildDashboardWatchSignature(watches: Watch[]): string {
       Number.isFinite(watch.currentValue) ? String(watch.currentValue) : "",
     ].join("|"))
     .sort()
-  return hashString(normalized.join("::"))
+  return computeFNV1aHash(normalized.join("::"))
 }
 
 const buildDashboardCacheStorageKey = (signature: string) => `${DASHBOARD_CACHE_KEY_PREFIX}${signature}`
@@ -1212,14 +1213,15 @@ async function computeMarketDashboardData(watches: Watch[]): Promise<MarketDashb
     if (!uniqueWatchTargets.has(key) && !uniqueDefaultTargets.has(key)) uniqueDefaultTargets.set(key, target)
   }
 
+  const immediateDefaultTargetCount = Math.max(0, DASHBOARD_TARGET_LIMIT - uniqueWatchTargets.size)
   const immediateTargets = [
     ...Array.from(uniqueWatchTargets.values()),
-    ...Array.from(uniqueDefaultTargets.values()).slice(0, Math.max(0, DASHBOARD_TARGET_LIMIT - uniqueWatchTargets.size)),
+    ...Array.from(uniqueDefaultTargets.values()).slice(0, immediateDefaultTargetCount),
   ].slice(0, DASHBOARD_TARGET_LIMIT)
 
   const deferredDefaultTargets = Array.from(uniqueDefaultTargets.values()).slice(
-    Math.max(0, DASHBOARD_TARGET_LIMIT - uniqueWatchTargets.size),
-    Math.max(0, DASHBOARD_TARGET_LIMIT - uniqueWatchTargets.size) + DEFERRED_DEFAULT_TARGET_LIMIT,
+    immediateDefaultTargetCount,
+    immediateDefaultTargetCount + DEFERRED_DEFAULT_TARGET_LIMIT,
   )
 
   const snapshotResults = await mapWithConcurrencyLimit(immediateTargets, SNAPSHOT_CONCURRENCY_LIMIT, async (target) => {
@@ -1236,8 +1238,11 @@ async function computeMarketDashboardData(watches: Watch[]): Promise<MarketDashb
     void mapWithConcurrencyLimit(deferredDefaultTargets, SNAPSHOT_CONCURRENCY_LIMIT, async (target) => {
       try {
         await getNormalizedMarketData(target)
-      } catch {
-        // no-op
+      } catch (error) {
+        logMarketEvent("snapshot.cache.deferred_refresh_error", {
+          key: toSnapshotKey(target),
+          error: error instanceof Error ? error.message : "unknown_error",
+        })
       }
       return null
     })
@@ -1248,11 +1253,7 @@ async function computeMarketDashboardData(watches: Watch[]): Promise<MarketDashb
       durationMs: Date.now() - dashboardLoadStartedAt,
       snapshotCount: 0,
     })
-    return {
-      brandIndices: [],
-      topMovers: [],
-      updatedAt: nowIso(),
-    }
+    return createEmptyDashboard()
   }
 
   const groupedByBrand = snapshots.reduce<Record<string, NormalizedMarketData[]>>((acc, snapshot) => {
@@ -1374,7 +1375,7 @@ function queueDashboardRefresh(cacheKey: string, watches: Watch[]) {
     })
     .catch(() => (
       dashboardMemoryCache.get(cacheKey)?.data
-      ?? { brandIndices: [], topMovers: [], updatedAt: nowIso() }
+      ?? createEmptyDashboard()
     ))
     .finally(() => {
       dashboardInflightRequests.delete(cacheKey)

@@ -899,6 +899,8 @@ function App() {
           />
         )
       case 'market':
+        // Rendered outside this switch so the component remains mounted
+        // across tab changes and can reuse in-memory state/cache.
         return null
       case 'ai-advisor':
         return <AIAdvisorModule watches={watchList} userId={activeUserId || ""} preferredCurrency={preferredCurrency} />
