@@ -77,15 +77,21 @@ interface MarketLookupCandidate {
 const CACHE_KEY_PREFIX = "market_data_snapshot_v1_"
 const CACHE_TTL_MS = 1000 * 60 * 30
 const SNAPSHOT_CACHE_STALE_TTL_MS = 1000 * 60 * 60 * 24
+const DASHBOARD_CACHE_KEY_PREFIX = "market_dashboard_v1_"
+const DASHBOARD_CACHE_TTL_MS = 1000 * 60 * 60
+const DASHBOARD_CACHE_STALE_TTL_MS = 1000 * 60 * 60 * 24 * 2
 const SENTIMENT_CACHE_KEY_PREFIX = "market_sentiment_v1_"
 const DAILY_BUDGET_STORAGE_KEY = "market_data_daily_budget_v1"
 const PROVIDER_COOLDOWN_STORAGE_KEY = "market_data_provider_cooldown_v1"
 const FX_CACHE_TTL_MS = 1000 * 60 * 60 * 6
-const SENTIMENT_CACHE_TTL_MS = 1000 * 60 * 60 * 2
-const SENTIMENT_CACHE_STALE_TTL_MS = 1000 * 60 * 60 * 24
-const NEGATIVE_CACHE_TTL_MS = 1000 * 60 * 2
+const SENTIMENT_CACHE_TTL_MS = 1000 * 60 * 60 * 6
+const SENTIMENT_CACHE_STALE_TTL_MS = 1000 * 60 * 60 * 72
+const NEGATIVE_CACHE_TTL_MS = 1000 * 60 * 15
 const MAX_GDELT_BRANDS_PER_LOAD = 4
 const IMMEDIATE_GDELT_BRANDS_PER_LOAD = 2
+const DASHBOARD_TARGET_LIMIT = 10
+const DEFERRED_DEFAULT_TARGET_LIMIT = 6
+const SNAPSHOT_CONCURRENCY_LIMIT = 4
 const SENTIMENT_REQUEST_SPACING_MS = import.meta.env.MODE === "test" ? 0 : 400
 const MIN_RETRY_DELAY_MS = 250
 const DEFAULT_PROVIDER_COOLDOWN_MS = 1000 * 60
@@ -115,9 +121,11 @@ const DEFAULT_REFERENCE_TARGETS: MarketLookupInput[] = [
 ]
 
 const inMemoryCache = new Map<string, { expiresAt: number; data: NormalizedMarketData }>()
+const dashboardMemoryCache = new Map<string, { expiresAt: number; data: MarketDashboardData }>()
 const fxRateCache = new Map<string, { expiresAt: number; rates: Record<string, number> }>()
 const sentimentCache = new Map<string, { expiresAt: number; cachedAt: number; score: number | null }>()
 const snapshotInflightRequests = new Map<string, Promise<NormalizedMarketData>>()
+const dashboardInflightRequests = new Map<string, Promise<MarketDashboardData>>()
 const sentimentInflightRequests = new Map<string, Promise<number | null>>()
 const providerCooldowns = new Map<BudgetProvider, number>()
 
@@ -148,6 +156,31 @@ const toSnapshotKey = (input: MarketLookupInput) => {
 
 const buildCacheStorageKey = (input: MarketLookupInput) => `${CACHE_KEY_PREFIX}${toSnapshotKey(input)}`
 const buildSentimentCacheStorageKey = (brand: string) => `${SENTIMENT_CACHE_KEY_PREFIX}${brand.trim().toLowerCase()}`
+
+function hashString(value: string): string {
+  let hash = 2166136261
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
+    hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24)
+  }
+  return (hash >>> 0).toString(36)
+}
+
+function buildDashboardWatchSignature(watches: Watch[]): string {
+  const normalized = watches
+    .slice(0, 50)
+    .map((watch) => [
+      watch.id || "",
+      extractString(watch.brand)?.toLowerCase() || "",
+      extractString(watch.model)?.toLowerCase() || "",
+      extractString(watch.referenceNumber)?.toLowerCase() || "",
+      Number.isFinite(watch.currentValue) ? String(watch.currentValue) : "",
+    ].join("|"))
+    .sort()
+  return hashString(normalized.join("::"))
+}
+
+const buildDashboardCacheStorageKey = (signature: string) => `${DASHBOARD_CACHE_KEY_PREFIX}${signature}`
 
 const isBrowser = () => typeof window !== "undefined"
 
@@ -553,6 +586,11 @@ interface SnapshotCacheRecord {
   data: NormalizedMarketData
 }
 
+interface DashboardCacheRecord {
+  cachedAt: string
+  data: MarketDashboardData
+}
+
 interface SentimentCacheRecord {
   cachedAt: string
   score: number | null
@@ -634,6 +672,59 @@ async function setPersistentCache(input: MarketLookupInput, data: NormalizedMark
   installSparkKVFallback()
   try {
     await window.spark.kv.set<SnapshotCacheRecord>(key, { cachedAt: nowIso(), data })
+  } catch {
+    // no-op
+  }
+}
+
+async function getDashboardCacheState(cacheKey: string): Promise<ResolvedCache<MarketDashboardData>> {
+  const inMemory = dashboardMemoryCache.get(cacheKey)
+  if (inMemory) {
+    const state = inMemory.expiresAt > Date.now() ? "fresh" : "stale"
+    logMarketEvent(`dashboard.cache.${state}`, { layer: "memory", key: cacheKey })
+    return { state, value: inMemory.data }
+  }
+
+  if (!isBrowser()) {
+    logMarketEvent("dashboard.cache.miss", { layer: "none", key: cacheKey })
+    return { state: "expired", value: null }
+  }
+
+  installSparkKVFallback()
+  try {
+    const cached = await window.spark.kv.get<DashboardCacheRecord>(cacheKey)
+    if (!cached || !cached.data) {
+      logMarketEvent("dashboard.cache.miss", { layer: "persistent", key: cacheKey })
+      return { state: "expired", value: null }
+    }
+    const cachedAt = Date.parse(cached.cachedAt)
+    if (!Number.isFinite(cachedAt)) {
+      logMarketEvent("dashboard.cache.miss", { layer: "persistent", key: cacheKey, reason: "invalid_cachedAt" })
+      return { state: "expired", value: null }
+    }
+    const state = resolveCacheState(cachedAt, DASHBOARD_CACHE_TTL_MS, DASHBOARD_CACHE_STALE_TTL_MS)
+    if (state === "expired") {
+      logMarketEvent("dashboard.cache.miss", { layer: "persistent", key: cacheKey, reason: "expired" })
+      return { state, value: null }
+    }
+    dashboardMemoryCache.set(cacheKey, {
+      expiresAt: cachedAt + DASHBOARD_CACHE_TTL_MS,
+      data: cached.data,
+    })
+    logMarketEvent(`dashboard.cache.${state}`, { layer: "persistent", key: cacheKey })
+    return { state, value: cached.data }
+  } catch {
+    logMarketEvent("dashboard.cache.miss", { layer: "persistent", key: cacheKey, reason: "read_error" })
+    return { state: "expired", value: null }
+  }
+}
+
+async function setPersistentDashboardCache(cacheKey: string, data: MarketDashboardData) {
+  dashboardMemoryCache.set(cacheKey, { expiresAt: Date.now() + DASHBOARD_CACHE_TTL_MS, data })
+  if (!isBrowser()) return
+  installSparkKVFallback()
+  try {
+    await window.spark.kv.set<DashboardCacheRecord>(cacheKey, { cachedAt: nowIso(), data })
   } catch {
     // no-op
   }
@@ -809,7 +900,7 @@ async function fromTheWatchApi(input: MarketLookupInput): Promise<NormalizedMark
 
   try {
     consumeBudget("thewatchapi")
-    const payload = await requestJsonWithBackoff(url.toString(), { headers }, 2, 10000, "thewatchapi")
+    const payload = await requestJsonWithBackoff(url.toString(), { headers }, 1, 7000, "thewatchapi")
     return parseTheWatchApiSnapshot(payload, input)
   } catch {
     return null
@@ -887,7 +978,7 @@ async function fromEbay(input: MarketLookupInput): Promise<NormalizedMarketData 
     consumeBudget("ebay")
     const payload = await requestJsonWithBackoff(url.toString(), {
       headers: { Accept: "application/json" },
-    }, 2, 10000, "ebay")
+    }, 1, 7000, "ebay")
     return parseEbaySnapshot(payload, input)
   } catch {
     return null
@@ -976,16 +1067,31 @@ export function marketConfidenceLabel(confidence: number): "high" | "medium" | "
 }
 
 async function fetchAndCacheSnapshot(normalizedInput: MarketLookupInput): Promise<NormalizedMarketData> {
-  const providerResults = await Promise.all([
-    fromWatchCharts(normalizedInput),
-    fromTheWatchApi(normalizedInput),
-    fromEbay(normalizedInput),
-  ])
+  const providerOrder: Array<{ source: MarketDataSource; fetcher: (input: MarketLookupInput) => Promise<NormalizedMarketData | null> }> = [
+    { source: "watchcharts", fetcher: fromWatchCharts },
+    { source: "thewatchapi", fetcher: fromTheWatchApi },
+    { source: "ebay", fetcher: fromEbay },
+  ]
 
-  const snapshot = providerResults.find((result): result is NormalizedMarketData => result !== null)
-    || fromHeuristic(normalizedInput)
-  await setPersistentCache(normalizedInput, snapshot)
-  return snapshot
+  let snapshot: NormalizedMarketData | null = null
+  for (const provider of providerOrder) {
+    const startedAt = Date.now()
+    const providerResult = await provider.fetcher(normalizedInput)
+    logMarketEvent("snapshot.provider.complete", {
+      provider: provider.source,
+      durationMs: Date.now() - startedAt,
+      hit: Boolean(providerResult),
+      reference: normalizedInput.referenceNumber || `${normalizedInput.brand}:${normalizedInput.model}`,
+    })
+    if (providerResult) {
+      snapshot = providerResult
+      if (providerResult.confidence >= 0.8) break
+    }
+  }
+
+  const resolvedSnapshot = snapshot || fromHeuristic(normalizedInput)
+  await setPersistentCache(normalizedInput, resolvedSnapshot)
+  return resolvedSnapshot
 }
 
 function queueSnapshotRefresh(normalizedInput: MarketLookupInput) {
@@ -1048,20 +1154,41 @@ function average(values: number[]): number {
   return values.reduce((sum, value) => sum + value, 0) / values.length
 }
 
-function isFulfilled<T>(result: PromiseSettledResult<T>): result is PromiseFulfilledResult<T> {
-  return result.status === "fulfilled"
-}
-
 export function __resetMarketDataStateForTests() {
   inMemoryCache.clear()
+  dashboardMemoryCache.clear()
   fxRateCache.clear()
   sentimentCache.clear()
   snapshotInflightRequests.clear()
+  dashboardInflightRequests.clear()
   sentimentInflightRequests.clear()
   providerCooldowns.clear()
 }
 
-export async function getMarketDashboardData(watches: Watch[]): Promise<MarketDashboardData> {
+async function mapWithConcurrencyLimit<TInput, TOutput>(
+  items: TInput[],
+  concurrency: number,
+  mapper: (item: TInput, index: number) => Promise<TOutput>,
+): Promise<TOutput[]> {
+  if (items.length === 0) return []
+  const maxConcurrency = Math.max(1, Math.floor(concurrency))
+  const results = new Array<TOutput>(items.length)
+  let nextIndex = 0
+
+  const workers = Array.from({ length: Math.min(maxConcurrency, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex
+      nextIndex += 1
+      results[currentIndex] = await mapper(items[currentIndex], currentIndex)
+    }
+  })
+
+  await Promise.all(workers)
+  return results
+}
+
+async function computeMarketDashboardData(watches: Watch[]): Promise<MarketDashboardData> {
+  const dashboardLoadStartedAt = Date.now()
   const watchTargets: MarketLookupInput[] = watches
     .slice(0, 18)
     .map((watch) => sanitizeLookupInput({
@@ -1072,32 +1199,55 @@ export async function getMarketDashboardData(watches: Watch[]): Promise<MarketDa
     }))
     .filter((target): target is MarketLookupInput => target !== null)
 
-  const uniqueTargets = new Map<string, MarketLookupInput>()
-  for (const target of [
-    ...watchTargets,
-    ...DEFAULT_REFERENCE_TARGETS
-      .map((target) => sanitizeLookupInput(target))
-      .filter((target): target is MarketLookupInput => target !== null)
-  ]) {
+  const uniqueWatchTargets = new Map<string, MarketLookupInput>()
+  for (const target of watchTargets) {
     const key = toSnapshotKey(target)
-    if (!uniqueTargets.has(key)) uniqueTargets.set(key, target)
+    if (!uniqueWatchTargets.has(key)) uniqueWatchTargets.set(key, target)
+  }
+  const uniqueDefaultTargets = new Map<string, MarketLookupInput>()
+  for (const target of DEFAULT_REFERENCE_TARGETS
+    .map((item) => sanitizeLookupInput(item))
+    .filter((item): item is MarketLookupInput => item !== null)) {
+    const key = toSnapshotKey(target)
+    if (!uniqueWatchTargets.has(key) && !uniqueDefaultTargets.has(key)) uniqueDefaultTargets.set(key, target)
   }
 
-  const snapshotResults = await Promise.allSettled(
-    Array.from(uniqueTargets.values()).slice(0, 16).map(async (target) => {
-      try {
-        return await getNormalizedMarketData(target)
-      } catch {
-        return null
-      }
-    })
+  const immediateTargets = [
+    ...Array.from(uniqueWatchTargets.values()),
+    ...Array.from(uniqueDefaultTargets.values()).slice(0, Math.max(0, DASHBOARD_TARGET_LIMIT - uniqueWatchTargets.size)),
+  ].slice(0, DASHBOARD_TARGET_LIMIT)
+
+  const deferredDefaultTargets = Array.from(uniqueDefaultTargets.values()).slice(
+    Math.max(0, DASHBOARD_TARGET_LIMIT - uniqueWatchTargets.size),
+    Math.max(0, DASHBOARD_TARGET_LIMIT - uniqueWatchTargets.size) + DEFERRED_DEFAULT_TARGET_LIMIT,
   )
+
+  const snapshotResults = await mapWithConcurrencyLimit(immediateTargets, SNAPSHOT_CONCURRENCY_LIMIT, async (target) => {
+    try {
+      return await getNormalizedMarketData(target)
+    } catch {
+      return null
+    }
+  })
   const snapshots = snapshotResults
-    .filter(isFulfilled)
-    .map((result) => result.value)
     .filter((snapshot): snapshot is NormalizedMarketData => snapshot !== null)
 
+  if (deferredDefaultTargets.length > 0) {
+    void mapWithConcurrencyLimit(deferredDefaultTargets, SNAPSHOT_CONCURRENCY_LIMIT, async (target) => {
+      try {
+        await getNormalizedMarketData(target)
+      } catch {
+        // no-op
+      }
+      return null
+    })
+  }
+
   if (snapshots.length === 0) {
+    logMarketEvent("dashboard.load.complete", {
+      durationMs: Date.now() - dashboardLoadStartedAt,
+      snapshotCount: 0,
+    })
     return {
       brandIndices: [],
       topMovers: [],
@@ -1202,11 +1352,63 @@ export async function getMarketDashboardData(watches: Watch[]): Promise<MarketDa
     return Date.parse(snapshot.updatedAt) > Date.parse(latest) ? snapshot.updatedAt : latest
   }, "")
 
+  logMarketEvent("dashboard.load.complete", {
+    durationMs: Date.now() - dashboardLoadStartedAt,
+    snapshotCount: snapshots.length,
+    brandCount: brandIndices.length,
+  })
+
   return {
     brandIndices,
     topMovers,
     updatedAt: updatedAt || nowIso(),
   }
+}
+
+function queueDashboardRefresh(cacheKey: string, watches: Watch[]) {
+  if (dashboardInflightRequests.has(cacheKey)) return
+  const refreshRequest = computeMarketDashboardData(watches)
+    .then(async (dashboard) => {
+      await setPersistentDashboardCache(cacheKey, dashboard)
+      return dashboard
+    })
+    .catch(() => (
+      dashboardMemoryCache.get(cacheKey)?.data
+      ?? { brandIndices: [], topMovers: [], updatedAt: nowIso() }
+    ))
+    .finally(() => {
+      dashboardInflightRequests.delete(cacheKey)
+    })
+  dashboardInflightRequests.set(cacheKey, refreshRequest)
+  logMarketEvent("dashboard.cache.refresh_queued", { key: cacheKey })
+}
+
+export async function getMarketDashboardData(watches: Watch[]): Promise<MarketDashboardData> {
+  const dashboardKey = buildDashboardCacheStorageKey(buildDashboardWatchSignature(watches))
+  const cached = await getDashboardCacheState(dashboardKey)
+  if (cached.state === "fresh" && cached.value) return cached.value
+
+  const inflight = dashboardInflightRequests.get(dashboardKey)
+  if (inflight) {
+    if (cached.value) return cached.value
+    return inflight
+  }
+
+  if (cached.state === "stale" && cached.value) {
+    queueDashboardRefresh(dashboardKey, watches)
+    return cached.value
+  }
+
+  const request = computeMarketDashboardData(watches)
+    .then(async (dashboard) => {
+      await setPersistentDashboardCache(dashboardKey, dashboard)
+      return dashboard
+    })
+    .finally(() => {
+      dashboardInflightRequests.delete(dashboardKey)
+    })
+  dashboardInflightRequests.set(dashboardKey, request)
+  return request
 }
 
 export async function getReferenceMarketData(input: {

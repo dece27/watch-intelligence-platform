@@ -129,6 +129,7 @@ function App() {
   const [persistedUser, setPersistedUser] = useKV<User | null>("currentUser", null)
   const [currentUser, setCurrentUser] = useState<User | null>(persistedUser ?? null)
   const [activeModule, setActiveModule] = useState('collection')
+  const [hasVisitedMarketModule, setHasVisitedMarketModule] = useState(false)
   const [showWelcome, setShowWelcome] = useState(true)
   const [triggerAddWatch, setTriggerAddWatch] = useState(false)
   const [watches, setWatches] = useState<Watch[]>([])
@@ -147,6 +148,12 @@ function App() {
   const [watchSyncStateById, setWatchSyncStateById] = useState<Record<string, 'pending_sync' | 'failed_sync'>>({})
   const replayingOutboxRef = useRef(false)
   const isMobile = useIsMobile()
+
+  useEffect(() => {
+    if (activeModule === 'market') {
+      setHasVisitedMarketModule(true)
+    }
+  }, [activeModule])
 
   // Subscribe to Supabase Auth state changes to keep supabaseUserId in sync.
   useEffect(() => {
@@ -892,7 +899,7 @@ function App() {
           />
         )
       case 'market':
-        return <MarketModule watches={watchList} preferredCurrency={preferredCurrency} />
+        return null
       case 'ai-advisor':
         return <AIAdvisorModule watches={watchList} userId={activeUserId || ""} preferredCurrency={preferredCurrency} />
       case 'deals':
@@ -1007,6 +1014,11 @@ function App() {
                 </AlertTitle>
                 <AlertDescription>{persistenceStateMessage}</AlertDescription>
               </Alert>
+            )}
+            {(hasVisitedMarketModule || activeModule === 'market') && (
+              <div className={activeModule === 'market' ? '' : 'hidden'} aria-hidden={activeModule !== 'market'}>
+                <MarketModule watches={watchList} preferredCurrency={preferredCurrency} />
+              </div>
             )}
             {renderModule()}
           </div>
