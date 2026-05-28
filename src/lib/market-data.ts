@@ -75,9 +75,13 @@ interface MarketLookupCandidate {
 
 const CACHE_KEY_PREFIX = "market_data_snapshot_v1_"
 const CACHE_TTL_MS = 1000 * 60 * 30
+const SENTIMENT_CACHE_KEY_PREFIX = "market_sentiment_v1_"
 const DAILY_BUDGET_STORAGE_KEY = "market_data_daily_budget_v1"
 const FX_CACHE_TTL_MS = 1000 * 60 * 60 * 6
 const SENTIMENT_CACHE_TTL_MS = 1000 * 60 * 60 * 2
+const MAX_GDELT_BRANDS_PER_LOAD = 4
+const SENTIMENT_REQUEST_SPACING_MS = import.meta.env.MODE === "test" ? 0 : 400
+const MIN_RETRY_DELAY_MS = 250
 const DEFAULT_LOOKUP_BRAND = "Unknown"
 const DEFAULT_LOOKUP_MODEL = "Unknown Model"
 
@@ -88,7 +92,7 @@ const PROVIDER_DAILY_LIMITS: Record<BudgetProvider, number> = {
   thewatchapi: 900,
   ebay: 1200,
   heuristic: Number.POSITIVE_INFINITY,
-  gdelt: 500,
+  gdelt: 30,
   frankfurter: 600,
 }
 
@@ -133,6 +137,7 @@ const toSnapshotKey = (input: MarketLookupInput) => {
 }
 
 const buildCacheStorageKey = (input: MarketLookupInput) => `${CACHE_KEY_PREFIX}${toSnapshotKey(input)}`
+const buildSentimentCacheStorageKey = (brand: string) => `${SENTIMENT_CACHE_KEY_PREFIX}${brand.trim().toLowerCase()}`
 
 const isBrowser = () => typeof window !== "undefined"
 
@@ -340,6 +345,34 @@ function consumeBudget(source: BudgetProvider) {
   writeDailyBudgetState(state)
 }
 
+class RateLimitError extends Error {
+  retryAfterMs: number | null
+
+  constructor(message: string, retryAfterMs: number | null = null) {
+    super(message)
+    this.name = "RateLimitError"
+    this.retryAfterMs = retryAfterMs
+  }
+}
+
+function parseRetryAfterMs(retryAfterHeader: string | null): number | null {
+  if (!retryAfterHeader) return null
+  const asSeconds = Number(retryAfterHeader)
+  if (Number.isFinite(asSeconds) && asSeconds > 0) {
+    return Math.max(MIN_RETRY_DELAY_MS, Math.round(asSeconds * 1000))
+  }
+
+  const asDateMs = Date.parse(retryAfterHeader)
+  if (Number.isNaN(asDateMs)) return null
+  const delta = asDateMs - Date.now()
+  return delta > 0 ? Math.max(MIN_RETRY_DELAY_MS, delta) : null
+}
+
+function sleep(ms: number): Promise<void> {
+  if (!Number.isFinite(ms) || ms <= 0) return Promise.resolve()
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 async function requestJsonWithBackoff(url: string, init?: RequestInit, retries = 2, timeoutMs = 10000): Promise<unknown> {
   let attempt = 0
   let lastError: unknown
@@ -350,7 +383,11 @@ async function requestJsonWithBackoff(url: string, init?: RequestInit, retries =
       const response = await fetch(url, { signal: controller.signal, ...init })
       clearTimeout(timeoutId)
       if (!response.ok) {
-        if (response.status === 429 || response.status >= 500) {
+        if (response.status === 429) {
+          const retryAfterMs = parseRetryAfterMs(response.headers.get("Retry-After"))
+          throw new RateLimitError("retryable_http_429", retryAfterMs)
+        }
+        if (response.status >= 500) {
           throw new Error(`retryable_http_${response.status}`)
         }
         throw new Error(`http_${response.status}`)
@@ -443,6 +480,47 @@ async function setPersistentCache(input: MarketLookupInput, data: NormalizedMark
   if (!isBrowser()) return
   try {
     await window.spark.kv.set(key, { cachedAt: nowIso(), data })
+  } catch {
+    // no-op
+  }
+}
+
+async function getPersistentSentimentCache(brand: string): Promise<number | null> {
+  const key = buildSentimentCacheStorageKey(brand)
+  const inMemory = sentimentCache.get(brand.trim().toLowerCase())
+  if (inMemory && inMemory.expiresAt > Date.now()) {
+    return inMemory.score
+  }
+
+  if (!isBrowser()) return null
+  try {
+    const cached = await window.spark.kv.get<{ cachedAt: string; score: number }>(key)
+    if (!cached || cached.score === null || cached.score === undefined || !Number.isFinite(cached.score)) return null
+    const cachedAt = Date.parse(cached.cachedAt)
+    if (!Number.isFinite(cachedAt)) return null
+    if (Date.now() - cachedAt > SENTIMENT_CACHE_TTL_MS) return null
+    sentimentCache.set(brand.trim().toLowerCase(), {
+      expiresAt: cachedAt + SENTIMENT_CACHE_TTL_MS,
+      score: cached.score,
+    })
+    return cached.score
+  } catch {
+    return null
+  }
+}
+
+async function setPersistentSentimentCache(brand: string, score: number): Promise<void> {
+  const cacheKey = brand.trim().toLowerCase()
+  sentimentCache.set(cacheKey, {
+    expiresAt: Date.now() + SENTIMENT_CACHE_TTL_MS,
+    score,
+  })
+  if (!isBrowser()) return
+  try {
+    await window.spark.kv.set(buildSentimentCacheStorageKey(brand), {
+      cachedAt: nowIso(),
+      score,
+    })
   } catch {
     // no-op
   }
@@ -650,10 +728,8 @@ function fromHeuristic(input: MarketLookupInput): NormalizedMarketData {
 async function getBrandSentimentScore(brand: string): Promise<number | null> {
   const cacheKey = brand.trim().toLowerCase()
   if (!cacheKey) return null
-  const cached = sentimentCache.get(cacheKey)
-  if (cached && cached.expiresAt > Date.now()) {
-    return cached.score
-  }
+  const cached = await getPersistentSentimentCache(brand)
+  if (typeof cached === "number" && Number.isFinite(cached)) return cached
   if (!canConsumeBudget("gdelt")) return null
 
   const endpoint = new URL("https://api.gdeltproject.org/api/v2/doc/doc")
@@ -675,12 +751,10 @@ async function getBrandSentimentScore(brand: string): Promise<number | null> {
       .filter((value): value is number => typeof value === "number" && Number.isFinite(value))
     if (values.length === 0) return null
     const averageTone = average(values)
-    sentimentCache.set(cacheKey, {
-      expiresAt: Date.now() + SENTIMENT_CACHE_TTL_MS,
-      score: averageTone,
-    })
+    await setPersistentSentimentCache(brand, averageTone)
     return averageTone
-  } catch {
+  } catch (error) {
+    if (error instanceof RateLimitError) throw error
     return null
   }
 }
@@ -784,14 +858,27 @@ export async function getMarketDashboardData(watches: Watch[]): Promise<MarketDa
     return acc
   }, {})
 
-  const sentimentByBrandEntries = await Promise.allSettled(
-    Object.keys(groupedByBrand).map(async (brand) => [brand, await getBrandSentimentScore(brand)] as const)
-  )
-  const sentimentByBrand = Object.fromEntries(
-    sentimentByBrandEntries
-      .filter(isFulfilled)
-      .map((result) => result.value)
-  ) as Record<string, number | null>
+  const sentimentByBrand: Record<string, number | null> = {}
+  const prioritizedBrands = Object.entries(groupedByBrand)
+    .sort((left, right) => right[1].length - left[1].length)
+    .map(([brand]) => brand)
+    .slice(0, MAX_GDELT_BRANDS_PER_LOAD)
+
+  for (let index = 0; index < prioritizedBrands.length; index += 1) {
+    const brand = prioritizedBrands[index]
+    try {
+      sentimentByBrand[brand] = await getBrandSentimentScore(brand)
+    } catch (error) {
+      sentimentByBrand[brand] = null
+      if (error instanceof RateLimitError) {
+        break
+      }
+    }
+
+    if (index < prioritizedBrands.length - 1) {
+      await sleep(SENTIMENT_REQUEST_SPACING_MS)
+    }
+  }
 
   const brandIndices = Object.entries(groupedByBrand).map(([brand, brandSnapshots]) => {
     const firstSeries = brandSnapshots[0]?.series12m || []
