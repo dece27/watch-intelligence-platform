@@ -703,7 +703,7 @@ def main() -> None:
         "no_cached_listings": no_cached_listings,
         "hard_upstream_failure": hard_upstream_failure,
         "upstream_failure_threshold": CHRONO24_UPSTREAM_FAILURE_THRESHOLD,
-        "failed": status in {"failed_upsert"} or hard_upstream_failure,
+        "failed": status == "failed_upsert" or hard_upstream_failure,
     }
 
     print(

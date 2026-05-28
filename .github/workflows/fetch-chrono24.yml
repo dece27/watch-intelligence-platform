@@ -186,11 +186,21 @@ jobs:
                   ]
               )
           elif degraded:
+              if str(value("status")) == "mapping_empty":
+                  degraded_outcome = (
+                      "This run is green but degraded because Chrono24 listings were fetched "
+                      "but could not be mapped into valid rows; cached listings were preserved."
+                  )
+              else:
+                  degraded_outcome = (
+                      "This run is green but degraded because Chrono24 was unavailable and "
+                      "cached listings were used as fallback."
+                  )
               lines.extend(
                   [
                       "",
                       "### Outcome",
-                      "This run is green but degraded because Chrono24 data could not be fully refreshed; cached listings were preserved as fallback.",
+                      degraded_outcome,
                   ]
               )
           else:
