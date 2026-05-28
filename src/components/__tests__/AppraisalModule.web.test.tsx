@@ -3,12 +3,13 @@
 import { act } from "react"
 import { createRoot, Root } from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import type { ReactNode } from "react"
 import { AppraisalModule } from "@/components/modules/AppraisalModule"
 import type { Watch } from "@/lib/types"
-import type { ReactNode } from "react"
 
-const getMarketValue = vi.fn(async () => 99999)
-const getNormalizedMarketData = vi.fn(async () => ({
+const { getMarketValue, getNormalizedMarketData } = vi.hoisted(() => ({
+  getMarketValue: vi.fn(async () => 99999),
+  getNormalizedMarketData: vi.fn(async () => ({
   brand: "Rolex",
   model: "Submariner",
   referenceNumber: "126610LN",
@@ -18,6 +19,7 @@ const getNormalizedMarketData = vi.fn(async () => ({
   updatedAt: new Date().toISOString(),
   confidence: 0.95,
   series12m: [],
+  })),
 }))
 
 vi.mock("@/lib/watchcharts-client", () => ({
