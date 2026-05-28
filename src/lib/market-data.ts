@@ -987,17 +987,18 @@ async function fromEbay(input: MarketLookupInput): Promise<NormalizedMarketData 
 }
 
 function fromHeuristic(input: MarketLookupInput): NormalizedMarketData {
-  const baseline = Math.max(100, input.heuristicPrice || 0)
+  const price = input.heuristicPrice || 0
+  const seriesBaseline = Math.max(100, price)
   return normalizeMarketSnapshot({
     reference: input.referenceNumber || `${input.brand} ${input.model}`,
     brand: input.brand,
     model: input.model,
     currency: "USD",
-    latestPrice: Math.round(baseline),
-    series12m: buildFallbackSeries(baseline, `heuristic:${input.brand}:${input.model}:${input.referenceNumber || ""}`),
+    latestPrice: Math.round(price),
+    series12m: buildFallbackSeries(seriesBaseline, `heuristic:${input.brand}:${input.model}:${input.referenceNumber || ""}`),
     source: "heuristic",
     updatedAt: nowIso(),
-    confidence: 0.45,
+    confidence: price > 0 ? 0.45 : 0,
   })
 }
 
