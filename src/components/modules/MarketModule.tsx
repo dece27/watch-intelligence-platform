@@ -234,6 +234,18 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
   })
 
   const alerts = useMemo(() => priceAlerts || [], [priceAlerts])
+  const marketWatchSignature = useMemo(() => {
+    const normalized = watches
+      .map((watch) => [
+        watch.id,
+        watch.brand?.trim().toLowerCase() || "",
+        watch.model?.trim().toLowerCase() || "",
+        watch.referenceNumber?.trim().toLowerCase() || "",
+        Number.isFinite(watch.currentValue) ? String(watch.currentValue) : "",
+      ].join("|"))
+      .sort()
+    return normalized.join("::")
+  }, [watches])
 
   const userBrands = useMemo(() => {
     return new Set(watches.map(w => w.brand))
@@ -341,7 +353,7 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
     let isMounted = true
 
     const loadMarketData = async () => {
-      setMarketDataStatus('loading')
+      setMarketDataStatus((current) => (current === 'ready' || current === 'empty' ? current : 'loading'))
       setIsMarketDataLoading(true)
       try {
         const dashboardData = await getMarketDashboardData(watches)
@@ -366,7 +378,7 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
     return () => {
       isMounted = false
     }
-  }, [watches])
+  }, [marketWatchSignature])
 
   useEffect(() => {
     let isMounted = true

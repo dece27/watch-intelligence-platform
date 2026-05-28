@@ -1,6 +1,7 @@
 import type { Deal, PriceAlert, Watch } from "@/lib/types"
 import { convertCurrency } from "@/lib/currency"
 import { watchChartsClient } from "@/lib/watchcharts-client"
+import { installSparkKVFallback } from "@/lib/sparkKV"
 
 export type MarketDataSource = "watchcharts" | "thewatchapi" | "ebay" | "heuristic"
 
@@ -75,13 +76,19 @@ interface MarketLookupCandidate {
 
 const CACHE_KEY_PREFIX = "market_data_snapshot_v1_"
 const CACHE_TTL_MS = 1000 * 60 * 30
+const CACHE_STALE_TTL_MS = 1000 * 60 * 60 * 24
 const SENTIMENT_CACHE_KEY_PREFIX = "market_sentiment_v1_"
 const DAILY_BUDGET_STORAGE_KEY = "market_data_daily_budget_v1"
+const PROVIDER_COOLDOWN_STORAGE_KEY = "market_data_provider_cooldown_v1"
 const FX_CACHE_TTL_MS = 1000 * 60 * 60 * 6
 const SENTIMENT_CACHE_TTL_MS = 1000 * 60 * 60 * 2
+const SENTIMENT_CACHE_STALE_TTL_MS = 1000 * 60 * 60 * 24
+const NEGATIVE_CACHE_TTL_MS = 1000 * 60 * 2
 const MAX_GDELT_BRANDS_PER_LOAD = 4
+const IMMEDIATE_GDELT_BRANDS_PER_LOAD = 2
 const SENTIMENT_REQUEST_SPACING_MS = import.meta.env.MODE === "test" ? 0 : 400
 const MIN_RETRY_DELAY_MS = 250
+const DEFAULT_PROVIDER_COOLDOWN_MS = 1000 * 60
 const DEFAULT_LOOKUP_BRAND = "Unknown"
 const DEFAULT_LOOKUP_MODEL = "Unknown Model"
 
@@ -109,7 +116,10 @@ const DEFAULT_REFERENCE_TARGETS: MarketLookupInput[] = [
 
 const inMemoryCache = new Map<string, { expiresAt: number; data: NormalizedMarketData }>()
 const fxRateCache = new Map<string, { expiresAt: number; rates: Record<string, number> }>()
-const sentimentCache = new Map<string, { expiresAt: number; score: number }>()
+const sentimentCache = new Map<string, { expiresAt: number; cachedAt: number; score: number | null }>()
+const snapshotInflightRequests = new Map<string, Promise<NormalizedMarketData>>()
+const sentimentInflightRequests = new Map<string, Promise<number | null>>()
+const providerCooldowns = new Map<BudgetProvider, number>()
 
 const nowIso = () => new Date().toISOString()
 
@@ -140,6 +150,68 @@ const buildCacheStorageKey = (input: MarketLookupInput) => `${CACHE_KEY_PREFIX}$
 const buildSentimentCacheStorageKey = (brand: string) => `${SENTIMENT_CACHE_KEY_PREFIX}${brand.trim().toLowerCase()}`
 
 const isBrowser = () => typeof window !== "undefined"
+
+function logMarketEvent(event: string, metadata?: Record<string, unknown>) {
+  if (import.meta.env.MODE !== "development" && import.meta.env.MODE !== "test") return
+  if (metadata) {
+    console.debug(`[market-data] ${event}`, metadata)
+    return
+  }
+  console.debug(`[market-data] ${event}`)
+}
+
+function readProviderCooldownsFromStorage(): Partial<Record<BudgetProvider, number>> {
+  if (!isBrowser()) return {}
+  try {
+    const raw = window.localStorage.getItem(PROVIDER_COOLDOWN_STORAGE_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as Partial<Record<BudgetProvider, number>>
+    return parsed || {}
+  } catch {
+    return {}
+  }
+}
+
+function writeProviderCooldownsToStorage() {
+  if (!isBrowser()) return
+  try {
+    const serializable = Object.fromEntries(providerCooldowns.entries()) as Partial<Record<BudgetProvider, number>>
+    window.localStorage.setItem(PROVIDER_COOLDOWN_STORAGE_KEY, JSON.stringify(serializable))
+  } catch {
+    // no-op
+  }
+}
+
+function ensureProviderCooldownsLoaded() {
+  if (providerCooldowns.size > 0) return
+  const persisted = readProviderCooldownsFromStorage()
+  for (const provider of Object.keys(PROVIDER_DAILY_LIMITS) as BudgetProvider[]) {
+    const value = Number(persisted[provider] || 0)
+    if (value > Date.now()) providerCooldowns.set(provider, value)
+  }
+}
+
+function getProviderCooldownRemainingMs(source: BudgetProvider): number {
+  ensureProviderCooldownsLoaded()
+  const until = providerCooldowns.get(source)
+  if (!until) return 0
+  const remaining = until - Date.now()
+  if (remaining <= 0) {
+    providerCooldowns.delete(source)
+    writeProviderCooldownsToStorage()
+    return 0
+  }
+  return remaining
+}
+
+function setProviderCooldown(source: BudgetProvider, cooldownMs: number) {
+  const normalizedCooldown = Number.isFinite(cooldownMs) && cooldownMs > 0
+    ? Math.max(MIN_RETRY_DELAY_MS, Math.round(cooldownMs))
+    : DEFAULT_PROVIDER_COOLDOWN_MS
+  providerCooldowns.set(source, Date.now() + normalizedCooldown)
+  writeProviderCooldownsToStorage()
+  logMarketEvent("provider.cooldown.set", { source, cooldownMs: normalizedCooldown })
+}
 
 function clampConfidence(value: number): number {
   if (!Number.isFinite(value)) return 0.5
@@ -317,6 +389,11 @@ function writeDailyBudgetState(state: { date: string; counts: Record<BudgetProvi
 }
 
 function canConsumeBudget(source: BudgetProvider): boolean {
+  const cooldownRemainingMs = getProviderCooldownRemainingMs(source)
+  if (cooldownRemainingMs > 0) {
+    logMarketEvent("provider.cooldown.active", { source, cooldownRemainingMs })
+    return false
+  }
   const limit = PROVIDER_DAILY_LIMITS[source]
   if (!Number.isFinite(limit)) return true
   const today = new Date().toISOString().slice(0, 10)
@@ -329,7 +406,11 @@ function canConsumeBudget(source: BudgetProvider): boolean {
     writeDailyBudgetState(resetState)
     return true
   }
-  return (state.counts[source] || 0) < limit
+  const canConsume = (state.counts[source] || 0) < limit
+  if (!canConsume) {
+    logMarketEvent("provider.daily_limit.reached", { source, limit })
+  }
+  return canConsume
 }
 
 function consumeBudget(source: BudgetProvider) {
@@ -373,7 +454,13 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-async function requestJsonWithBackoff(url: string, init?: RequestInit, retries = 2, timeoutMs = 10000): Promise<unknown> {
+async function requestJsonWithBackoff(
+  url: string,
+  init?: RequestInit,
+  retries = 2,
+  timeoutMs = 10000,
+  provider?: BudgetProvider,
+): Promise<unknown> {
   let attempt = 0
   let lastError: unknown
   while (attempt <= retries) {
@@ -385,6 +472,10 @@ async function requestJsonWithBackoff(url: string, init?: RequestInit, retries =
       if (!response.ok) {
         if (response.status === 429) {
           const retryAfterMs = parseRetryAfterMs(response.headers.get("Retry-After"))
+          if (provider) {
+            setProviderCooldown(provider, retryAfterMs ?? DEFAULT_PROVIDER_COOLDOWN_MS)
+          }
+          logMarketEvent("provider.rate_limited", { provider, retryAfterMs, url })
           throw new RateLimitError("retryable_http_429", retryAfterMs)
         }
         if (response.status >= 500) {
@@ -396,6 +487,9 @@ async function requestJsonWithBackoff(url: string, init?: RequestInit, retries =
     } catch (error) {
       clearTimeout(timeoutId)
       lastError = error
+      if (error instanceof RateLimitError) {
+        break
+      }
       if (attempt === retries) break
       await new Promise((resolve) => setTimeout(resolve, (attempt + 1) * 350))
       attempt += 1
@@ -418,7 +512,7 @@ async function getFrankfurterRates(baseCurrency: string): Promise<Record<string,
 
   try {
     consumeBudget("frankfurter")
-    const payload = await requestJsonWithBackoff(endpoint.toString())
+    const payload = await requestJsonWithBackoff(endpoint.toString(), undefined, 2, 10000, "frankfurter")
     const rates = getNestedValue(payload, ["rates"])
     if (!rates || typeof rates !== "object") return null
     const normalizedRates = Object.entries(rates as Record<string, unknown>).reduce<Record<string, number>>((acc, [code, value]) => {
@@ -452,25 +546,70 @@ async function convertCurrencyLive(amount: number, sourceCurrency = "USD", targe
   return convertCurrency(amount, from, to)
 }
 
-async function getPersistentCache(input: MarketLookupInput): Promise<NormalizedMarketData | null> {
+type CacheState = "fresh" | "stale" | "expired"
+
+interface SnapshotCacheRecord {
+  cachedAt: string
+  data: NormalizedMarketData
+}
+
+interface SentimentCacheRecord {
+  cachedAt: string
+  score: number | null
+}
+
+interface ResolvedCache<T> {
+  state: CacheState
+  value: T | null
+}
+
+function resolveCacheState(cachedAt: number, freshTtlMs: number, staleTtlMs: number): CacheState {
+  const ageMs = Date.now() - cachedAt
+  if (ageMs <= freshTtlMs) return "fresh"
+  if (ageMs <= staleTtlMs) return "stale"
+  return "expired"
+}
+
+async function getSnapshotCacheState(input: MarketLookupInput): Promise<ResolvedCache<NormalizedMarketData>> {
   const key = buildCacheStorageKey(input)
   const inMemory = inMemoryCache.get(key)
-  if (inMemory && inMemory.expiresAt > Date.now()) {
-    return inMemory.data
+  if (inMemory) {
+    const state = inMemory.expiresAt > Date.now() ? "fresh" : "stale"
+    logMarketEvent(`snapshot.cache.${state}`, { layer: "memory", key })
+    return { state, value: inMemory.data }
   }
 
-  if (!isBrowser()) return null
+  if (!isBrowser()) {
+    logMarketEvent("snapshot.cache.miss", { layer: "none", key })
+    return { state: "expired", value: null }
+  }
 
+  installSparkKVFallback()
   try {
-    const cached = await window.spark.kv.get<{ cachedAt: string; data: NormalizedMarketData }>(key)
-    if (!cached) return null
+    const cached = await window.spark.kv.get<SnapshotCacheRecord>(key)
+    if (!cached || !cached.data) {
+      logMarketEvent("snapshot.cache.miss", { layer: "persistent", key })
+      return { state: "expired", value: null }
+    }
     const cachedAt = Date.parse(cached.cachedAt)
-    if (!Number.isFinite(cachedAt)) return null
-    if (Date.now() - cachedAt > CACHE_TTL_MS) return null
-    inMemoryCache.set(key, { expiresAt: cachedAt + CACHE_TTL_MS, data: cached.data })
-    return cached.data
+    if (!Number.isFinite(cachedAt)) {
+      logMarketEvent("snapshot.cache.miss", { layer: "persistent", key, reason: "invalid_cachedAt" })
+      return { state: "expired", value: null }
+    }
+    const state = resolveCacheState(cachedAt, CACHE_TTL_MS, CACHE_STALE_TTL_MS)
+    if (state === "expired") {
+      logMarketEvent("snapshot.cache.miss", { layer: "persistent", key, reason: "expired" })
+      return { state, value: null }
+    }
+    inMemoryCache.set(key, {
+      expiresAt: cachedAt + CACHE_TTL_MS,
+      data: cached.data,
+    })
+    logMarketEvent(`snapshot.cache.${state}`, { layer: "persistent", key })
+    return { state, value: cached.data }
   } catch {
-    return null
+    logMarketEvent("snapshot.cache.miss", { layer: "persistent", key, reason: "read_error" })
+    return { state: "expired", value: null }
   }
 }
 
@@ -478,46 +617,77 @@ async function setPersistentCache(input: MarketLookupInput, data: NormalizedMark
   const key = buildCacheStorageKey(input)
   inMemoryCache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, data })
   if (!isBrowser()) return
+  installSparkKVFallback()
   try {
-    await window.spark.kv.set(key, { cachedAt: nowIso(), data })
+    await window.spark.kv.set<SnapshotCacheRecord>(key, { cachedAt: nowIso(), data })
   } catch {
     // no-op
   }
 }
 
-async function getPersistentSentimentCache(brand: string): Promise<number | null> {
+async function getSentimentCacheState(brand: string): Promise<ResolvedCache<number | null>> {
+  const normalizedBrand = brand.trim().toLowerCase()
+  if (!normalizedBrand) return { state: "expired", value: null }
   const key = buildSentimentCacheStorageKey(brand)
-  const inMemory = sentimentCache.get(brand.trim().toLowerCase())
-  if (inMemory && inMemory.expiresAt > Date.now()) {
-    return inMemory.score
+  const inMemory = sentimentCache.get(normalizedBrand)
+  if (inMemory) {
+    const state = inMemory.expiresAt > Date.now() ? "fresh" : "stale"
+    logMarketEvent(`sentiment.cache.${state}`, { layer: "memory", key })
+    return { state, value: inMemory.score }
   }
 
-  if (!isBrowser()) return null
+  if (!isBrowser()) {
+    logMarketEvent("sentiment.cache.miss", { layer: "none", brand: normalizedBrand })
+    return { state: "expired", value: null }
+  }
+
+  installSparkKVFallback()
   try {
-    const cached = await window.spark.kv.get<{ cachedAt: string; score: number }>(key)
-    if (!cached || cached.score === null || cached.score === undefined || !Number.isFinite(cached.score)) return null
+    const cached = await window.spark.kv.get<SentimentCacheRecord>(key)
+    if (!cached) {
+      logMarketEvent("sentiment.cache.miss", { layer: "persistent", brand: normalizedBrand })
+      return { state: "expired", value: null }
+    }
     const cachedAt = Date.parse(cached.cachedAt)
-    if (!Number.isFinite(cachedAt)) return null
-    if (Date.now() - cachedAt > SENTIMENT_CACHE_TTL_MS) return null
-    sentimentCache.set(brand.trim().toLowerCase(), {
-      expiresAt: cachedAt + SENTIMENT_CACHE_TTL_MS,
+    if (!Number.isFinite(cachedAt)) {
+      logMarketEvent("sentiment.cache.miss", { layer: "persistent", brand: normalizedBrand, reason: "invalid_cachedAt" })
+      return { state: "expired", value: null }
+    }
+    const state = resolveCacheState(cachedAt, SENTIMENT_CACHE_TTL_MS, SENTIMENT_CACHE_STALE_TTL_MS)
+    if (state === "expired") {
+      logMarketEvent("sentiment.cache.miss", { layer: "persistent", brand: normalizedBrand, reason: "expired" })
+      return { state, value: null }
+    }
+    sentimentCache.set(normalizedBrand, {
+      expiresAt: cachedAt + (cached.score === null ? NEGATIVE_CACHE_TTL_MS : SENTIMENT_CACHE_TTL_MS),
+      cachedAt,
       score: cached.score,
     })
-    return cached.score
+    logMarketEvent(`sentiment.cache.${state}`, { layer: "persistent", key })
+    return { state, value: cached.score ?? null }
   } catch {
-    return null
+    logMarketEvent("sentiment.cache.miss", { layer: "persistent", brand: normalizedBrand, reason: "read_error" })
+    return { state: "expired", value: null }
   }
 }
 
-async function setPersistentSentimentCache(brand: string, score: number): Promise<void> {
+async function setPersistentSentimentCache(
+  brand: string,
+  score: number | null,
+  options?: { ttlMs?: number },
+): Promise<void> {
   const cacheKey = brand.trim().toLowerCase()
+  if (!cacheKey) return
+  const ttlMs = options?.ttlMs ?? (score === null ? NEGATIVE_CACHE_TTL_MS : SENTIMENT_CACHE_TTL_MS)
   sentimentCache.set(cacheKey, {
-    expiresAt: Date.now() + SENTIMENT_CACHE_TTL_MS,
+    expiresAt: Date.now() + ttlMs,
+    cachedAt: Date.now(),
     score,
   })
   if (!isBrowser()) return
+  installSparkKVFallback()
   try {
-    await window.spark.kv.set(buildSentimentCacheStorageKey(brand), {
+    await window.spark.kv.set<SentimentCacheRecord>(buildSentimentCacheStorageKey(brand), {
       cachedAt: nowIso(),
       score,
     })
@@ -625,7 +795,7 @@ async function fromTheWatchApi(input: MarketLookupInput): Promise<NormalizedMark
 
   try {
     consumeBudget("thewatchapi")
-    const payload = await requestJsonWithBackoff(url.toString(), { headers })
+    const payload = await requestJsonWithBackoff(url.toString(), { headers }, 2, 10000, "thewatchapi")
     return parseTheWatchApiSnapshot(payload, input)
   } catch {
     return null
@@ -703,7 +873,7 @@ async function fromEbay(input: MarketLookupInput): Promise<NormalizedMarketData 
     consumeBudget("ebay")
     const payload = await requestJsonWithBackoff(url.toString(), {
       headers: { Accept: "application/json" },
-    })
+    }, 2, 10000, "ebay")
     return parseEbaySnapshot(payload, input)
   } catch {
     return null
@@ -728,9 +898,17 @@ function fromHeuristic(input: MarketLookupInput): NormalizedMarketData {
 async function getBrandSentimentScore(brand: string): Promise<number | null> {
   const cacheKey = brand.trim().toLowerCase()
   if (!cacheKey) return null
-  const cached = await getPersistentSentimentCache(brand)
-  if (typeof cached === "number" && Number.isFinite(cached)) return cached
-  if (!canConsumeBudget("gdelt")) return null
+  const cacheState = await getSentimentCacheState(brand)
+  if (cacheState.state === "fresh") return cacheState.value
+  if (!canConsumeBudget("gdelt")) {
+    return cacheState.value
+  }
+
+  const inflight = sentimentInflightRequests.get(cacheKey)
+  if (inflight) {
+    logMarketEvent("sentiment.request.coalesced", { brand: cacheKey })
+    return inflight
+  }
 
   const endpoint = new URL("https://api.gdeltproject.org/api/v2/doc/doc")
   endpoint.searchParams.set("query", `"${brand}" AND watch`)
@@ -738,25 +916,42 @@ async function getBrandSentimentScore(brand: string): Promise<number | null> {
   endpoint.searchParams.set("format", "json")
   endpoint.searchParams.set("maxrecords", "40")
 
-  try {
-    consumeBudget("gdelt")
-    const payload = await requestJsonWithBackoff(endpoint.toString())
-    const timelines = getNestedValue(payload, ["timelines"])
-    if (!Array.isArray(timelines) || timelines.length === 0) return null
-    const firstTimeline = timelines[0]
-    const points = getNestedValue(firstTimeline, ["data"])
-    if (!Array.isArray(points) || points.length === 0) return null
-    const values = points
-      .map((point) => extractNumber(getNestedValue(point, ["value"]) ?? getNestedValue(point, ["tone"])))
-      .filter((value): value is number => typeof value === "number" && Number.isFinite(value))
-    if (values.length === 0) return null
-    const averageTone = average(values)
-    await setPersistentSentimentCache(brand, averageTone)
-    return averageTone
-  } catch (error) {
-    if (error instanceof RateLimitError) throw error
-    return null
-  }
+  const request = (async () => {
+    try {
+      consumeBudget("gdelt")
+      const payload = await requestJsonWithBackoff(endpoint.toString(), undefined, 2, 10000, "gdelt")
+      const timelines = getNestedValue(payload, ["timelines"])
+      if (!Array.isArray(timelines) || timelines.length === 0) {
+        await setPersistentSentimentCache(brand, null)
+        return null
+      }
+      const firstTimeline = timelines[0]
+      const points = getNestedValue(firstTimeline, ["data"])
+      if (!Array.isArray(points) || points.length === 0) {
+        await setPersistentSentimentCache(brand, null)
+        return null
+      }
+      const values = points
+        .map((point) => extractNumber(getNestedValue(point, ["value"]) ?? getNestedValue(point, ["tone"])))
+        .filter((value): value is number => typeof value === "number" && Number.isFinite(value))
+      if (values.length === 0) {
+        await setPersistentSentimentCache(brand, null)
+        return null
+      }
+      const averageTone = average(values)
+      await setPersistentSentimentCache(brand, averageTone)
+      return averageTone
+    } catch (error) {
+      if (error instanceof RateLimitError) {
+        await setPersistentSentimentCache(brand, null)
+      }
+      return cacheState.value
+    } finally {
+      sentimentInflightRequests.delete(cacheKey)
+    }
+  })()
+  sentimentInflightRequests.set(cacheKey, request)
+  return request
 }
 
 export function marketConfidenceLabel(confidence: number): "high" | "medium" | "low" {
@@ -765,11 +960,7 @@ export function marketConfidenceLabel(confidence: number): "high" | "medium" | "
   return "low"
 }
 
-export async function getNormalizedMarketData(input: MarketLookupInput): Promise<NormalizedMarketData> {
-  const normalizedInput = normalizeLookupInput(input)
-  const cached = await getPersistentCache(normalizedInput)
-  if (cached) return cached
-
+async function fetchAndCacheSnapshot(normalizedInput: MarketLookupInput): Promise<NormalizedMarketData> {
   const providerResults = await Promise.all([
     fromWatchCharts(normalizedInput),
     fromTheWatchApi(normalizedInput),
@@ -780,6 +971,44 @@ export async function getNormalizedMarketData(input: MarketLookupInput): Promise
     || fromHeuristic(normalizedInput)
   await setPersistentCache(normalizedInput, snapshot)
   return snapshot
+}
+
+function queueSnapshotRefresh(normalizedInput: MarketLookupInput) {
+  const cacheKey = buildCacheStorageKey(normalizedInput)
+  if (snapshotInflightRequests.has(cacheKey)) return
+  const refreshRequest = fetchAndCacheSnapshot(normalizedInput)
+    .catch(() => fromHeuristic(normalizedInput))
+    .finally(() => {
+      snapshotInflightRequests.delete(cacheKey)
+    })
+  snapshotInflightRequests.set(cacheKey, refreshRequest)
+  logMarketEvent("snapshot.cache.refresh_queued", { key: cacheKey })
+}
+
+export async function getNormalizedMarketData(input: MarketLookupInput): Promise<NormalizedMarketData> {
+  const normalizedInput = normalizeLookupInput(input)
+  const cacheKey = buildCacheStorageKey(normalizedInput)
+  const cached = await getSnapshotCacheState(normalizedInput)
+  if (cached.state === "fresh" && cached.value) return cached.value
+
+  const inflight = snapshotInflightRequests.get(cacheKey)
+  if (inflight) {
+    logMarketEvent("snapshot.request.coalesced", { key: cacheKey })
+    if (cached.value) return cached.value
+    return inflight
+  }
+
+  if (cached.state === "stale" && cached.value) {
+    queueSnapshotRefresh(normalizedInput)
+    return cached.value
+  }
+
+  const request = fetchAndCacheSnapshot(normalizedInput)
+    .finally(() => {
+      snapshotInflightRequests.delete(cacheKey)
+    })
+  snapshotInflightRequests.set(cacheKey, request)
+  return request
 }
 
 export async function getPortfolioMarketSnapshots(
@@ -806,6 +1035,15 @@ function average(values: number[]): number {
 
 function isFulfilled<T>(result: PromiseSettledResult<T>): result is PromiseFulfilledResult<T> {
   return result.status === "fulfilled"
+}
+
+export function __resetMarketDataStateForTests() {
+  inMemoryCache.clear()
+  fxRateCache.clear()
+  sentimentCache.clear()
+  snapshotInflightRequests.clear()
+  sentimentInflightRequests.clear()
+  providerCooldowns.clear()
 }
 
 export async function getMarketDashboardData(watches: Watch[]): Promise<MarketDashboardData> {
@@ -859,13 +1097,32 @@ export async function getMarketDashboardData(watches: Watch[]): Promise<MarketDa
   }, {})
 
   const sentimentByBrand: Record<string, number | null> = {}
-  const prioritizedBrands = Object.entries(groupedByBrand)
+  const sentimentCandidates = Object.entries(groupedByBrand)
     .sort((left, right) => right[1].length - left[1].length)
     .map(([brand]) => brand)
     .slice(0, MAX_GDELT_BRANDS_PER_LOAD)
 
+  const cacheStateByBrand = await Promise.all(
+    sentimentCandidates.map(async (brand) => ({
+      brand,
+      cacheState: await getSentimentCacheState(brand),
+    })),
+  )
+  const prioritizedBrands = cacheStateByBrand
+    .sort((left, right) => {
+      if (left.cacheState.state === right.cacheState.state) return 0
+      return left.cacheState.state === "fresh" ? 1 : -1
+    })
+    .map((entry) => entry.brand)
+
   for (let index = 0; index < prioritizedBrands.length; index += 1) {
     const brand = prioritizedBrands[index]
+    const shouldDefer = index >= IMMEDIATE_GDELT_BRANDS_PER_LOAD
+    if (shouldDefer) {
+      void getBrandSentimentScore(brand).catch(() => null)
+      logMarketEvent("sentiment.request.deferred", { brand })
+      continue
+    }
     try {
       sentimentByBrand[brand] = await getBrandSentimentScore(brand)
     } catch (error) {
@@ -875,7 +1132,7 @@ export async function getMarketDashboardData(watches: Watch[]): Promise<MarketDa
       }
     }
 
-    if (index < prioritizedBrands.length - 1) {
+    if (index < Math.min(prioritizedBrands.length, IMMEDIATE_GDELT_BRANDS_PER_LOAD) - 1) {
       await sleep(SENTIMENT_REQUEST_SPACING_MS)
     }
   }
