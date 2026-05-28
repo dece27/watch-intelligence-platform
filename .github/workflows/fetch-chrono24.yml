@@ -78,9 +78,16 @@ jobs:
           metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
           status = str(metrics.get("status") or "")
 
-          if status in {"failed_upsert", "mapping_empty"}:
+          if status == "failed_upsert":
               print(f"::error::Chrono24 fetch failed with fatal status '{status}'.")
               sys.exit(1)
+
+          if status == "mapping_empty":
+              print(
+                  "::warning::Chrono24 listings were fetched but mapping produced no valid rows. "
+                  "Preserving existing cached listings and continuing."
+              )
+              sys.exit(0)
 
           if status == "upstream_unavailable":
               consecutive = metrics.get("consecutive_upstream_failures", 0)
@@ -162,8 +169,11 @@ jobs:
           ]
 
           degraded = (
-              str(value("status")) == "upstream_unavailable"
-              and not bool(metrics.get("hard_upstream_failure", False))
+              (
+                  str(value("status")) == "upstream_unavailable"
+                  and not bool(metrics.get("hard_upstream_failure", False))
+              )
+              or str(value("status")) == "mapping_empty"
           )
           failed = bool(metrics.get("failed", False))
 
@@ -180,7 +190,7 @@ jobs:
                   [
                       "",
                       "### Outcome",
-                      "This run is green but degraded because Chrono24 was unavailable and cached listings were used as fallback.",
+                      "This run is green but degraded because Chrono24 data could not be fully refreshed; cached listings were preserved as fallback.",
                   ]
               )
           else:
