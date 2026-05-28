@@ -705,6 +705,10 @@ function average(values: number[]): number {
   return values.reduce((sum, value) => sum + value, 0) / values.length
 }
 
+function isFulfilled<T>(result: PromiseSettledResult<T>): result is PromiseFulfilledResult<T> {
+  return result.status === "fulfilled"
+}
+
 export async function getMarketDashboardData(watches: Watch[]): Promise<MarketDashboardData> {
   const watchTargets = watches
     .slice(0, 18)
@@ -737,7 +741,7 @@ export async function getMarketDashboardData(watches: Watch[]): Promise<MarketDa
     })
   )
   const snapshots = snapshotResults
-    .filter((result): result is PromiseFulfilledResult<NormalizedMarketData | null> => result.status === "fulfilled")
+    .filter(isFulfilled)
     .map((result) => result.value)
     .filter((snapshot): snapshot is NormalizedMarketData => snapshot !== null)
 
@@ -760,7 +764,7 @@ export async function getMarketDashboardData(watches: Watch[]): Promise<MarketDa
   )
   const sentimentByBrand = Object.fromEntries(
     sentimentByBrandEntries
-      .filter((result): result is PromiseFulfilledResult<readonly [string, number | null]> => result.status === "fulfilled")
+      .filter(isFulfilled)
       .map((result) => result.value)
   ) as Record<string, number | null>
 
