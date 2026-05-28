@@ -76,7 +76,7 @@ interface MarketLookupCandidate {
 
 const CACHE_KEY_PREFIX = "market_data_snapshot_v1_"
 const CACHE_TTL_MS = 1000 * 60 * 30
-const CACHE_STALE_TTL_MS = 1000 * 60 * 60 * 24
+const SNAPSHOT_CACHE_STALE_TTL_MS = 1000 * 60 * 60 * 24
 const SENTIMENT_CACHE_KEY_PREFIX = "market_sentiment_v1_"
 const DAILY_BUDGET_STORAGE_KEY = "market_data_daily_budget_v1"
 const PROVIDER_COOLDOWN_STORAGE_KEY = "market_data_provider_cooldown_v1"
@@ -570,6 +570,20 @@ function resolveCacheState(cachedAt: number, freshTtlMs: number, staleTtlMs: num
   return "expired"
 }
 
+function getSentimentCacheTtlMs(score: number | null, explicitTtlMs?: number): number {
+  if (explicitTtlMs && Number.isFinite(explicitTtlMs) && explicitTtlMs > 0) {
+    return explicitTtlMs
+  }
+  return score === null ? NEGATIVE_CACHE_TTL_MS : SENTIMENT_CACHE_TTL_MS
+}
+
+/**
+ * Reads the market snapshot cache from memory and persistent storage.
+ * Returns:
+ * - fresh: use immediately, no refresh needed.
+ * - stale: safe to use immediately; caller should trigger async refresh.
+ * - expired: no usable cache available.
+ */
 async function getSnapshotCacheState(input: MarketLookupInput): Promise<ResolvedCache<NormalizedMarketData>> {
   const key = buildCacheStorageKey(input)
   const inMemory = inMemoryCache.get(key)
@@ -596,7 +610,7 @@ async function getSnapshotCacheState(input: MarketLookupInput): Promise<Resolved
       logMarketEvent("snapshot.cache.miss", { layer: "persistent", key, reason: "invalid_cachedAt" })
       return { state: "expired", value: null }
     }
-    const state = resolveCacheState(cachedAt, CACHE_TTL_MS, CACHE_STALE_TTL_MS)
+    const state = resolveCacheState(cachedAt, CACHE_TTL_MS, SNAPSHOT_CACHE_STALE_TTL_MS)
     if (state === "expired") {
       logMarketEvent("snapshot.cache.miss", { layer: "persistent", key, reason: "expired" })
       return { state, value: null }
@@ -659,7 +673,7 @@ async function getSentimentCacheState(brand: string): Promise<ResolvedCache<numb
       return { state, value: null }
     }
     sentimentCache.set(normalizedBrand, {
-      expiresAt: cachedAt + (cached.score === null ? NEGATIVE_CACHE_TTL_MS : SENTIMENT_CACHE_TTL_MS),
+      expiresAt: cachedAt + getSentimentCacheTtlMs(cached.score ?? null),
       cachedAt,
       score: cached.score,
     })
@@ -678,7 +692,7 @@ async function setPersistentSentimentCache(
 ): Promise<void> {
   const cacheKey = brand.trim().toLowerCase()
   if (!cacheKey) return
-  const ttlMs = options?.ttlMs ?? (score === null ? NEGATIVE_CACHE_TTL_MS : SENTIMENT_CACHE_TTL_MS)
+  const ttlMs = getSentimentCacheTtlMs(score, options?.ttlMs)
   sentimentCache.set(cacheKey, {
     expiresAt: Date.now() + ttlMs,
     cachedAt: Date.now(),
@@ -945,6 +959,7 @@ async function getBrandSentimentScore(brand: string): Promise<number | null> {
       if (error instanceof RateLimitError) {
         await setPersistentSentimentCache(brand, null)
       }
+      // Fall back to any previously cached value so dashboard rendering remains resilient during transient failures.
       return cacheState.value
     } finally {
       sentimentInflightRequests.delete(cacheKey)
@@ -1108,11 +1123,14 @@ export async function getMarketDashboardData(watches: Watch[]): Promise<MarketDa
       cacheState: await getSentimentCacheState(brand),
     })),
   )
+  // Prioritize uncached or stale brands first so we spend limited GDELT calls where they improve data coverage most.
+  const cachePriority: Record<CacheState, number> = {
+    expired: 0,
+    stale: 1,
+    fresh: 2,
+  }
   const prioritizedBrands = cacheStateByBrand
-    .sort((left, right) => {
-      if (left.cacheState.state === right.cacheState.state) return 0
-      return left.cacheState.state === "fresh" ? 1 : -1
-    })
+    .sort((left, right) => cachePriority[left.cacheState.state] - cachePriority[right.cacheState.state])
     .map((entry) => entry.brand)
 
   for (let index = 0; index < prioritizedBrands.length; index += 1) {
@@ -1132,7 +1150,7 @@ export async function getMarketDashboardData(watches: Watch[]): Promise<MarketDa
       }
     }
 
-    if (index < Math.min(prioritizedBrands.length, IMMEDIATE_GDELT_BRANDS_PER_LOAD) - 1) {
+    if (index < IMMEDIATE_GDELT_BRANDS_PER_LOAD - 1 && index < prioritizedBrands.length - 1) {
       await sleep(SENTIMENT_REQUEST_SPACING_MS)
     }
   }

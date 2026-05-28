@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Watch, PriceAlert } from "@/lib/types"
 import { AuctionResult, fetchRecentAuctionResults } from "@/lib/auction-feeds"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -234,7 +234,12 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
   })
 
   const alerts = useMemo(() => priceAlerts || [], [priceAlerts])
+  const watchesRef = useRef(watches)
+  useEffect(() => {
+    watchesRef.current = watches
+  }, [watches])
   const marketWatchSignature = useMemo(() => {
+    // Build a normalized watch signature (identity + market-relevant fields) to refresh only on meaningful changes.
     const normalized = watches
       .map((watch) => [
         watch.id,
@@ -353,10 +358,11 @@ export function MarketModule({ watches, preferredCurrency = "USD" }: MarketModul
     let isMounted = true
 
     const loadMarketData = async () => {
+      // Keep current ready/empty state during refresh so existing cards stay visible while data revalidates in background.
       setMarketDataStatus((current) => (current === 'ready' || current === 'empty' ? current : 'loading'))
       setIsMarketDataLoading(true)
       try {
-        const dashboardData = await getMarketDashboardData(watches)
+        const dashboardData = await getMarketDashboardData(watchesRef.current)
         if (!isMounted) return
         setBrandIndices(dashboardData.brandIndices)
         setTopMovers(dashboardData.topMovers)
