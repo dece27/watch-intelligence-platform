@@ -47,6 +47,14 @@ export const WATCH_BRANDS = [
   "H. Moser & Cie", "Czapek", "MB&F", "Urwerk",
 ]
 
+// Pre-compiled at module load so new RegExp(...) is not called on every article scored.
+const BRAND_REGEXPS = new Map<string, RegExp>(
+  WATCH_BRANDS.map((brand) => {
+    const escaped = brand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    return [brand, new RegExp(`\\b${escaped}\\b`, 'i')]
+  }),
+)
+
 const TAG_PATTERNS: Array<{ pattern: RegExp; tag: string }> = [
   { pattern: /new\s+release/i,                                              tag: 'new release'   },
   { pattern: /limited\s+edition/i,                                          tag: 'limited edition' },
@@ -65,10 +73,7 @@ export function extractBrandsAndTags(
   summary: string,
 ): { brands: string[]; tags: string[] } {
   const text = `${title} ${summary}`
-  const brands = WATCH_BRANDS.filter((brand) => {
-    const escaped = brand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    return new RegExp(`\\b${escaped}\\b`, 'i').test(text)
-  })
+  const brands = WATCH_BRANDS.filter((brand) => BRAND_REGEXPS.get(brand)?.test(text) ?? false)
   const tags: string[] = []
   for (const { pattern, tag } of TAG_PATTERNS) {
     if (pattern.test(text) && !tags.includes(tag)) {
@@ -185,10 +190,10 @@ async function fetchAndParseRssFeed(
     throw new Error(`XML parse error for ${source.name}`)
   }
   const items = Array.from(doc.querySelectorAll('item, entry'))
+  const results = await Promise.allSettled(items.map((item) => parseRssItem(item, source)))
   const articles: Omit<NewsArticle, 'relevanceScore'>[] = []
-  for (const item of items) {
-    const parsed = await parseRssItem(item, source)
-    if (parsed) articles.push(parsed)
+  for (const result of results) {
+    if (result.status === 'fulfilled' && result.value) articles.push(result.value)
   }
   return articles
 }

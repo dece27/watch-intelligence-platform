@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { Watch } from "@/lib/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -88,7 +88,7 @@ export function CollectionModule({
     }
   }, [triggerAdd, readOnly, onTriggerComplete, handleAdd])
 
-  const filteredWatches = watches.filter(watch => {
+  const filteredWatches = useMemo(() => watches.filter(watch => {
     const matchesSearch = searchQuery === '' || 
       watch.brand.toLowerCase().includes(searchQuery.toLowerCase()) ||
       watch.model.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -99,7 +99,7 @@ export function CollectionModule({
       (brandFilter === 'Other' && !['Rolex', 'Patek Philippe', 'Audemars Piguet'].includes(watch.brand))
     
     return matchesSearch && matchesBrand
-  })
+  }), [watches, searchQuery, brandFilter])
 
   const handleEdit = (watch: Watch) => {
     if (readOnly) return
