@@ -245,10 +245,17 @@ export function PortfolioModule({ watches, onUpdate, preferredCurrency = "USD" }
     })
   }, [watchesWithMetrics, sortField, sortDirection])
 
-  const totalValue = watchesWithMetrics.reduce((sum, w) => sum + w.marketValue, 0)
-  const totalCost = watchesWithMetrics.reduce((sum, w) => sum + w.purchasePrice, 0)
-  const totalReturn = totalValue - totalCost
-  const totalReturnPercent = totalCost > 0 ? ((totalReturn / totalCost) * 100) : 0
+  const { totalValue, totalCost, totalReturn, totalReturnPercent } = useMemo(() => {
+    const value = watchesWithMetrics.reduce((sum, w) => sum + w.marketValue, 0)
+    const cost = watchesWithMetrics.reduce((sum, w) => sum + w.purchasePrice, 0)
+    const ret = value - cost
+    return {
+      totalValue: value,
+      totalCost: cost,
+      totalReturn: ret,
+      totalReturnPercent: cost > 0 ? (ret / cost) * 100 : 0,
+    }
+  }, [watchesWithMetrics])
   const portfolioMarketMetadata = useMemo(() => {
     const watchesWithMarket = watchesWithMetrics.filter((watch) => watch.marketSource)
     if (watchesWithMarket.length === 0) {

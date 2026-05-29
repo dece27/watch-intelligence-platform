@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react"
+import { useState, useEffect, useMemo, useRef, lazy, Suspense } from "react"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { SharedCollectionRecord, Watch, User, UserPreferences } from "@/lib/types"
 import { DEFAULT_CURRENCY, normalizeCurrency } from "@/lib/currency"
@@ -6,17 +6,9 @@ import { AppSidebar } from "@/components/AppSidebar"
 import { AppHeader } from "@/components/AppHeader"
 import { WelcomeModal } from "@/components/WelcomeModal"
 import { LoginScreen } from "@/components/LoginScreen"
-import { CollectionModule } from "@/components/modules/CollectionModule"
-import { PortfolioModule } from "@/components/modules/PortfolioModule"
-import { MarketModule } from "@/components/modules/MarketModule"
-import { AIAdvisorModule } from "@/components/modules/AIAdvisorModule"
-import { DealsModule } from "@/components/modules/DealsModule"
-import { AppraisalModule } from "@/components/modules/AppraisalModule"
-import { NewsModule } from "@/components/modules/NewsModule"
-import { FeedbackDashboard } from "@/components/FeedbackDashboard"
-import { AdminDashboard } from "@/components/AdminDashboard"
 import { Toaster } from "@/components/ui/sonner"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Skeleton } from "@/components/ui/skeleton"
 import { MobileNav } from "@/components/MobileNav"
 import { isAdminEmail } from "@/lib/adminAnalytics"
 import { getSharedSlugFromLocation } from "@/lib/sitePath"
@@ -34,6 +26,34 @@ import { watchToInsert, watchToUpdate, rowToWatch } from "@/lib/db/watchMapper"
 import { getEstimatedMarketValue } from "@/lib/watchValue"
 import { getMarketDashboardData } from "@/lib/market-data"
 import { toast } from "sonner"
+
+const CollectionModule = lazy(() =>
+  import("@/components/modules/CollectionModule").then((m) => ({ default: m.CollectionModule })),
+)
+const PortfolioModule = lazy(() =>
+  import("@/components/modules/PortfolioModule").then((m) => ({ default: m.PortfolioModule })),
+)
+const MarketModule = lazy(() =>
+  import("@/components/modules/MarketModule").then((m) => ({ default: m.MarketModule })),
+)
+const AIAdvisorModule = lazy(() =>
+  import("@/components/modules/AIAdvisorModule").then((m) => ({ default: m.AIAdvisorModule })),
+)
+const DealsModule = lazy(() =>
+  import("@/components/modules/DealsModule").then((m) => ({ default: m.DealsModule })),
+)
+const AppraisalModule = lazy(() =>
+  import("@/components/modules/AppraisalModule").then((m) => ({ default: m.AppraisalModule })),
+)
+const NewsModule = lazy(() =>
+  import("@/components/modules/NewsModule").then((m) => ({ default: m.NewsModule })),
+)
+const FeedbackDashboard = lazy(() =>
+  import("@/components/FeedbackDashboard").then((m) => ({ default: m.FeedbackDashboard })),
+)
+const AdminDashboard = lazy(() =>
+  import("@/components/AdminDashboard").then((m) => ({ default: m.AdminDashboard })),
+)
 
 function decodeLegacySharedSlug(value: string): string | null {
   try {
@@ -301,8 +321,10 @@ function App() {
             ? 'offline'
             : 'supabase-ready'
 
-  const pendingSyncCount = Object.values(watchSyncStateById).filter((state) => state === 'pending_sync').length
-  const failedSyncCount = Object.values(watchSyncStateById).filter((state) => state === 'failed_sync').length
+  const { pendingSyncCount, failedSyncCount } = useMemo(() => ({
+    pendingSyncCount: Object.values(watchSyncStateById).filter((state) => state === 'pending_sync').length,
+    failedSyncCount: Object.values(watchSyncStateById).filter((state) => state === 'failed_sync').length,
+  }), [watchSyncStateById])
 
   const persistenceStateMessage = (() => {
     if (!currentUser) return null
@@ -416,7 +438,10 @@ function App() {
   }, [currentUser?.id, supabaseUserId, persistenceState])
 
   const watchList = useMemo(() => watches ?? [], [watches])
-  const totalValue = watchList.reduce((sum, w) => sum + getEstimatedMarketValue(w), 0)
+  const totalValue = useMemo(
+    () => watchList.reduce((sum, w) => sum + getEstimatedMarketValue(w), 0),
+    [watchList],
+  )
 
   useEffect(() => {
     if (!currentUser || !watchesLoaded) return
@@ -776,33 +801,46 @@ function App() {
     const nextWatches = updater(prevWatches)
     const storageUserId = supabaseUserId ?? currentUser.id
 
+    // Build a map for O(1) lookup and identify which watches actually changed.
+    const prevById = new Map(prevWatches.map((w) => [w.id, w]))
+    const prevIds = new Set(prevById.keys())
+    const nextIds = new Set(nextWatches.map((w) => w.id))
+    const changedIds = new Set(
+      nextWatches.filter((w) => prevById.get(w.id) !== w).map((w) => w.id),
+    )
+
+    // Only run prepareWatchForStorage for new or changed watches; pass unchanged through.
     const prepared = await Promise.all(
       nextWatches.map((watch) => {
-        const existingDisplayUrl = prevWatches.find((w) => w.id === watch.id)?.imageUrl
+        const prev = prevById.get(watch.id)
+        if (prev === watch) {
+          return Promise.resolve({ watchForStorage: watch, watchForDisplay: watch })
+        }
         return prepareWatchForStorage(
           watch,
           storageUserId,
           (key, value) => window.spark.kv.set(key, value),
-          existingDisplayUrl,
+          prev?.imageUrl,
         )
       }),
     )
     const preparedById = new Map(prepared.map((item) => [item.watchForStorage.id, item.watchForStorage]))
-    const prevIds = new Set(prevWatches.map((w) => w.id))
-    const nextIds = new Set(nextWatches.map((w) => w.id))
 
     if (supabaseUserId && persistenceState === 'supabase-ready') {
       try {
         const deletedIds = prevWatches.filter((w) => !nextIds.has(w.id)).map((watch) => watch.id)
+        // Only create/update watches that are new or changed; unchanged watches keep their revisions.
         const createdOrUpdated = await Promise.all(
-          prepared.map(({ watchForStorage }) => {
-            if (!prevIds.has(watchForStorage.id)) {
-              return createWatch(watchToInsert(watchForStorage, supabaseUserId))
-            }
-            return updateWatch(watchForStorage.id, watchToUpdate(watchForStorage), {
-              expectedUpdatedAt: watchRevisionById[watchForStorage.id],
-            })
-          }),
+          prepared
+            .filter(({ watchForStorage }) => !prevIds.has(watchForStorage.id) || changedIds.has(watchForStorage.id))
+            .map(({ watchForStorage }) => {
+              if (!prevIds.has(watchForStorage.id)) {
+                return createWatch(watchToInsert(watchForStorage, supabaseUserId))
+              }
+              return updateWatch(watchForStorage.id, watchToUpdate(watchForStorage), {
+                expectedUpdatedAt: watchRevisionById[watchForStorage.id],
+              })
+            }),
         )
 
         await Promise.all(deletedIds.map((id) => softDeleteWatch(id)))
@@ -821,7 +859,7 @@ function App() {
         setWatchRevisionById(nextRevisions)
         setWatchSyncStateById({})
         setWatches(prepared.map((p) => p.watchForDisplay))
-        console.log(`Synced ${nextWatches.length} watches to Supabase`)
+        console.log(`Synced ${createdOrUpdated.length} changed watch(es) to Supabase`)
       } catch (error) {
         console.error('Error syncing watches to Supabase:', error)
         if (error instanceof WatchConflictError) {
@@ -847,14 +885,17 @@ function App() {
             expectedUpdatedAt: watchRevisionById[watch.id],
             queuedAt,
           })),
-        ...prepared.map(({ watchForStorage }) => ({
-          idempotencyKey: crypto.randomUUID(),
-          type: (prevIds.has(watchForStorage.id) ? 'update' : 'create') as 'update' | 'create',
-          watchId: watchForStorage.id,
-          watch: watchForStorage,
-          expectedUpdatedAt: watchRevisionById[watchForStorage.id],
-          queuedAt,
-        })),
+        // Only queue create/update operations for new or changed watches.
+        ...prepared
+          .filter(({ watchForStorage }) => !prevIds.has(watchForStorage.id) || changedIds.has(watchForStorage.id))
+          .map(({ watchForStorage }) => ({
+            idempotencyKey: crypto.randomUUID(),
+            type: (prevIds.has(watchForStorage.id) ? 'update' : 'create') as 'update' | 'create',
+            watchId: watchForStorage.id,
+            watch: watchForStorage,
+            expectedUpdatedAt: watchRevisionById[watchForStorage.id],
+            queuedAt,
+          })),
       ]
 
       await window.spark.kv.set(outboxKey, [...queued, ...operations])
@@ -883,6 +924,14 @@ function App() {
   }
 
   const isAdmin = isAdminEmail(currentUser?.email)
+
+  const moduleFallback = (
+    <div className="space-y-4">
+      <Skeleton className="h-8 w-64" />
+      <Skeleton className="h-4 w-48" />
+      <Skeleton className="h-64 w-full" />
+    </div>
+  )
 
   const renderModule = () => {
     switch (activeModule) {
@@ -982,15 +1031,17 @@ function App() {
     return (
       <div className="min-h-screen bg-background text-foreground p-4 md:p-6">
         <div className="max-w-7xl mx-auto">
-          <CollectionModule
-            watches={sharedWatches}
-            onUpdate={() => {}}
-            readOnly
-            hidePurchasePrice
-            preferredCurrency={preferredCurrency}
-            title={`${sharedCollection.ownerVaultName} — Shared Collection`}
-            subtitle={`${sharedCollection.watches.length} ${sharedCollection.watches.length === 1 ? "watch" : "watches"} in this public view`}
-          />
+          <Suspense fallback={moduleFallback}>
+            <CollectionModule
+              watches={sharedWatches}
+              onUpdate={() => {}}
+              readOnly
+              hidePurchasePrice
+              preferredCurrency={preferredCurrency}
+              title={`${sharedCollection.ownerVaultName} — Shared Collection`}
+              subtitle={`${sharedCollection.watches.length} ${sharedCollection.watches.length === 1 ? "watch" : "watches"} in this public view`}
+            />
+          </Suspense>
         </div>
         <Toaster />
       </div>
@@ -1027,10 +1078,14 @@ function App() {
             )}
             {(hasVisitedMarketModule || activeModule === 'market') && (
               <div className={activeModule === 'market' ? '' : 'hidden'} aria-hidden={activeModule !== 'market'}>
-                <MarketModule watches={watchList} preferredCurrency={preferredCurrency} />
+                <Suspense fallback={moduleFallback}>
+                  <MarketModule watches={watchList} preferredCurrency={preferredCurrency} />
+                </Suspense>
               </div>
             )}
-            {renderModule()}
+            <Suspense fallback={moduleFallback}>
+              {renderModule()}
+            </Suspense>
           </div>
         </main>
       </div>

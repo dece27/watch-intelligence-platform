@@ -30,6 +30,15 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       chunkSizeWarningLimit: 1500,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'vendor-recharts': ['recharts'],
+            'vendor-supabase': ['@supabase/supabase-js'],
+            'vendor-phosphor': ['@phosphor-icons/react'],
+          },
+        },
+      },
     },
     plugins: [
       react(),

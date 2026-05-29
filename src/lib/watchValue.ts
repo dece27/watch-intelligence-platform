@@ -21,6 +21,10 @@ const MODEL_MULTIPLIERS: Record<string, number> = {
   'Speedmaster': 1.08,
 }
 
+// Pre-computed at module load so Object.entries() is not called on every invocation.
+const MODEL_MULTIPLIER_ENTRIES = Object.entries(MODEL_MULTIPLIERS)
+const MAX_MODEL_MULTIPLIER = Math.max(...Object.values(MODEL_MULTIPLIERS))
+
 /**
  * Returns the best available market value for a watch.
  * Uses the stored `currentValue` when present; otherwise estimates one
@@ -32,11 +36,13 @@ export function getEstimatedMarketValue(watch: Watch): number {
 
   let multiplier = BRAND_MULTIPLIERS[watch.brand] || 1.05
 
-  Object.keys(MODEL_MULTIPLIERS).forEach(model => {
+  for (const [model, modelMultiplier] of MODEL_MULTIPLIER_ENTRIES) {
     if (watch.model.includes(model)) {
-      multiplier = Math.max(multiplier, MODEL_MULTIPLIERS[model])
+      multiplier = Math.max(multiplier, modelMultiplier)
+      // Break early once the highest possible model multiplier is reached.
+      if (multiplier >= MAX_MODEL_MULTIPLIER) break
     }
-  })
+  }
 
   const yearFactor = watch.year && watch.year >= 2020 ? 1.02 : 0.98
   const conditionFactor =

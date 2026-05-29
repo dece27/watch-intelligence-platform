@@ -129,6 +129,9 @@ const dashboardInflightRequests = new Map<string, Promise<MarketDashboardData>>(
 const sentimentInflightRequests = new Map<string, Promise<number | null>>()
 const providerCooldowns = new Map<BudgetProvider, number>()
 
+// In-memory cache for the daily budget state to avoid repeated localStorage reads/parses.
+let dailyBudgetStateCache: { date: string; counts: Record<BudgetProvider, number> } | null = null
+
 const nowIso = () => new Date().toISOString()
 const createEmptyDashboard = (): MarketDashboardData => ({ brandIndices: [], topMovers: [], updatedAt: nowIso() })
 
@@ -376,25 +379,33 @@ function normalizeMarketSnapshot(snapshot: Omit<NormalizedMarketData, "moversDel
 }
 
 function readDailyBudgetState(): { date: string; counts: Record<BudgetProvider, number> } {
+  const today = new Date().toISOString().slice(0, 10)
+
+  // Return in-memory cache when the date matches, avoiding localStorage reads.
+  if (dailyBudgetStateCache && dailyBudgetStateCache.date === today) {
+    return dailyBudgetStateCache
+  }
+
+  const emptyState = {
+    date: today,
+    counts: { watchcharts: 0, thewatchapi: 0, ebay: 0, heuristic: 0, gdelt: 0, frankfurter: 0 },
+  }
+
   if (!isBrowser()) {
-    return {
-      date: new Date().toISOString().slice(0, 10),
-      counts: { watchcharts: 0, thewatchapi: 0, ebay: 0, heuristic: 0, gdelt: 0, frankfurter: 0 },
-    }
+    dailyBudgetStateCache = emptyState
+    return emptyState
   }
 
   try {
     const raw = window.localStorage.getItem(DAILY_BUDGET_STORAGE_KEY)
     if (!raw) {
-      return {
-        date: new Date().toISOString().slice(0, 10),
-        counts: { watchcharts: 0, thewatchapi: 0, ebay: 0, heuristic: 0, gdelt: 0, frankfurter: 0 },
-      }
+      dailyBudgetStateCache = emptyState
+      return emptyState
     }
     const parsed = JSON.parse(raw) as { date?: string; counts?: Partial<Record<BudgetProvider, number>> }
-    const date = parsed.date || new Date().toISOString().slice(0, 10)
+    const date = parsed.date || today
     const counts = parsed.counts || {}
-    return {
+    const state = {
       date,
       counts: {
         watchcharts: Number(counts.watchcharts || 0),
@@ -405,15 +416,18 @@ function readDailyBudgetState(): { date: string; counts: Record<BudgetProvider, 
         frankfurter: Number(counts.frankfurter || 0),
       },
     }
+    // Cache the parsed state; if the stored date is stale, seed cache with emptyState so
+    // subsequent reads don't re-parse localStorage until the next write resets the day.
+    dailyBudgetStateCache = date === today ? state : emptyState
+    return state
   } catch {
-    return {
-      date: new Date().toISOString().slice(0, 10),
-      counts: { watchcharts: 0, thewatchapi: 0, ebay: 0, heuristic: 0, gdelt: 0, frankfurter: 0 },
-    }
+    dailyBudgetStateCache = emptyState
+    return emptyState
   }
 }
 
 function writeDailyBudgetState(state: { date: string; counts: Record<BudgetProvider, number> }) {
+  dailyBudgetStateCache = state
   if (!isBrowser()) return
   try {
     window.localStorage.setItem(DAILY_BUDGET_STORAGE_KEY, JSON.stringify(state))
@@ -1137,17 +1151,15 @@ export async function getNormalizedMarketData(input: MarketLookupInput): Promise
 export async function getPortfolioMarketSnapshots(
   watches: Watch[],
 ): Promise<Record<string, NormalizedMarketData>> {
-  const entries = await Promise.all(
-    watches.map(async (watch) => {
-      const snapshot = await getNormalizedMarketData({
-        brand: watch.brand,
-        model: watch.model,
-        referenceNumber: watch.referenceNumber,
-        heuristicPrice: watch.currentValue,
-      })
-      return [watch.id, snapshot] as const
+  const entries = await mapWithConcurrencyLimit(watches, SNAPSHOT_CONCURRENCY_LIMIT, async (watch) => {
+    const snapshot = await getNormalizedMarketData({
+      brand: watch.brand,
+      model: watch.model,
+      referenceNumber: watch.referenceNumber,
+      heuristicPrice: watch.currentValue,
     })
-  )
+    return [watch.id, snapshot] as const
+  })
   return Object.fromEntries(entries)
 }
 
@@ -1165,6 +1177,7 @@ export function __resetMarketDataStateForTests() {
   dashboardInflightRequests.clear()
   sentimentInflightRequests.clear()
   providerCooldowns.clear()
+  dailyBudgetStateCache = null
 }
 
 async function mapWithConcurrencyLimit<TInput, TOutput>(
